@@ -1,0 +1,23 @@
+# Xcode
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+DerivedData/
+build/
+.build/
+*.xcuserstate
+
+# SPM
+.swiftpm/
+Packages/
+Package.resolved
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Generated
+*.hmap
