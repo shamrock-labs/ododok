@@ -35,21 +35,32 @@ struct ContentView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            ScrollView(showsIndicators: false) {
-                Group {
-                    switch tab {
-                    case .home:  HomeView()
-                    case .track: TrackingView()
-                    case .shop:  ShopView()
-                    }
+        TabView(selection: $tab) {
+            ScrollView(showsIndicators: false) { HomeView() }
+                .background(LinearGradient.appBackground.ignoresSafeArea())
+                .tabItem {
+                    Image(systemName: Tab.home.systemImage)
+                    Text(Tab.home.label)
                 }
-                .padding(.bottom, 90)  // TabBar 영역 비워두기
-            }
+                .tag(Tab.home)
 
-            TabBarView(selection: $tab)
+            ScrollView(showsIndicators: false) { TrackingView() }
+                .background(LinearGradient.appBackground.ignoresSafeArea())
+                .tabItem {
+                    Image(systemName: Tab.track.systemImage)
+                    Text(Tab.track.label)
+                }
+                .tag(Tab.track)
+
+            ScrollView(showsIndicators: false) { ShopView() }
+                .background(LinearGradient.appBackground.ignoresSafeArea())
+                .tabItem {
+                    Image(systemName: Tab.shop.systemImage)
+                    Text(Tab.shop.label)
+                }
+                .tag(Tab.shop)
         }
-        .background(LinearGradient.appBackground.ignoresSafeArea())
+        .tint(Color.acorn600)
     }
 }
 

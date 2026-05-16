@@ -4,31 +4,31 @@ struct HomeView: View {
     @Environment(AppState.self) private var state
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 16) {
             topBar
             statRow
             squirrelCard
             mealToggleButton
         }
         .padding(.horizontal, 24)
-        .padding(.top, 8)
-        .padding(.bottom, 14)
+        .padding(.top, 12)
+        .padding(.bottom, 24)
     }
 
     // MARK: Top bar
 
     private var topBar: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 4) {
                 Text(todayLabel)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.ink400)
                 Text("안녕, 성호님")
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.system(size: 26, weight: .bold))
                     .foregroundStyle(Color.ink800)
             }
             Spacer()
-            HStack(spacing: 8) {
+            HStack(spacing: 10) {
                 circleButton("bell.fill")
                 circleButton("gearshape.fill")
             }
@@ -45,9 +45,9 @@ struct HomeView: View {
     private func circleButton(_ symbol: String) -> some View {
         Button {} label: {
             Image(systemName: symbol)
-                .font(.system(size: 16, weight: .medium))
+                .font(.system(size: 18, weight: .medium))
                 .foregroundStyle(Color.ink600)
-                .frame(width: 40, height: 40)
+                .frame(width: 46, height: 46)
                 .background(Color.white, in: Circle())
         }
         .buttonStyle(.plain)
@@ -57,7 +57,7 @@ struct HomeView: View {
     // MARK: Streak + Points
 
     private var statRow: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 14) {
             statCard(
                 label: "연속 출석",
                 value: "\(state.streak)일째 🔥",
@@ -65,7 +65,7 @@ struct HomeView: View {
             ) {
                 Image(systemName: "flame.fill")
                     .foregroundStyle(Color.blush500)
-                    .font(.system(size: 22))
+                    .font(.system(size: 26))
             }
 
             statCard(
@@ -73,7 +73,7 @@ struct HomeView: View {
                 value: state.points.koLocale,
                 iconBG: Color.butter100
             ) {
-                Text("🌰").font(.system(size: 22))
+                Text("🌰").font(.system(size: 26))
             }
         }
     }
@@ -86,24 +86,25 @@ struct HomeView: View {
     ) -> some View {
         HStack(spacing: 10) {
             iconBG
-                .frame(width: 40, height: 40)
-                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .frame(width: 42, height: 42)
+                .clipShape(RoundedRectangle(cornerRadius: 13))
                 .overlay { icon() }
 
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(label)
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(Color.ink400)
                     .lineLimit(1)
                 Text(value)
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(Color.ink800)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                    .minimumScaleFactor(0.6)
             }
             Spacer(minLength: 0)
         }
-        .padding(12)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
         .background(Color.white, in: RoundedRectangle(cornerRadius: 18))
         .neuoShadow(.sm)
     }
@@ -111,7 +112,7 @@ struct HomeView: View {
     // MARK: Squirrel card + progress
 
     private var squirrelCard: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
             SquirrelView(
                 mood: state.status.mood,
                 hat: ShopItem.by(id: state.equipped.hat),
@@ -120,12 +121,12 @@ struct HomeView: View {
                 animKey: state.animKey
             )
 
-            VStack(spacing: 1) {
+            VStack(spacing: 2) {
                 Text(state.status.title)
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.system(size: 19, weight: .bold))
                     .foregroundStyle(Color.ink800)
                 Text(state.status.subtitle)
-                    .font(.system(size: 12))
+                    .font(.system(size: 13))
                     .foregroundStyle(Color.ink400)
             }
 
@@ -139,24 +140,24 @@ struct HomeView: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             ),
-            in: RoundedRectangle(cornerRadius: 24)
+            in: RoundedRectangle(cornerRadius: 26)
         )
         .neuoShadow(.md)
     }
 
     private var progressBar: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 10) {
             HStack {
                 Text("오늘의 저작 목표")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Color.ink600)
                 Spacer()
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
                     Text(state.chewCount.koLocale)
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(Color.ink800)
                     Text("/ \(Constants.dailyGoal.koLocale)회")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(Color.ink400)
                 }
             }
@@ -174,7 +175,7 @@ struct HomeView: View {
                         .animation(.easeOut(duration: 0.5), value: state.progress)
                 }
             }
-            .frame(height: 12)
+            .frame(height: 16)
         }
     }
 
@@ -184,15 +185,15 @@ struct HomeView: View {
         Button {
             state.toggleEating()
         } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: 12) {
                 Image(systemName: state.isEating ? "stop.fill" : "fork.knife")
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.system(size: 22, weight: .bold))
                 Text(state.isEating ? "식사 종료" : "식사 시작")
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.system(size: 20, weight: .bold))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 18)
+            .padding(.vertical, 20)
             .background(
                 LinearGradient(
                     colors: state.isEating
