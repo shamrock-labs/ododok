@@ -2,10 +2,20 @@ import SwiftUI
 
 struct ContentView: View {
     @Environment(AppState.self) private var state
-    @State private var tab: Tab = .home
+    @State private var tab: Tab = Tab.initial
 
     enum Tab: String, CaseIterable {
         case home, track, shop
+
+        static var initial: Tab {
+            let args = ProcessInfo.processInfo.arguments
+            if let i = args.firstIndex(of: "-startTab"),
+               i + 1 < args.count,
+               let t = Tab(rawValue: args[i + 1]) {
+                return t
+            }
+            return .home
+        }
 
         var label: String {
             switch self {
@@ -26,9 +36,6 @@ struct ContentView: View {
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            LinearGradient.appBackground
-                .ignoresSafeArea()
-
             ScrollView(showsIndicators: false) {
                 Group {
                     switch tab {
@@ -42,6 +49,9 @@ struct ContentView: View {
 
             TabBarView(selection: $tab)
         }
+        .background(
+            LinearGradient.appBackground.ignoresSafeArea()
+        )
     }
 }
 

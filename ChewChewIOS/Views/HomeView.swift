@@ -84,24 +84,26 @@ struct HomeView: View {
         iconBG: Color,
         @ViewBuilder icon: () -> I
     ) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             iconBG
-                .frame(width: 44, height: 44)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .frame(width: 40, height: 40)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
                 .overlay { icon() }
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(label)
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(Color.ink400)
+                    .lineLimit(1)
                 Text(value)
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(Color.ink800)
                     .lineLimit(1)
+                    .minimumScaleFactor(0.7)
             }
             Spacer(minLength: 0)
         }
-        .padding(14)
+        .padding(12)
         .background(Color.white, in: RoundedRectangle(cornerRadius: 18))
         .neuoShadow(.sm)
     }
