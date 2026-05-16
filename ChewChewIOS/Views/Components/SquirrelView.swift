@@ -6,26 +6,31 @@ struct SquirrelView: View {
     let glasses: ShopItem?
     let acc: ShopItem?
     let animKey: Int
+    let isEating: Bool
 
     @State private var bounce = false
+    @State private var eatingMotion = false
 
     var body: some View {
         ZStack {
             Circle()
                 .fill(Color.butter200.opacity(0.4))
                 .frame(width: 140, height: 140)
-                .scaleEffect(bounce ? 1.6 : 0.95)
+                .scaleEffect(bounce ? 1.6 : (isEating && eatingMotion ? 1.05 : 0.95))
                 .opacity(bounce ? 0 : 0.6)
                 .animation(.easeOut(duration: 1.2), value: bounce)
+                .animation(.easeInOut(duration: 0.72).repeatForever(autoreverses: true), value: eatingMotion)
 
             Image(mood.imageName)
                 .resizable()
                 .scaledToFit()
                 .frame(width: 115, height: 115)
                 .scaleEffect(bounce ? 1.08 : 1.0)
-                .rotationEffect(.degrees(bounce ? -2 : 0))
+                .rotationEffect(.degrees(bounce ? -2 : (isEating && eatingMotion ? 2.5 : 0)))
+                .offset(y: isEating && eatingMotion ? -4 : 0)
                 .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 6)
                 .animation(.spring(response: 0.42, dampingFraction: 0.55), value: bounce)
+                .animation(.easeInOut(duration: 0.72).repeatForever(autoreverses: true), value: eatingMotion)
 
             if let hat {
                 Text(hat.emoji)
@@ -61,6 +66,12 @@ struct SquirrelView: View {
             }
         }
         .frame(height: 140)
+        .onAppear {
+            eatingMotion = isEating
+        }
+        .onChange(of: isEating) { _, isOn in
+            eatingMotion = isOn
+        }
         .onChange(of: animKey) { _, _ in
             bounce = true
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.42) {

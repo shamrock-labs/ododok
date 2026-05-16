@@ -4,15 +4,17 @@ struct HomeView: View {
     @Environment(AppState.self) private var state
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 14) {
             topBar
             statRow
             squirrelCard
+                .frame(maxHeight: .infinity)
             mealToggleButton
         }
         .padding(.horizontal, 24)
         .padding(.top, 12)
-        .padding(.bottom, 24)
+        .padding(.bottom, 18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     // MARK: Top bar
@@ -109,17 +111,22 @@ struct HomeView: View {
         .neuoShadow(.sm)
     }
 
-    // MARK: Squirrel card + progress
+    // MARK: Squirrel card + IMU waveform
 
     private var squirrelCard: some View {
         VStack(spacing: 10) {
+            Spacer(minLength: 0)
+
             SquirrelView(
-                mood: state.status.mood,
-                hat: ShopItem.by(id: state.equipped.hat),
-                glasses: ShopItem.by(id: state.equipped.glasses),
-                acc: ShopItem.by(id: state.equipped.acc),
-                animKey: state.animKey
+                mood: state.isEating ? state.status.mood : .happy,
+                hat: nil,
+                glasses: nil,
+                acc: nil,
+                animKey: state.animKey,
+                isEating: state.isEating
             )
+            .scaleEffect(1.5)
+            .frame(height: 246)
 
             VStack(spacing: 2) {
                 Text(state.status.title)
@@ -130,10 +137,15 @@ struct HomeView: View {
                     .foregroundStyle(Color.ink400)
             }
 
-            progressBar
+            imuWaveformCard
                 .padding(.top, 2)
+
+            Spacer(minLength: 0)
         }
-        .padding(14)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity)
+        .frame(minHeight: 390)
         .background(
             LinearGradient(
                 colors: [.white, .cream, Color.acorn50],
@@ -145,38 +157,32 @@ struct HomeView: View {
         .neuoShadow(.md)
     }
 
-    private var progressBar: some View {
-        VStack(spacing: 10) {
-            HStack {
-                Text("오늘의 저작 목표")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Color.ink600)
-                Spacer()
-                HStack(alignment: .firstTextBaseline, spacing: 2) {
-                    Text(state.chewCount.koLocale)
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundStyle(Color.ink800)
-                    Text("/ \(Constants.dailyGoal.koLocale)회")
+    private var imuWaveformCard: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("IMU 파형")
                         .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(Color.ink400)
+                        .foregroundStyle(Color.ink800)
+                    Text(state.imuWaveformStatusText)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(state.isIMUWaveformLive ? Color.sage600 : Color.ink400)
                 }
+
+                Spacer()
+
+                Image(systemName: "waveform.path.ecg")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(state.isIMUWaveformLive ? Color.sage600 : Color.ink400)
+                    .frame(width: 32, height: 32)
+                    .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
             }
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.acorn50)
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [Color.butter400, Color.acorn300, Color.sage400],
-                                startPoint: .leading, endPoint: .trailing
-                            )
-                        )
-                        .frame(width: geo.size.width * state.progress)
-                        .animation(.easeOut(duration: 0.5), value: state.progress)
-                }
-            }
-            .frame(height: 16)
+
+            IMUWaveformView(samples: state.imuWaveformSamples, isLive: state.isIMUWaveformLive)
+                .frame(height: 44)
         }
+        .padding(12)
+        .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 16))
     }
 
     // MARK: Meal toggle button
@@ -193,7 +199,7 @@ struct HomeView: View {
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 20)
+            .padding(.vertical, 17)
             .background(
                 LinearGradient(
                     colors: state.isEating

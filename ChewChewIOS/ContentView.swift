@@ -5,7 +5,7 @@ struct ContentView: View {
     @State private var tab: Tab = Tab.initial
 
     enum Tab: String, CaseIterable {
-        case home, track, shop
+        case home, track, friends, shop
 
         static var initial: Tab {
             let args = ProcessInfo.processInfo.arguments
@@ -21,6 +21,7 @@ struct ContentView: View {
             switch self {
             case .home:  "홈"
             case .track: "트래킹"
+            case .friends: "친구"
             case .shop:  "상점"
             }
         }
@@ -29,6 +30,7 @@ struct ContentView: View {
             switch self {
             case .home:  "house.fill"
             case .track: "waveform.path.ecg"
+            case .friends: "person.2.fill"
             case .shop:  "bag.fill"
             }
         }
@@ -36,31 +38,54 @@ struct ContentView: View {
 
     var body: some View {
         TabView(selection: $tab) {
-            ScrollView(showsIndicators: false) { HomeView() }
-                .background(LinearGradient.appBackground.ignoresSafeArea())
+            tabPage {
+                HomeView()
+            }
                 .tabItem {
                     Image(systemName: Tab.home.systemImage)
                     Text(Tab.home.label)
                 }
                 .tag(Tab.home)
 
-            ScrollView(showsIndicators: false) { TrackingView() }
-                .background(LinearGradient.appBackground.ignoresSafeArea())
+            tabPage {
+                TrackingView()
+            }
                 .tabItem {
                     Image(systemName: Tab.track.systemImage)
                     Text(Tab.track.label)
                 }
                 .tag(Tab.track)
 
-            ScrollView(showsIndicators: false) { ShopView() }
-                .background(LinearGradient.appBackground.ignoresSafeArea())
+            tabPage {
+                FriendsView()
+            }
+                .tabItem {
+                    Image(systemName: Tab.friends.systemImage)
+                    Text(Tab.friends.label)
+                }
+                .tag(Tab.friends)
+
+            tabPage {
+                ShopView()
+            }
                 .tabItem {
                     Image(systemName: Tab.shop.systemImage)
                     Text(Tab.shop.label)
                 }
                 .tag(Tab.shop)
         }
+        .background(LinearGradient.appBackground.ignoresSafeArea())
         .tint(Color.acorn600)
+    }
+
+    private func tabPage<Content: View>(@ViewBuilder content: @escaping () -> Content) -> some View {
+        GeometryReader { proxy in
+            ScrollView(showsIndicators: false) {
+                content()
+                    .frame(minHeight: proxy.size.height, alignment: .top)
+            }
+            .background(LinearGradient.appBackground.ignoresSafeArea())
+        }
     }
 }
 
