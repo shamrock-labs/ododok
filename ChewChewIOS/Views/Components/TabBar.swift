@@ -25,8 +25,8 @@ struct TabBarView: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.top, 10)
-        .padding(.bottom, 28)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
         .padding(.horizontal, 16)
         .background(.ultraThinMaterial)
         .overlay(alignment: .top) {

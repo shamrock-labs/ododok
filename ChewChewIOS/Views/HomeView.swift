@@ -4,15 +4,15 @@ struct HomeView: View {
     @Environment(AppState.self) private var state
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 14) {
             topBar
             statRow
             squirrelCard
-            chewButton
-            achievementsRow
+            mealToggleButton
         }
         .padding(.horizontal, 24)
-        .padding(.top, 12)
+        .padding(.top, 8)
+        .padding(.bottom, 14)
     }
 
     // MARK: Top bar
@@ -111,7 +111,7 @@ struct HomeView: View {
     // MARK: Squirrel card + progress
 
     private var squirrelCard: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 8) {
             SquirrelView(
                 mood: state.status.mood,
                 hat: ShopItem.by(id: state.equipped.hat),
@@ -120,26 +120,26 @@ struct HomeView: View {
                 animKey: state.animKey
             )
 
-            VStack(spacing: 2) {
+            VStack(spacing: 1) {
                 Text(state.status.title)
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.system(size: 17, weight: .bold))
                     .foregroundStyle(Color.ink800)
                 Text(state.status.subtitle)
-                    .font(.system(size: 13))
+                    .font(.system(size: 12))
                     .foregroundStyle(Color.ink400)
             }
 
             progressBar
-                .padding(.top, 4)
+                .padding(.top, 2)
         }
-        .padding(20)
+        .padding(14)
         .background(
             LinearGradient(
                 colors: [.white, .cream, Color.acorn50],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             ),
-            in: RoundedRectangle(cornerRadius: 28)
+            in: RoundedRectangle(cornerRadius: 24)
         )
         .neuoShadow(.md)
     }
@@ -178,62 +178,34 @@ struct HomeView: View {
         }
     }
 
-    // MARK: Big chew button
+    // MARK: Meal toggle button
 
-    private var chewButton: some View {
+    private var mealToggleButton: some View {
         Button {
-            state.chew()
+            state.toggleEating()
         } label: {
-            HStack(spacing: 8) {
-                Text("🐿️").font(.system(size: 20))
-                Text("한입 씹기 (+\(Int(Constants.pointsPerChew * 5)) 도토리)")
-                    .font(.system(size: 15, weight: .bold))
+            HStack(spacing: 10) {
+                Image(systemName: state.isEating ? "stop.fill" : "fork.knife")
+                    .font(.system(size: 18, weight: .bold))
+                Text(state.isEating ? "식사 종료" : "식사 시작")
+                    .font(.system(size: 17, weight: .bold))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
+            .padding(.vertical, 18)
             .background(
                 LinearGradient(
-                    colors: [Color.acorn400, Color.acorn600],
+                    colors: state.isEating
+                        ? [Color.blush400, Color.blush500]
+                        : [Color.acorn400, Color.acorn600],
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 ),
-                in: RoundedRectangle(cornerRadius: 18)
+                in: RoundedRectangle(cornerRadius: 20)
             )
         }
         .buttonStyle(PressableButtonStyle())
         .softShadow(.pill)
-    }
-
-    // MARK: Achievements
-
-    private var achievementsRow: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("최근 업적")
-                .font(.system(size: 11, weight: .bold))
-                .foregroundStyle(Color.ink600)
-                .padding(.horizontal, 4)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    achievement("🏆", "7일 연속")
-                    achievement("⏱️", "천천히 씹기")
-                    achievement("🌰", "1000 도토리")
-                    achievement("💪", "주간 챌린저")
-                }
-            }
-        }
-    }
-
-    private func achievement(_ icon: String, _ label: String) -> some View {
-        VStack(spacing: 6) {
-            Text(icon).font(.system(size: 28))
-            Text(label)
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(Color.ink600)
-        }
-        .frame(width: 80, height: 96)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 18))
-        .neuoShadow(.sm)
+        .animation(.easeInOut(duration: 0.22), value: state.isEating)
     }
 }
 

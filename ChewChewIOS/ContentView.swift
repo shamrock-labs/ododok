@@ -35,23 +35,19 @@ struct ContentView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            ScrollView(showsIndicators: false) {
-                Group {
-                    switch tab {
-                    case .home:  HomeView()
-                    case .track: TrackingView()
-                    case .shop:  ShopView()
-                    }
+        ScrollView(showsIndicators: false) {
+            Group {
+                switch tab {
+                case .home:  HomeView()
+                case .track: TrackingView()
+                case .shop:  ShopView()
                 }
-                .padding(.bottom, 110)
             }
-
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             TabBarView(selection: $tab)
         }
-        .background(
-            LinearGradient.appBackground.ignoresSafeArea()
-        )
+        .background(LinearGradient.appBackground.ignoresSafeArea())
     }
 }
 

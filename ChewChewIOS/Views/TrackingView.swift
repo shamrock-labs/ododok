@@ -3,12 +3,11 @@ import SwiftUI
 struct TrackingView: View {
     @Environment(AppState.self) private var state
 
-    @State private var tracking = false
-    @State private var chewRate: Int = 0
     @State private var feedback: FeedbackLine?
-    @State private var chewTimer: Timer?
     @State private var fbTimer: Timer?
-    @State private var rateBuffer: [Date] = []
+
+    /// 식사 중 여부 — 식사 세션은 AppState가 관리하고 이 화면은 관찰/조작만.
+    private var isEating: Bool { state.isEating }
 
     var body: some View {
         VStack(spacing: 16) {
@@ -27,10 +26,10 @@ struct TrackingView: View {
                     .transition(.scale.combined(with: .opacity))
             }
         }
-        .onChange(of: tracking) { _, isOn in
-            if isOn { startTracking() } else { stopTracking() }
+        .onChange(of: isEating) { _, isOn in
+            if isOn { startFeedbackLoop() } else { stopFeedbackLoop() }
         }
-        .onDisappear { stopTracking() }
+        .onDisappear { stopFeedbackLoop() }
     }
 
     // MARK: Header
@@ -108,7 +107,7 @@ struct TrackingView: View {
                         .font(.system(size: 11, weight: .medium))
                         .foregroundStyle(Color.ink400)
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text("\(tracking ? chewRate : 0)")
+                        Text("\(isEating ? state.chewRatePerMinute : 0)")
                             .font(.system(size: 32, weight: .heavy))
                             .foregroundStyle(Color.ink800)
                         Text("회/분")
@@ -118,15 +117,15 @@ struct TrackingView: View {
                 }
                 Spacer()
                 Button {
-                    tracking.toggle()
+                    state.toggleEating()
                 } label: {
-                    Image(systemName: tracking ? "pause.fill" : "play.fill")
+                    Image(systemName: isEating ? "stop.fill" : "play.fill")
                         .font(.system(size: 24, weight: .bold))
                         .foregroundStyle(.white)
                         .frame(width: 64, height: 64)
                         .background(
                             LinearGradient(
-                                colors: tracking
+                                colors: isEating
                                     ? [Color.blush400, Color.blush500]
                                     : [Color.sage400, Color.sage500],
                                 startPoint: .topLeading, endPoint: .bottomTrailing
@@ -168,12 +167,12 @@ struct TrackingView: View {
                         )
                     )
                     .frame(width: 5, height: barHeight(i))
-                    .opacity(tracking ? 1 : 0.3)
+                    .opacity(isEating ? 1 : 0.3)
                     .animation(
-                        tracking
+                        isEating
                             ? .easeInOut(duration: 0.9).repeatForever().delay(Double(i) * 0.04)
                             : .default,
-                        value: tracking
+                        value: isEating
                     )
             }
         }
@@ -184,7 +183,7 @@ struct TrackingView: View {
     }
 
     private func barHeight(_ i: Int) -> CGFloat {
-        guard tracking else { return 6 }
+        guard isEating else { return 6 }
         return CGFloat(20 + sin(Double(i) * 0.6) * 12 + 8)
     }
 
@@ -326,20 +325,9 @@ struct TrackingView: View {
         }
     }
 
-    // MARK: Timer control
+    // MARK: Feedback loop (식사 중일 때만 랜덤 멘트)
 
-    private func startTracking() {
-        rateBuffer = []
-        chewRate = 0
-
-        chewTimer = Timer.scheduledTimer(withTimeInterval: 0.85, repeats: true) { _ in
-            state.chew()
-            let now = Date()
-            rateBuffer = rateBuffer.filter { now.timeIntervalSince($0) < 60 }
-            rateBuffer.append(now)
-            chewRate = rateBuffer.count
-        }
-
+    private func startFeedbackLoop() {
         fbTimer = Timer.scheduledTimer(withTimeInterval: 4.5, repeats: true) { _ in
             withAnimation { feedback = FeedbackLine.all.randomElement() }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.6) {
@@ -348,11 +336,8 @@ struct TrackingView: View {
         }
     }
 
-    private func stopTracking() {
-        chewTimer?.invalidate(); chewTimer = nil
-        fbTimer?.invalidate();   fbTimer = nil
-        rateBuffer = []
-        chewRate = 0
+    private func stopFeedbackLoop() {
+        fbTimer?.invalidate(); fbTimer = nil
         feedback = nil
     }
 }
