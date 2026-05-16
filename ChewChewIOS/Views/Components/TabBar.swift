@@ -26,9 +26,10 @@ struct TabBarView: View {
             }
         }
         .padding(.top, 8)
-        .padding(.bottom, 6)
+        .padding(.bottom, 24)  // home indicator 영역까지 내려가도록
         .padding(.horizontal, 16)
         .background(.ultraThinMaterial)
+        .ignoresSafeArea(edges: .bottom)
         .overlay(alignment: .top) {
             Rectangle()
                 .fill(Color.acorn100.opacity(0.6))

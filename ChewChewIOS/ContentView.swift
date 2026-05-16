@@ -35,16 +35,18 @@ struct ContentView: View {
     }
 
     var body: some View {
-        ScrollView(showsIndicators: false) {
-            Group {
-                switch tab {
-                case .home:  HomeView()
-                case .track: TrackingView()
-                case .shop:  ShopView()
+        ZStack(alignment: .bottom) {
+            ScrollView(showsIndicators: false) {
+                Group {
+                    switch tab {
+                    case .home:  HomeView()
+                    case .track: TrackingView()
+                    case .shop:  ShopView()
+                    }
                 }
+                .padding(.bottom, 90)  // TabBar 영역 비워두기
             }
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
+
             TabBarView(selection: $tab)
         }
         .background(LinearGradient.appBackground.ignoresSafeArea())
