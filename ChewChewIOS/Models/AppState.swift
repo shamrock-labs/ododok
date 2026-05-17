@@ -99,6 +99,12 @@ final class AppState {
     @ObservationIgnored private var imuWaveformPhase: Double = 0
     @ObservationIgnored private var goalAlreadyHit = false
 
+    // MARK: - Init
+
+    init() {
+        loadPersistedSnapshot()
+    }
+
     // MARK: - Eating actions
 
     func startEating() {
@@ -126,6 +132,8 @@ final class AppState {
         imuWaveformSource = .idle
         chewTimestamps.removeAll()
         chewRatePerMinute = 0
+        // 식사 종료 시 게임 진행 상태를 디스크에 한 번에 스냅샷 저장
+        persistSnapshot()
     }
 
     func toggleEating() {
@@ -160,6 +168,8 @@ final class AppState {
         isInForeground = toForeground
         if wasInForeground && !toForeground {
             lastBackgroundedAt = Date()
+            // 백그라운드 진입 시 안전하게 스냅샷 — 시스템 종료/메모리 회수 대비
+            persistSnapshot()
         }
     }
 
@@ -194,6 +204,8 @@ final class AppState {
         resetIMUWaveform()
         imuWaveformSource = .idle
         goalAlreadyHit = false
+        // 저장된 스냅샷도 비워서 다음 실행에서 시드값이 살아남도록
+        clearPersistedSnapshot()
     }
 
     // MARK: - Derived
@@ -302,5 +314,57 @@ final class AppState {
     private func resetIMUWaveform() {
         imuWaveformPhase = 0
         imuWaveformSamples = Self.idleIMUWaveformSamples
+    }
+
+    // MARK: - Local persistence (UserDefaults snapshot)
+    //
+    // 핵심 게임 진행 상태만 한 번에 통째로 JSON으로 직렬화해 UserDefaults에 저장한다.
+    // 의도적으로 단순하게 (SwiftData / CoreData 아님). 저장 시점은:
+    //   1) 식사 종료 시 (stopEating)
+    //   2) 앱이 background로 갈 때 (sceneDidChange)
+    //   3) 명시적 reset 시 → 저장 영역 자체를 비움
+    // 세션 한정 데이터 (isEating, IMU 진단 카운터, 파형 샘플)는 저장하지 않는다.
+
+    private static let persistenceKey = "ChewChewIOS.AppState.snapshot.v1"
+
+    private struct PersistedSnapshot: Codable {
+        let chewCount: Int
+        let streak: Int
+        let points: Int
+        let weeklyScores: [Int]
+        let goalAlreadyHit: Bool
+        let savedAt: Date
+    }
+
+    func persistSnapshot() {
+        let snapshot = PersistedSnapshot(
+            chewCount: chewCount,
+            streak: streak,
+            points: points,
+            weeklyScores: weeklyScores,
+            goalAlreadyHit: goalAlreadyHit,
+            savedAt: Date()
+        )
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        UserDefaults.standard.set(data, forKey: Self.persistenceKey)
+    }
+
+    private func loadPersistedSnapshot() {
+        guard
+            let data = UserDefaults.standard.data(forKey: Self.persistenceKey),
+            let snapshot = try? JSONDecoder().decode(PersistedSnapshot.self, from: data)
+        else { return }
+        chewCount = snapshot.chewCount
+        streak = snapshot.streak
+        points = snapshot.points
+        // 주간 점수는 7개 보장 — 저장본이 손상되면 시드 유지
+        if snapshot.weeklyScores.count == 7 {
+            weeklyScores = snapshot.weeklyScores
+        }
+        goalAlreadyHit = snapshot.goalAlreadyHit
+    }
+
+    func clearPersistedSnapshot() {
+        UserDefaults.standard.removeObject(forKey: Self.persistenceKey)
     }
 }
