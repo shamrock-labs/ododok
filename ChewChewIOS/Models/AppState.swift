@@ -61,6 +61,23 @@ final class AppState {
     var animKey: Int = 0
     var weeklyScores: [Int] = [72, 85, 68, 78, 82, 88, 41]
 
+    // MARK: - Wardrobe (다람쥐 꾸미기)
+
+    /// 보유 중인 ShopItem id 집합.
+    var owned: Set<String> = []
+
+    /// 장착 슬롯. 타입당 1개. nil = 미장착.
+    var equipped: Equipped = Equipped()
+
+    /// AcornPack 보유 수량. 효과 실연동은 자정 롤오버 합류 시.
+    var ownedAcornPacks: [String: Int] = [:]
+
+    struct Equipped: Codable, Equatable {
+        var hat: String?
+        var glasses: String?
+        var acc: String?
+    }
+
     // MARK: - Eating session
 
     /// 현재 식사 중인지 여부. 홈의 "식사 시작/종료" 버튼이 토글, 트래킹 탭이 관찰.
@@ -93,7 +110,9 @@ final class AppState {
     /// 마지막으로 background로 전환된 시각. 백그라운드 체류 시간 표시용.
     var lastBackgroundedAt: Date?
 
-    @ObservationIgnored private let headphoneMotionService = HeadphoneMotionService()
+    /// 시뮬레이터에선 첫 접근을 막아 CoreMotion 권한 다이얼로그가 안 뜨도록 lazy.
+    /// 실기기에선 식사 시작 시 최초 1회 init.
+    @ObservationIgnored private lazy var headphoneMotionService = HeadphoneMotionService()
     @ObservationIgnored private var fakeChewTimer: Timer?
     @ObservationIgnored private var demoIMUWaveformTimer: Timer?
     @ObservationIgnored private var imuWaveformPhase: Double = 0
@@ -159,6 +178,69 @@ final class AppState {
         }
     }
 
+    // MARK: - Shop / Wardrobe actions
+
+    enum PurchaseResult: Equatable {
+        case success
+        case alreadyOwned
+        case notEnoughPoints
+    }
+
+    /// ShopItem 구매. 자동 장착하지 않음 (명시적 `equip` 필요).
+    @discardableResult
+    func buyItem(_ item: ShopItem) -> PurchaseResult {
+        if owned.contains(item.id) { return .alreadyOwned }
+        guard points >= item.price else { return .notEnoughPoints }
+        points -= item.price
+        owned.insert(item.id)
+        persistSnapshot()
+        return .success
+    }
+
+    /// 보유한 아이템을 장착. 같은 타입의 기존 장착 아이템은 자동 교체.
+    func equip(_ item: ShopItem) {
+        guard owned.contains(item.id) else { return }
+        switch item.type {
+        case .hat:     equipped.hat = item.id
+        case .glasses: equipped.glasses = item.id
+        case .acc:     equipped.acc = item.id
+        }
+        persistSnapshot()
+    }
+
+    func unequip(_ type: ShopItem.Kind) {
+        switch type {
+        case .hat:     equipped.hat = nil
+        case .glasses: equipped.glasses = nil
+        case .acc:     equipped.acc = nil
+        }
+        persistSnapshot()
+    }
+
+    /// AcornPack 구매. 이번 라운드는 보유 카운트만 누적.
+    @discardableResult
+    func buyAcornPack(_ pack: AcornPack) -> PurchaseResult {
+        guard points >= pack.price else { return .notEnoughPoints }
+        points -= pack.price
+        ownedAcornPacks[pack.id, default: 0] += 1
+        persistSnapshot()
+        return .success
+    }
+
+    func isOwned(_ item: ShopItem) -> Bool { owned.contains(item.id) }
+
+    func isEquipped(_ item: ShopItem) -> Bool {
+        switch item.type {
+        case .hat:     return equipped.hat == item.id
+        case .glasses: return equipped.glasses == item.id
+        case .acc:     return equipped.acc == item.id
+        }
+    }
+
+    var equippedHatItem: ShopItem?     { ShopItem.by(id: equipped.hat) }
+    var equippedGlassesItem: ShopItem? { ShopItem.by(id: equipped.glasses) }
+    var equippedAccItem: ShopItem?     { ShopItem.by(id: equipped.acc) }
+
     // MARK: - Scene phase
 
     /// SwiftUI `scenePhase` 변화 시 호출. background/foreground 전환 시각만 기록하고
@@ -204,6 +286,9 @@ final class AppState {
         resetIMUWaveform()
         imuWaveformSource = .idle
         goalAlreadyHit = false
+        owned = []
+        equipped = Equipped()
+        ownedAcornPacks = [:]
         // 저장된 스냅샷도 비워서 다음 실행에서 시드값이 살아남도록
         clearPersistedSnapshot()
     }
@@ -286,7 +371,10 @@ final class AppState {
     }
 
     private func stopHeadphoneMotionLoop() {
+        #if !targetEnvironment(simulator)
+        // 시뮬레이터에선 lazy service 자체를 절대 init하지 않아 권한 다이얼로그가 안 뜸.
         headphoneMotionService.stop()
+        #endif
     }
 
     private func startDemoIMUWaveformLoop(source: IMUWaveformSource = .demo) {
@@ -327,6 +415,8 @@ final class AppState {
 
     private static let persistenceKey = "ChewChewIOS.AppState.snapshot.v1"
 
+    /// v2 — `owned`/`equipped`/`ownedAcornPacks` 추가. 모두 옵셔널이라
+    /// v1 스냅샷을 디코드하면 자동으로 nil → 빈 상태로 초기화된다.
     private struct PersistedSnapshot: Codable {
         let chewCount: Int
         let streak: Int
@@ -334,6 +424,9 @@ final class AppState {
         let weeklyScores: [Int]
         let goalAlreadyHit: Bool
         let savedAt: Date
+        var owned: [String]?
+        var equipped: Equipped?
+        var ownedAcornPacks: [String: Int]?
     }
 
     func persistSnapshot() {
@@ -343,7 +436,10 @@ final class AppState {
             points: points,
             weeklyScores: weeklyScores,
             goalAlreadyHit: goalAlreadyHit,
-            savedAt: Date()
+            savedAt: Date(),
+            owned: Array(owned),
+            equipped: equipped,
+            ownedAcornPacks: ownedAcornPacks
         )
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         UserDefaults.standard.set(data, forKey: Self.persistenceKey)
@@ -362,6 +458,16 @@ final class AppState {
             weeklyScores = snapshot.weeklyScores
         }
         goalAlreadyHit = snapshot.goalAlreadyHit
+        // v2 옵셔널 필드 — v1 스냅샷에선 nil이라 빈 상태가 됨
+        if let savedOwned = snapshot.owned {
+            owned = Set(savedOwned)
+        }
+        if let savedEquipped = snapshot.equipped {
+            equipped = savedEquipped
+        }
+        if let savedPacks = snapshot.ownedAcornPacks {
+            ownedAcornPacks = savedPacks
+        }
     }
 
     func clearPersistedSnapshot() {

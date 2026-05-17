@@ -10,6 +10,8 @@ struct SquirrelView: View {
 
     @State private var bounce = false
     @State private var eatingMotion = false
+    /// 식사 중이 아닐 때 다람쥐가 살짝 좌우로 흔들리는 idle 모션.
+    @State private var idleSway = false
 
     var body: some View {
         ZStack {
@@ -26,11 +28,16 @@ struct SquirrelView: View {
                 .scaledToFit()
                 .frame(width: 115, height: 115)
                 .scaleEffect(bounce ? 1.08 : 1.0)
-                .rotationEffect(.degrees(bounce ? -2 : (isEating && eatingMotion ? 2.5 : 0)))
-                .offset(y: isEating && eatingMotion ? -4 : 0)
+                .rotationEffect(.degrees(
+                    bounce ? -2
+                        : (isEating && eatingMotion ? 2.5
+                           : (idleSway ? 0.6 : -0.6))
+                ))
+                .offset(y: isEating && eatingMotion ? -4 : (idleSway ? -1.2 : 1.2))
                 .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 6)
                 .animation(.spring(response: 0.42, dampingFraction: 0.55), value: bounce)
                 .animation(.easeInOut(duration: 0.72).repeatForever(autoreverses: true), value: eatingMotion)
+                .animation(.easeInOut(duration: 2.2).repeatForever(autoreverses: true), value: idleSway)
 
             if let hat {
                 Text(hat.emoji)
@@ -68,6 +75,10 @@ struct SquirrelView: View {
         .frame(height: 140)
         .onAppear {
             eatingMotion = isEating
+            // 첫 프레임 직후 토글 → 미세 sway가 자연스럽게 시작
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                idleSway = true
+            }
         }
         .onChange(of: isEating) { _, isOn in
             eatingMotion = isOn

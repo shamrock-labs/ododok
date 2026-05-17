@@ -119,9 +119,9 @@ struct HomeView: View {
 
             SquirrelView(
                 mood: state.isEating ? state.status.mood : .happy,
-                hat: nil,
-                glasses: nil,
-                acc: nil,
+                hat: state.equippedHatItem,
+                glasses: state.equippedGlassesItem,
+                acc: state.equippedAccItem,
                 animKey: state.animKey,
                 isEating: state.isEating
             )

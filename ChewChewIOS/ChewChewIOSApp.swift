@@ -20,9 +20,22 @@ struct ChewChewIOSApp: App {
     /// 시뮬레이터 진단용 launch argument.
     /// - `-autoStartEating`: 앱 진입 즉시 식사 시작.
     /// - `-autoStopAfter <seconds>`: 자동 시작 후 N초 뒤 식사 종료 (→ snapshot persist).
+    /// - `-equipShowcase`: 모자/안경/액세서리 1개씩 미리 구매·장착 (꾸미기 검증용).
     /// 운영 코드에는 영향 없음.
     private func handleLaunchArguments() {
         let args = ProcessInfo.processInfo.arguments
+
+        if args.contains("-equipShowcase") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                appState.points = max(appState.points, 2500)
+                let showcase = ["hat-crown", "gls-sun", "acc-bow"].compactMap(ShopItem.by(id:))
+                for item in showcase {
+                    _ = appState.buyItem(item)
+                    appState.equip(item)
+                }
+            }
+        }
+
         guard args.contains("-autoStartEating") else { return }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
