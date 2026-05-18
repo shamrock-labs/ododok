@@ -2,7 +2,9 @@ import SwiftUI
 
 @main
 struct ChewChewIOSApp: App {
-    @State private var appState = AppState()
+    @State private var appState = AppState(
+        remoteStore: InsForgeRemoteStore(config: .default)
+    )
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {

@@ -118,10 +118,48 @@ final class AppState {
     @ObservationIgnored private var imuWaveformPhase: Double = 0
     @ObservationIgnored private var goalAlreadyHit = false
 
+    // MARK: - Remote persistence
+
+    /// 원격 백엔드(InsForge)에 대한 추상화. 테스트/시뮬레이터에선 NoopRemoteStore 주입 가능.
+    @ObservationIgnored let remoteStore: RemoteStore
+
+    /// 게임 상태 원격 동기화(upsert/delete) 직렬화 큐.
+    /// 짧은 시간에 여러 mutate가 일어나면 detached Task들의 네트워크 도착 순서가 뒤집혀
+    /// 중간 상태가 winner로 굳을 수 있어, 각 작업이 이전 작업 종료를 await하는 체인으로 직렬화한다.
+    @ObservationIgnored private var remoteSyncChain: Task<Void, Never> = Task {}
+
+    /// user_stats는 profiles에 FK가 걸려 있어 첫 upsert 전에 profile 행이 존재해야 한다.
+    /// 동기화 체인에서 한 번만 보장하면 되므로 플래그로 추적 — fetchUserStats 성공 또는
+    /// upsertProfile 완료 시 true.
+    @ObservationIgnored private var profileEnsured: Bool = false
+
+    /// 한 끼 식사의 raw IMU 6채널을 메모리에 모으는 버퍼. 식사 종료 시 봉인 + 업로드.
+    @ObservationIgnored private var imuSessionRecorder: IMUSessionRecorder?
+
+    /// 식사 종료 직후 IMU 세션 업로드 결과. 화면이 alert 표시할 때 binding으로 관찰.
+    var sessionUploadStatus: SessionUploadStatus = .idle
+
+    /// 업로드 실패 시 사용자가 "다시 시도"를 누르면 재시도할 payload (finalize 결과).
+    /// in-memory 1회 retry 한정 — 영구 retry 큐는 다음 PR.
+    @ObservationIgnored private var pendingUploadOutput: IMUSessionRecorder.Output?
+
+    enum SessionUploadStatus: Equatable {
+        case idle
+        case uploading
+        case success
+        case failure
+        var isTerminal: Bool { self == .success || self == .failure }
+    }
+
     // MARK: - Init
 
-    init() {
+    init(remoteStore: RemoteStore = NoopRemoteStore()) {
+        self.remoteStore = remoteStore
         loadPersistedSnapshot()
+        // 로컬 즉시 표시 후, 더 최신인 원격 스냅샷이 있으면 머지.
+        Task { [weak self] in
+            await self?.syncFromRemoteIfNewer()
+        }
     }
 
     // MARK: - Eating actions
@@ -129,10 +167,13 @@ final class AppState {
     func startEating() {
         guard !isEating else { return }
         isEating = true
-        eatingStartedAt = Date()
+        let now = Date()
+        eatingStartedAt = now
         // 새 세션 시작 시 IMU 진단 지표 리셋 — 백그라운드 수집 여부 검증에 깨끗한 기준 제공
         imuSampleCount = 0
         lastIMUSampleAt = nil
+        // raw IMU 6채널을 모을 봉투 — 식사 종료 시 finalize + 업로드.
+        imuSessionRecorder = IMUSessionRecorder(startedAt: now)
         startFakeChewLoop()
 
         if !startHeadphoneMotionLoop() {
@@ -153,6 +194,20 @@ final class AppState {
         chewRatePerMinute = 0
         // 식사 종료 시 게임 진행 상태를 디스크에 한 번에 스냅샷 저장
         persistSnapshot()
+
+        // IMU 세션 봉인 → Storage 업로드 → chewing_session INSERT.
+        // 결과를 sessionUploadStatus로 publish해서 UI alert이 관찰할 수 있게 한다.
+        if let recorder = imuSessionRecorder {
+            imuSessionRecorder = nil
+            let endedAt = Date()
+            let output = recorder.finalize(endedAt: endedAt)
+            // 빈 세션(시뮬레이터 등에서 IMU 샘플 0개)은 사용자에게 알릴 가치 없어 스킵.
+            guard output.sampleCount > 0 else { return }
+            sessionUploadStatus = .uploading
+            Task { [weak self] in
+                await self?.performSessionUpload(output)
+            }
+        }
     }
 
     func toggleEating() {
@@ -357,6 +412,32 @@ final class AppState {
                 rotationRateMagnitude: sample.rotationRateMagnitude,
                 userAccelerationMagnitude: sample.userAccelerationMagnitude
             )
+            // raw 채널 전체(18컬럼)를 recorder에 누적. 출시 후 재학습 데이터셋으로
+            // 그대로 쓸 수 있도록 attitude/gravity/magneticField까지 보존.
+            if let recorder = self.imuSessionRecorder {
+                let tRel = Date().timeIntervalSince(recorder.startedAt)
+                recorder.append(IMURow(
+                    tMach: sample.timestamp,
+                    tRelSec: tRel,
+                    attitudeRoll: sample.attitudeRoll,
+                    attitudePitch: sample.attitudePitch,
+                    attitudeYaw: sample.attitudeYaw,
+                    rotationX: sample.rotationX,
+                    rotationY: sample.rotationY,
+                    rotationZ: sample.rotationZ,
+                    gravityX: sample.gravityX,
+                    gravityY: sample.gravityY,
+                    gravityZ: sample.gravityZ,
+                    userAccelX: sample.userAccelX,
+                    userAccelY: sample.userAccelY,
+                    userAccelZ: sample.userAccelZ,
+                    magneticFieldX: sample.magneticFieldX,
+                    magneticFieldY: sample.magneticFieldY,
+                    magneticFieldZ: sample.magneticFieldZ,
+                    sensorLocation: sample.sensorLocation
+                ))
+                recorder.updateSensorLocation(sample.sensorLocation)
+            }
         } onError: { [weak self] message in
             guard let self else { return }
             if self.isEating {
@@ -430,19 +511,37 @@ final class AppState {
     }
 
     func persistSnapshot() {
+        let now = Date()
         let snapshot = PersistedSnapshot(
             chewCount: chewCount,
             streak: streak,
             points: points,
             weeklyScores: weeklyScores,
             goalAlreadyHit: goalAlreadyHit,
-            savedAt: Date(),
+            savedAt: now,
             owned: Array(owned),
             equipped: equipped,
             ownedAcornPacks: ownedAcornPacks
         )
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         UserDefaults.standard.set(data, forKey: Self.persistenceKey)
+
+        // 원격 동기화는 best-effort — 실패해도 로컬은 위에서 이미 보장됨.
+        // remoteSyncChain으로 직렬화해 짧은 시간 내 여러 mutate가 도착 순서로 뒤집히는 race를 방지.
+        // user_stats는 profiles에 FK가 걸려 있어 첫 호출 한 번은 profile upsert 선행.
+        let stats = makeUserStatsDTO(savedAt: now)
+        let deviceId = DeviceIdentity.shared
+        let store = remoteStore
+        let previous = remoteSyncChain
+        let needProfile = !profileEnsured
+        profileEnsured = true
+        remoteSyncChain = Task.detached {
+            _ = await previous.value
+            if needProfile {
+                try? await store.upsertProfile(ProfileDTO(deviceId: deviceId, displayName: nil))
+            }
+            try? await store.upsertUserStats(stats)
+        }
     }
 
     private func loadPersistedSnapshot() {
@@ -472,5 +571,144 @@ final class AppState {
 
     func clearPersistedSnapshot() {
         UserDefaults.standard.removeObject(forKey: Self.persistenceKey)
+        // 같은 체인으로 — 직전 upsert가 끝난 뒤 delete가 나가야 결과가 결정적.
+        // profiles 삭제 → FK ON DELETE CASCADE로 user_stats도 자동 정리.
+        // 다음 persistSnapshot이 profile을 다시 만들 수 있도록 플래그 리셋.
+        profileEnsured = false
+        let deviceId = DeviceIdentity.shared
+        let store = remoteStore
+        let previous = remoteSyncChain
+        remoteSyncChain = Task.detached {
+            _ = await previous.value
+            try? await store.deleteUserData(deviceId: deviceId)
+        }
     }
+
+    // MARK: - Remote sync helpers
+
+    private func makeUserStatsDTO(savedAt: Date) -> UserStatsDTO {
+        UserStatsDTO(
+            deviceId: DeviceIdentity.shared,
+            chewCount: chewCount,
+            streak: streak,
+            points: points,
+            weeklyScores: weeklyScores,
+            goalAlreadyHit: goalAlreadyHit,
+            owned: Array(owned),
+            equipped: UserStatsDTO.EquippedDTO(
+                hat: equipped.hat,
+                glasses: equipped.glasses,
+                acc: equipped.acc
+            ),
+            ownedAcornPacks: ownedAcornPacks,
+            savedAt: savedAt
+        )
+    }
+
+    /// 앱 시작 시 한 번 호출. 원격 row가 로컬보다 더 최신이면 in-memory 상태를 머지한다.
+    /// `saved_at` 기준 최신 우선 — 다중 기기 동기화는 익명 디바이스 ID 정책상 보장 안 함.
+    @MainActor
+    private func syncFromRemoteIfNewer() async {
+        guard let remote = try? await remoteStore.fetchUserStats(deviceId: DeviceIdentity.shared) else { return }
+        // user_stats가 존재 = profiles도 존재 (FK 보장). 다음 persistSnapshot에서 profile 재호출 생략.
+        profileEnsured = true
+        let localSavedAt = localPersistedSavedAt() ?? .distantPast
+        guard remote.savedAt > localSavedAt else { return }
+
+        chewCount = remote.chewCount
+        streak = remote.streak
+        points = remote.points
+        if remote.weeklyScores.count == 7 {
+            weeklyScores = remote.weeklyScores
+        }
+        goalAlreadyHit = remote.goalAlreadyHit
+        owned = Set(remote.owned)
+        equipped = Equipped(
+            hat: remote.equipped.hat,
+            glasses: remote.equipped.glasses,
+            acc: remote.equipped.acc
+        )
+        ownedAcornPacks = remote.ownedAcornPacks
+        // 머지된 상태를 로컬에도 즉시 반영 — 다음 cold-start 비교가 일관되도록.
+        // 단, 원격 upsert는 자기 자신을 다시 쏘는 셈이라 굳이 안 함.
+        let snapshot = PersistedSnapshot(
+            chewCount: chewCount,
+            streak: streak,
+            points: points,
+            weeklyScores: weeklyScores,
+            goalAlreadyHit: goalAlreadyHit,
+            savedAt: remote.savedAt,
+            owned: Array(owned),
+            equipped: equipped,
+            ownedAcornPacks: ownedAcornPacks
+        )
+        if let data = try? JSONEncoder().encode(snapshot) {
+            UserDefaults.standard.set(data, forKey: Self.persistenceKey)
+        }
+    }
+
+    private func localPersistedSavedAt() -> Date? {
+        guard
+            let data = UserDefaults.standard.data(forKey: Self.persistenceKey),
+            let snapshot = try? JSONDecoder().decode(PersistedSnapshot.self, from: data)
+        else { return nil }
+        return snapshot.savedAt
+    }
+
+    /// 식사 종료 후 IMU 세션 봉인 결과를 받아 Storage 업로드 → chewing_session INSERT.
+    /// 결과는 `sessionUploadStatus`로 publish되어 UI alert이 관찰한다. 실패 시 payload를
+    /// `pendingUploadOutput`에 보관해 "다시 시도"가 가능하게.
+    @MainActor
+    private func performSessionUpload(_ output: IMUSessionRecorder.Output) async {
+        sessionUploadStatus = .uploading
+        do {
+            let deviceId = DeviceIdentity.shared
+            let storagePath = try await remoteStore.uploadIMUCSV(
+                sessionId: output.sessionId,
+                deviceId: deviceId,
+                csvData: output.csvData
+            )
+            let dto = ChewingSessionDTO(
+                id: output.sessionId,
+                deviceId: deviceId,
+                startedAt: output.startedAt,
+                endedAt: output.endedAt,
+                durationSec: output.durationSec,
+                sensorLocation: output.sensorLocation,
+                sampleCount: output.sampleCount,
+                sampleRateHz: 50,
+                storagePath: storagePath,
+                appVersion: Self.appVersion
+            )
+            try await remoteStore.insertSession(dto)
+            sessionUploadStatus = .success
+            pendingUploadOutput = nil
+        } catch {
+            sessionUploadStatus = .failure
+            pendingUploadOutput = output
+        }
+    }
+
+    /// Alert "다시 시도" 버튼에서 호출 — 마지막 실패한 payload로 1회 재시도.
+    /// 영구 retry 큐는 후속 PR.
+    @MainActor
+    func retryLastSessionUpload() {
+        guard let output = pendingUploadOutput else { return }
+        Task { [weak self] in
+            await self?.performSessionUpload(output)
+        }
+    }
+
+    /// Alert dismiss 시 호출. 실패 상태에서 dismiss 하면 payload 폐기(= 데이터 손실 수용).
+    @MainActor
+    func dismissSessionUploadStatus() {
+        if sessionUploadStatus == .failure {
+            pendingUploadOutput = nil
+        }
+        sessionUploadStatus = .idle
+    }
+
+    private static let appVersion: String? = {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+    }()
 }

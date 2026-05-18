@@ -6,11 +6,28 @@ ChewChew (다람쥐 헬스 리워드 앱) iOS 네이티브 구현. 같은 부모
 
 ```bash
 brew install xcodegen           # 없으면
+
+# 1) InsForge 비밀 키 설정
+cp Config/Secrets.xcconfig.example Config/Secrets.xcconfig
+# 그 다음 Config/Secrets.xcconfig 의 INSFORGE_API_KEY 를 실제 anon key로 교체.
+# (대시보드: https://insforge.dev/dashboard/project/<project-id>/settings/api-keys)
+# 이 파일은 .gitignore 에 들어가 커밋되지 않는다.
+
+# 2) Xcode 프로젝트 생성 후 열기
 xcodegen generate               # ChewChewIOS.xcodeproj 생성
 open ChewChewIOS.xcodeproj
 ```
 
-Xcode 15 / iOS 17 시뮬레이터에서 빌드·실행. 외부 의존성 없음.
+Xcode 15 / iOS 17 시뮬레이터에서 빌드·실행. 외부 SwiftPM 의존성 없음.
+
+> 백엔드(InsForge)는 InsForge CLI(`npx @insforge/cli`)로 별도 셋업되어 있어야 한다.
+> 새 환경에서 처음 만들 때:
+> ```
+> npx @insforge/cli login --user-api-key <your-user-key>
+> npx @insforge/cli link --project-id <project-id>
+> npx @insforge/cli db migrations up --all
+> npx @insforge/cli storage create-bucket imu-sessions --private
+> ```
 
 ## 구조
 

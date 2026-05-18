@@ -76,6 +76,38 @@ struct ContentView: View {
         }
         .background(LinearGradient.appBackground.ignoresSafeArea())
         .tint(Color.acorn600)
+        .alert(alertTitle, isPresented: alertBinding) {
+            if state.sessionUploadStatus == .failure {
+                Button("다시 시도") { state.retryLastSessionUpload() }
+                Button("취소", role: .cancel) { state.dismissSessionUploadStatus() }
+            } else {
+                Button("확인", role: .cancel) { state.dismissSessionUploadStatus() }
+            }
+        } message: {
+            if state.sessionUploadStatus == .failure {
+                Text("이번 식사의 IMU 데이터를 서버에 올리지 못했어요.\n다시 시도하지 않으면 이 세션 데이터는 사라집니다.")
+            } else {
+                Text("이번 식사 기록이 안전하게 저장됐어요.")
+            }
+        }
+    }
+
+    private var alertTitle: String {
+        state.sessionUploadStatus == .failure ? "저장 실패" : "식사 기록 저장 완료"
+    }
+
+    /// `sessionUploadStatus`가 terminal(success/failure)일 때만 alert 표시.
+    /// SwiftUI가 닫을 때(setter=false) 만약 아직 terminal이면 dismiss 처리.
+    /// retry 버튼은 status를 .uploading으로 바꾼 뒤 닫히므로 dismiss가 호출되지 않는다.
+    private var alertBinding: Binding<Bool> {
+        Binding(
+            get: { state.sessionUploadStatus.isTerminal },
+            set: { presented in
+                if !presented && state.sessionUploadStatus.isTerminal {
+                    state.dismissSessionUploadStatus()
+                }
+            }
+        )
     }
 
     private func tabPage<Content: View>(@ViewBuilder content: @escaping () -> Content) -> some View {
