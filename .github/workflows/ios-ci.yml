@@ -29,6 +29,14 @@ jobs:
       - name: Install xcodegen
         run: brew install xcodegen
 
+      # 일부 브랜치의 project.yml은 Config/Secrets.xcconfig를 configFile로 참조한다.
+      # 실제 키는 gitignore라 CI 러너엔 파일이 없어 xcodegen validation이 깨진다.
+      # 빌드 검증에는 실제 키가 필요 없으니 더미 값으로 stub 파일을 만들어둔다.
+      - name: Stub Secrets.xcconfig
+        run: |
+          mkdir -p Config
+          [ -f Config/Secrets.xcconfig ] || echo "INSFORGE_API_KEY = ik_dummy_for_ci_build_only" > Config/Secrets.xcconfig
+
       - name: Generate Xcode project
         run: xcodegen generate
 
