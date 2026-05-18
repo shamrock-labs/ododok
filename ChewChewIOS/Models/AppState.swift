@@ -152,6 +152,11 @@ final class AppState {
     /// 식사 종료 직후 IMU 세션 업로드 결과. 화면이 alert 표시할 때 binding으로 관찰.
     var sessionUploadStatus: SessionUploadStatus = .idle
 
+    /// "오늘의 식사 기록" 리스트 — 오늘 0시 이후 시작된 chewing_session 행들.
+    /// Tracking 탭이 관찰만 하고, fetch/append는 AppState가 single source of truth.
+    /// 세션 종료 + INSERT 성공 시 자동 append, 탭 진입 시 fetchTodaySessions로 재동기화.
+    var todaySessions: [ChewingSessionDTO] = []
+
     /// 업로드 실패 시 사용자가 "다시 시도"를 누르면 재시도할 payload (finalize 결과 + 분석 통계).
     /// in-memory 1회 retry 한정 — 영구 retry 큐는 다음 PR.
     @ObservationIgnored private var pendingUpload: (output: IMUSessionRecorder.Output, stats: SessionStats?)?
@@ -367,6 +372,7 @@ final class AppState {
         owned = []
         equipped = Equipped()
         ownedAcornPacks = [:]
+        todaySessions = []
         // 저장된 스냅샷도 비워서 다음 실행에서 시드값이 살아남도록
         clearPersistedSnapshot()
     }
@@ -722,10 +728,25 @@ final class AppState {
             try await remoteStore.insertSession(dto)
             sessionUploadStatus = .success
             pendingUpload = nil
+            // 방금 INSERT한 행을 즉시 리스트에 반영 — GET 라운드트립 생략.
+            // started_at 오름차순 정렬을 유지하기 위해 append (방금 종료된 세션이 가장 최신).
+            todaySessions.append(dto)
         } catch {
             sessionUploadStatus = .failure
             pendingUpload = (output: output, stats: stats)
         }
+    }
+
+    /// Tracking 탭 .task에서 호출 — 오늘 0시 이후 세션을 원격에서 가져와 리스트 동기화.
+    /// 실패는 silent (네트워크 끊김 등); 사용자에겐 빈 리스트로 보이는 게 alert보다 덜 거슬림.
+    @MainActor
+    func fetchTodaySessions() async {
+        let startOfDay = Calendar.current.startOfDay(for: Date())
+        let deviceId = DeviceIdentity.shared
+        guard let rows = try? await remoteStore.fetchChewingSessions(deviceId: deviceId, since: startOfDay) else {
+            return
+        }
+        todaySessions = rows
     }
 
     /// Alert "다시 시도" 버튼에서 호출 — 마지막 실패한 payload로 1회 재시도.
