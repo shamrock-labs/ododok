@@ -118,10 +118,23 @@ final class AppState {
     @ObservationIgnored private var imuWaveformPhase: Double = 0
     @ObservationIgnored private var goalAlreadyHit = false
 
+    // MARK: - Remote persistence
+
+    /// 원격 백엔드(InsForge)에 대한 추상화. 테스트/시뮬레이터에선 NoopRemoteStore 주입 가능.
+    @ObservationIgnored let remoteStore: RemoteStore
+
+    /// 한 끼 식사의 raw IMU 6채널을 메모리에 모으는 버퍼. 식사 종료 시 봉인 + 업로드.
+    @ObservationIgnored private var imuSessionRecorder: IMUSessionRecorder?
+
     // MARK: - Init
 
-    init() {
+    init(remoteStore: RemoteStore = NoopRemoteStore()) {
+        self.remoteStore = remoteStore
         loadPersistedSnapshot()
+        // 로컬 즉시 표시 후, 더 최신인 원격 스냅샷이 있으면 머지.
+        Task { [weak self] in
+            await self?.syncFromRemoteIfNewer()
+        }
     }
 
     // MARK: - Eating actions
@@ -129,10 +142,13 @@ final class AppState {
     func startEating() {
         guard !isEating else { return }
         isEating = true
-        eatingStartedAt = Date()
+        let now = Date()
+        eatingStartedAt = now
         // 새 세션 시작 시 IMU 진단 지표 리셋 — 백그라운드 수집 여부 검증에 깨끗한 기준 제공
         imuSampleCount = 0
         lastIMUSampleAt = nil
+        // raw IMU 6채널을 모을 봉투 — 식사 종료 시 finalize + 업로드.
+        imuSessionRecorder = IMUSessionRecorder(startedAt: now)
         startFakeChewLoop()
 
         if !startHeadphoneMotionLoop() {
@@ -153,6 +169,24 @@ final class AppState {
         chewRatePerMinute = 0
         // 식사 종료 시 게임 진행 상태를 디스크에 한 번에 스냅샷 저장
         persistSnapshot()
+
+        // IMU 세션 봉인 → Storage 업로드 → chewing_session INSERT.
+        // 메인 스레드 차단을 피하려고 detached로 분리. recorder ref를 nil로 옮긴 뒤이므로
+        // 메인 측에서 같은 인스턴스를 더 건드릴 일은 없음.
+        if let recorder = imuSessionRecorder {
+            imuSessionRecorder = nil
+            let endedAt = Date()
+            let store = remoteStore
+            let appVersion = Self.appVersion
+            Task.detached {
+                await Self.finalizeAndUploadSession(
+                    recorder: recorder,
+                    endedAt: endedAt,
+                    remoteStore: store,
+                    appVersion: appVersion
+                )
+            }
+        }
     }
 
     func toggleEating() {
@@ -357,6 +391,20 @@ final class AppState {
                 rotationRateMagnitude: sample.rotationRateMagnitude,
                 userAccelerationMagnitude: sample.userAccelerationMagnitude
             )
+            // raw 6채널을 recorder에 누적 — 시각화는 위에서 magnitude 기반으로 이미 끝났음.
+            if let recorder = self.imuSessionRecorder {
+                let tRel = Date().timeIntervalSince(recorder.startedAt)
+                recorder.append(IMURow(
+                    tRelSec: tRel,
+                    rotationX: sample.rotationX,
+                    rotationY: sample.rotationY,
+                    rotationZ: sample.rotationZ,
+                    userAccelX: sample.userAccelX,
+                    userAccelY: sample.userAccelY,
+                    userAccelZ: sample.userAccelZ
+                ))
+                recorder.updateSensorLocation(sample.sensorLocation)
+            }
         } onError: { [weak self] message in
             guard let self else { return }
             if self.isEating {
@@ -430,19 +478,27 @@ final class AppState {
     }
 
     func persistSnapshot() {
+        let now = Date()
         let snapshot = PersistedSnapshot(
             chewCount: chewCount,
             streak: streak,
             points: points,
             weeklyScores: weeklyScores,
             goalAlreadyHit: goalAlreadyHit,
-            savedAt: Date(),
+            savedAt: now,
             owned: Array(owned),
             equipped: equipped,
             ownedAcornPacks: ownedAcornPacks
         )
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         UserDefaults.standard.set(data, forKey: Self.persistenceKey)
+
+        // 원격 동기화는 best-effort — 실패해도 로컬은 위에서 이미 보장됨.
+        let dto = makeProgressDTO(savedAt: now)
+        let store = remoteStore
+        Task.detached {
+            try? await store.upsertProgress(dto)
+        }
     }
 
     private func loadPersistedSnapshot() {
@@ -472,5 +528,117 @@ final class AppState {
 
     func clearPersistedSnapshot() {
         UserDefaults.standard.removeObject(forKey: Self.persistenceKey)
+        let store = remoteStore
+        Task.detached {
+            try? await store.deleteProgress(deviceId: DeviceIdentity.shared)
+        }
     }
+
+    // MARK: - Remote sync helpers
+
+    private func makeProgressDTO(savedAt: Date) -> ProgressDTO {
+        ProgressDTO(
+            deviceId: DeviceIdentity.shared,
+            chewCount: chewCount,
+            streak: streak,
+            points: points,
+            weeklyScores: weeklyScores,
+            goalAlreadyHit: goalAlreadyHit,
+            owned: Array(owned),
+            equipped: ProgressDTO.EquippedDTO(
+                hat: equipped.hat,
+                glasses: equipped.glasses,
+                acc: equipped.acc
+            ),
+            ownedAcornPacks: ownedAcornPacks,
+            savedAt: savedAt
+        )
+    }
+
+    /// 앱 시작 시 한 번 호출. 원격 row가 로컬보다 더 최신이면 in-memory 상태를 머지한다.
+    /// `saved_at` 기준 최신 우선 — 다중 기기 동기화는 익명 디바이스 ID 정책상 보장 안 함.
+    @MainActor
+    private func syncFromRemoteIfNewer() async {
+        guard let remote = try? await remoteStore.fetchProgress(deviceId: DeviceIdentity.shared) else { return }
+        let localSavedAt = localPersistedSavedAt() ?? .distantPast
+        guard remote.savedAt > localSavedAt else { return }
+
+        chewCount = remote.chewCount
+        streak = remote.streak
+        points = remote.points
+        if remote.weeklyScores.count == 7 {
+            weeklyScores = remote.weeklyScores
+        }
+        goalAlreadyHit = remote.goalAlreadyHit
+        owned = Set(remote.owned)
+        equipped = Equipped(
+            hat: remote.equipped.hat,
+            glasses: remote.equipped.glasses,
+            acc: remote.equipped.acc
+        )
+        ownedAcornPacks = remote.ownedAcornPacks
+        // 머지된 상태를 로컬에도 즉시 반영 — 다음 cold-start 비교가 일관되도록.
+        // 단, 원격 upsert는 자기 자신을 다시 쏘는 셈이라 굳이 안 함.
+        let snapshot = PersistedSnapshot(
+            chewCount: chewCount,
+            streak: streak,
+            points: points,
+            weeklyScores: weeklyScores,
+            goalAlreadyHit: goalAlreadyHit,
+            savedAt: remote.savedAt,
+            owned: Array(owned),
+            equipped: equipped,
+            ownedAcornPacks: ownedAcornPacks
+        )
+        if let data = try? JSONEncoder().encode(snapshot) {
+            UserDefaults.standard.set(data, forKey: Self.persistenceKey)
+        }
+    }
+
+    private func localPersistedSavedAt() -> Date? {
+        guard
+            let data = UserDefaults.standard.data(forKey: Self.persistenceKey),
+            let snapshot = try? JSONDecoder().decode(PersistedSnapshot.self, from: data)
+        else { return nil }
+        return snapshot.savedAt
+    }
+
+    private static func finalizeAndUploadSession(
+        recorder: IMUSessionRecorder,
+        endedAt: Date,
+        remoteStore: RemoteStore,
+        appVersion: String?
+    ) async {
+        do {
+            let output = try recorder.finalize(endedAt: endedAt)
+            // 빈 세션(시뮬레이터 등에서 IMU 샘플 0개)은 업로드 스킵.
+            guard output.sampleCount > 0 else { return }
+
+            let deviceId = DeviceIdentity.shared
+            let storagePath = try await remoteStore.uploadIMUCSV(
+                sessionId: output.sessionId,
+                deviceId: deviceId,
+                gzippedData: output.gzippedCSV
+            )
+            let dto = ChewingSessionDTO(
+                id: output.sessionId,
+                deviceId: deviceId,
+                startedAt: output.startedAt,
+                endedAt: output.endedAt,
+                durationSec: output.durationSec,
+                sensorLocation: output.sensorLocation,
+                sampleCount: output.sampleCount,
+                sampleRateHz: 50,
+                storagePath: storagePath,
+                appVersion: appVersion
+            )
+            try await remoteStore.insertSession(dto)
+        } catch {
+            // 1차 PR — best-effort. 영구 retry 큐는 후속 PR.
+        }
+    }
+
+    private static let appVersion: String? = {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+    }()
 }
