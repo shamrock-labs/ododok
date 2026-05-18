@@ -131,6 +131,21 @@ final class AppState {
     /// 한 끼 식사의 raw IMU 6채널을 메모리에 모으는 버퍼. 식사 종료 시 봉인 + 업로드.
     @ObservationIgnored private var imuSessionRecorder: IMUSessionRecorder?
 
+    /// 식사 종료 직후 IMU 세션 업로드 결과. 화면이 alert 표시할 때 binding으로 관찰.
+    var sessionUploadStatus: SessionUploadStatus = .idle
+
+    /// 업로드 실패 시 사용자가 "다시 시도"를 누르면 재시도할 payload (finalize 결과).
+    /// in-memory 1회 retry 한정 — 영구 retry 큐는 다음 PR.
+    @ObservationIgnored private var pendingUploadOutput: IMUSessionRecorder.Output?
+
+    enum SessionUploadStatus: Equatable {
+        case idle
+        case uploading
+        case success
+        case failure
+        var isTerminal: Bool { self == .success || self == .failure }
+    }
+
     // MARK: - Init
 
     init(remoteStore: RemoteStore = NoopRemoteStore()) {
@@ -176,20 +191,16 @@ final class AppState {
         persistSnapshot()
 
         // IMU 세션 봉인 → Storage 업로드 → chewing_session INSERT.
-        // 메인 스레드 차단을 피하려고 detached로 분리. recorder ref를 nil로 옮긴 뒤이므로
-        // 메인 측에서 같은 인스턴스를 더 건드릴 일은 없음.
+        // 결과를 sessionUploadStatus로 publish해서 UI alert이 관찰할 수 있게 한다.
         if let recorder = imuSessionRecorder {
             imuSessionRecorder = nil
             let endedAt = Date()
-            let store = remoteStore
-            let appVersion = Self.appVersion
-            Task.detached {
-                await Self.finalizeAndUploadSession(
-                    recorder: recorder,
-                    endedAt: endedAt,
-                    remoteStore: store,
-                    appVersion: appVersion
-                )
+            let output = recorder.finalize(endedAt: endedAt)
+            // 빈 세션(시뮬레이터 등에서 IMU 샘플 0개)은 사용자에게 알릴 가치 없어 스킵.
+            guard output.sampleCount > 0 else { return }
+            sessionUploadStatus = .uploading
+            Task { [weak self] in
+                await self?.performSessionUpload(output)
             }
         }
     }
@@ -626,16 +637,12 @@ final class AppState {
         return snapshot.savedAt
     }
 
-    private static func finalizeAndUploadSession(
-        recorder: IMUSessionRecorder,
-        endedAt: Date,
-        remoteStore: RemoteStore,
-        appVersion: String?
-    ) async {
-        let output = recorder.finalize(endedAt: endedAt)
-        // 빈 세션(시뮬레이터 등에서 IMU 샘플 0개)은 업로드 스킵.
-        guard output.sampleCount > 0 else { return }
-
+    /// 식사 종료 후 IMU 세션 봉인 결과를 받아 Storage 업로드 → chewing_session INSERT.
+    /// 결과는 `sessionUploadStatus`로 publish되어 UI alert이 관찰한다. 실패 시 payload를
+    /// `pendingUploadOutput`에 보관해 "다시 시도"가 가능하게.
+    @MainActor
+    private func performSessionUpload(_ output: IMUSessionRecorder.Output) async {
+        sessionUploadStatus = .uploading
         do {
             let deviceId = DeviceIdentity.shared
             let storagePath = try await remoteStore.uploadIMUCSV(
@@ -653,12 +660,34 @@ final class AppState {
                 sampleCount: output.sampleCount,
                 sampleRateHz: 50,
                 storagePath: storagePath,
-                appVersion: appVersion
+                appVersion: Self.appVersion
             )
             try await remoteStore.insertSession(dto)
+            sessionUploadStatus = .success
+            pendingUploadOutput = nil
         } catch {
-            // 1차 PR — best-effort. 영구 retry 큐는 후속 PR.
+            sessionUploadStatus = .failure
+            pendingUploadOutput = output
         }
+    }
+
+    /// Alert "다시 시도" 버튼에서 호출 — 마지막 실패한 payload로 1회 재시도.
+    /// 영구 retry 큐는 후속 PR.
+    @MainActor
+    func retryLastSessionUpload() {
+        guard let output = pendingUploadOutput else { return }
+        Task { [weak self] in
+            await self?.performSessionUpload(output)
+        }
+    }
+
+    /// Alert dismiss 시 호출. 실패 상태에서 dismiss 하면 payload 폐기(= 데이터 손실 수용).
+    @MainActor
+    func dismissSessionUploadStatus() {
+        if sessionUploadStatus == .failure {
+            pendingUploadOutput = nil
+        }
+        sessionUploadStatus = .idle
     }
 
     private static let appVersion: String? = {
