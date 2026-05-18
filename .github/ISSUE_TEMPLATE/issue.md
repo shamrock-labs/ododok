@@ -1,6 +1,6 @@
 ---
-name: 이슈
-about: 새 이슈 생성
+name: Custom issue
+about: custom issue template
 title: ""
 labels: ""
 assignees: ""
