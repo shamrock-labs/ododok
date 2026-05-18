@@ -12,9 +12,14 @@ struct TrackingView: View {
     var body: some View {
         VStack(spacing: 14) {
             header
-            airpodsCard
-            imuDebugPanel
-            dailySummaryCard
+            // 라이브 IMU 진단(AirPods 상태 + 샘플 카운터)은 식사 중에만 노출.
+            // 식사 사이에도 "마지막 샘플 N초 전 → 1분 전..."이 흘러서 "계속 트래킹 중"
+            // 처럼 보였던 문제 해소.
+            if isEating {
+                airpodsCard
+                imuDebugPanel
+            }
+            todaySessionsCard
                 .frame(maxHeight: .infinity)
             scoreCard
             tipCard
@@ -30,6 +35,7 @@ struct TrackingView: View {
                     .transition(.scale.combined(with: .opacity))
             }
         }
+        .task { await state.fetchTodaySessions() }
         .onChange(of: isEating) { _, isOn in
             if isOn { startFeedbackLoop() } else { stopFeedbackLoop() }
         }
@@ -149,12 +155,14 @@ struct TrackingView: View {
         return "IMU 진단: \(phase), 샘플 수신 안 됨"
     }
 
-    // MARK: Daily summary card
+    // MARK: Today sessions card
+    //
+    // 구 dailySummaryCard 자리. 도토리/식사점수/진행률 같은 in-app 화폐 위젯은 HomeView로
+    // 분리돼 있어 여기서 제거. 사용자가 기대한 건 "사후 식사 기록"이라 chewing_session 행을
+    // 인라인 리스트로 표시. 월별 캘린더는 별도 이슈 — 이번 PR에선 캘린더 아이콘도 제거.
 
-    private var dailySummaryCard: some View {
-        let todayScore = min(100, Int(Double(state.chewCount) / Double(Constants.dailyGoal) * 90))
-
-        return VStack(alignment: .leading, spacing: 18) {
+    private var todaySessionsCard: some View {
+        VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(trackingDateLabel)
@@ -164,59 +172,25 @@ struct TrackingView: View {
                         .font(.system(size: 18, weight: .bold))
                         .foregroundStyle(Color.ink800)
                 }
-
                 Spacer()
-
-                Image(systemName: "calendar")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(Color.acorn600)
-                    .frame(width: 46, height: 46)
-                    .background(Color.white.opacity(0.8), in: RoundedRectangle(cornerRadius: 14))
+                Text("\(state.todaySessions.count)회")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color.acorn700)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Color.white.opacity(0.8), in: Capsule())
             }
 
-            HStack(spacing: 10) {
-                summaryMetric(
-                    label: "식사 점수",
-                    value: "\(todayScore)",
-                    unit: "점",
-                    color: Color.sage600
-                )
-
-                summaryMetric(
-                    label: "저작 횟수",
-                    value: state.chewCount.koLocale,
-                    unit: "회",
-                    color: Color.acorn700
-                )
-            }
-
-            VStack(spacing: 10) {
-                HStack {
-                    Text("목표 달성률")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Color.ink600)
-                    Spacer()
-                    Text("\(Int(state.progress * 100))%")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Color.sage600)
-                }
-
-                GeometryReader { geo in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(Color.white.opacity(0.65))
-                        Capsule()
-                            .fill(
-                                LinearGradient(
-                                    colors: [Color.butter400, Color.acorn300, Color.sage400],
-                                    startPoint: .leading,
-                                    endPoint: .trailing
-                                )
-                            )
-                            .frame(width: geo.size.width * state.progress)
-                            .animation(.easeOut(duration: 0.5), value: state.progress)
+            if state.todaySessions.isEmpty {
+                emptyTodaySessions
+            } else {
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 10) {
+                        ForEach(state.todaySessions, id: \.id) { session in
+                            todaySessionRow(session)
+                        }
                     }
                 }
-                .frame(height: 15)
             }
         }
         .padding(20)
@@ -232,25 +206,77 @@ struct TrackingView: View {
         .neuoShadow(.md)
     }
 
-    private func summaryMetric(label: String, value: String, unit: String, color: Color) -> some View {
-        VStack(spacing: 2) {
-            Text(label)
-                .font(.system(size: 11, weight: .medium))
+    private var emptyTodaySessions: some View {
+        VStack(spacing: 6) {
+            Text("🍽️").font(.system(size: 30))
+            Text("아직 오늘 식사 기록이 없어요")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(Color.ink600)
+            Text("홈에서 식사를 시작하면 여기에 표시돼요")
+                .font(.system(size: 11))
                 .foregroundStyle(Color.ink400)
-            HStack(alignment: .firstTextBaseline, spacing: 3) {
-                Text(value)
-                    .font(.system(size: 30, weight: .heavy))
-                    .foregroundStyle(Color.ink800)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.7)
-                Text(unit)
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(color)
-            }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 14)
+        .padding(.vertical, 24)
+    }
+
+    private func todaySessionRow(_ session: ChewingSessionDTO) -> some View {
+        HStack(alignment: .center, spacing: 14) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(formatSessionTime(session.startedAt))
+                    .font(.system(size: 15, weight: .heavy))
+                    .foregroundStyle(Color.ink800)
+                    .monospacedDigit()
+                Text(formatSessionDuration(session.durationSec))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(Color.ink400)
+            }
+            .frame(width: 60, alignment: .leading)
+
+            HStack(spacing: 10) {
+                sessionMetricChip(
+                    label: "저작",
+                    value: session.estimatedTotalChews.map { "\($0.koLocale)회" } ?? "—",
+                    color: Color.acorn700
+                )
+                sessionMetricChip(
+                    label: "씹은 비율",
+                    value: session.chewingFraction.map { String(format: "%.0f%%", $0 * 100) } ?? "—",
+                    color: Color.sage600
+                )
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
         .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    private func sessionMetricChip(label: String, value: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label)
+                .font(.system(size: 9, weight: .medium))
+                .foregroundStyle(Color.ink400)
+            Text(value)
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(color)
+                .monospacedDigit()
+        }
+    }
+
+    private func formatSessionTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
+    }
+
+    private func formatSessionDuration(_ seconds: Double) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        let mins = total / 60
+        let secs = total % 60
+        return mins == 0 ? "\(secs)초" : "\(mins)분 \(secs)초"
     }
 
     private var trackingDateLabel: String {

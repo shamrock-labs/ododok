@@ -13,6 +13,8 @@ protocol RemoteStore {
     func fetchUserStats(deviceId: String) async throws -> UserStatsDTO?
     func deleteUserData(deviceId: String) async throws
     func insertSession(_ session: ChewingSessionDTO) async throws
+    /// 특정 시각 이후 시작된 세션을 시간 오름차순으로 조회. "오늘의 식사 기록" 등에 사용.
+    func fetchChewingSessions(deviceId: String, since: Date) async throws -> [ChewingSessionDTO]
     func uploadIMUCSV(sessionId: UUID, deviceId: String, csvData: Data) async throws -> String
 }
 
@@ -22,6 +24,7 @@ struct NoopRemoteStore: RemoteStore {
     func fetchUserStats(deviceId: String) async throws -> UserStatsDTO? { nil }
     func deleteUserData(deviceId: String) async throws {}
     func insertSession(_ session: ChewingSessionDTO) async throws {}
+    func fetchChewingSessions(deviceId: String, since: Date) async throws -> [ChewingSessionDTO] { [] }
     func uploadIMUCSV(sessionId: UUID, deviceId: String, csvData: Data) async throws -> String { "" }
 }
 
@@ -116,6 +119,18 @@ final class InsForgeRemoteStore: RemoteStore {
         var req = try jsonRequest(method: "POST", path: "/api/database/records/chewing_session")
         req.httpBody = try encoder.encode([session])
         _ = try await sendExpectingSuccess(req)
+    }
+
+    func fetchChewingSessions(deviceId: String, since: Date) async throws -> [ChewingSessionDTO] {
+        let escapedDevice = deviceId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? deviceId
+        let sinceIso = Self.isoFormatter.string(from: since)
+        let escapedSince = sinceIso.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? sinceIso
+        let req = try jsonRequest(
+            method: "GET",
+            path: "/api/database/records/chewing_session?device_id=eq.\(escapedDevice)&started_at=gte.\(escapedSince)&order=started_at.asc"
+        )
+        let data = try await sendExpectingSuccess(req)
+        return try decoder.decode([ChewingSessionDTO].self, from: data)
     }
 
     // MARK: - imu-sessions storage (3-step)

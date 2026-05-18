@@ -43,9 +43,11 @@ enum IMUWaveformSource: Equatable {
 
 /// 앱의 글로벌 상태 + 식사 세션 관리.
 ///
-/// 현재 chew 신호는 `startEating()` 호출 시 가짜 Timer가 0.85초마다 `chew()`를
-/// 흉내냄. 추후 AirPods Pro 2의 `CMHeadphoneMotionManager`를 붙이게 되면
-/// `startFakeChewLoop()` 대신 실제 IMU 신호 → chew 추정 알고리즘으로 갈아끼우면 됨.
+/// 화면의 `chewCount` 카운터는 사실 도토리(in-app 화폐) 카운터로, 식사 동안 가짜 Timer가
+/// 0.85초마다 `chew()`를 호출해 데모용으로 굴린다 (실제 씹기 횟수와 무관).
+/// 실 씹기 검출은 `ChewingPredictor`가 IMU sample을 받아 `SessionStatsBuilder`에 누적하고,
+/// 세션 종료 시 `chewing_session` 행의 분석 5필드로 저장 — Tracking 탭의 "오늘의 식사 기록"
+/// 에서 사후 확인.
 @Observable
 final class AppState {
     private static let maxIMUWaveformSamples = 54
@@ -118,6 +120,17 @@ final class AppState {
     @ObservationIgnored private var imuWaveformPhase: Double = 0
     @ObservationIgnored private var goalAlreadyHit = false
 
+    // MARK: - ML inference
+
+    /// 식사 세션 동안 활성. nil이면 추론 없이 (모델 로드 실패) 가짜 Timer만 동작.
+    @ObservationIgnored private var predictor: ChewingPredictor?
+
+    /// 세션 prediction 누적 → 종료 시 통계 산출.
+    @ObservationIgnored private var statsBuilder: SessionStatsBuilder?
+
+    /// 현재 사용 중인 ChewingClassifier 빌드 버전 식별자. DB의 `model_version` 컬럼에 저장.
+    private static let modelVersion = "ChewingClassifier-v1"
+
     // MARK: - Remote persistence
 
     /// 원격 백엔드(InsForge)에 대한 추상화. 테스트/시뮬레이터에선 NoopRemoteStore 주입 가능.
@@ -139,9 +152,14 @@ final class AppState {
     /// 식사 종료 직후 IMU 세션 업로드 결과. 화면이 alert 표시할 때 binding으로 관찰.
     var sessionUploadStatus: SessionUploadStatus = .idle
 
-    /// 업로드 실패 시 사용자가 "다시 시도"를 누르면 재시도할 payload (finalize 결과).
+    /// "오늘의 식사 기록" 리스트 — 오늘 0시 이후 시작된 chewing_session 행들.
+    /// Tracking 탭이 관찰만 하고, fetch/append는 AppState가 single source of truth.
+    /// 세션 종료 + INSERT 성공 시 자동 append, 탭 진입 시 fetchTodaySessions로 재동기화.
+    var todaySessions: [ChewingSessionDTO] = []
+
+    /// 업로드 실패 시 사용자가 "다시 시도"를 누르면 재시도할 payload (finalize 결과 + 분석 통계).
     /// in-memory 1회 retry 한정 — 영구 retry 큐는 다음 PR.
-    @ObservationIgnored private var pendingUploadOutput: IMUSessionRecorder.Output?
+    @ObservationIgnored private var pendingUpload: (output: IMUSessionRecorder.Output, stats: SessionStats?)?
 
     enum SessionUploadStatus: Equatable {
         case idle
@@ -174,6 +192,12 @@ final class AppState {
         lastIMUSampleAt = nil
         // raw IMU 6채널을 모을 봉투 — 식사 종료 시 finalize + 업로드.
         imuSessionRecorder = IMUSessionRecorder(startedAt: now)
+        // ChewingPredictor + StatsBuilder — 식사 종료 시 chewing_session 분석 5필드 산출용.
+        // 모델 로드 실패 시 predictor=nil이면 stats만 비고 나머지는 정상 동작.
+        predictor = try? ChewingPredictor()
+        statsBuilder = SessionStatsBuilder()
+        // 가짜 Timer는 식사 내내 굴림 — 도토리 카운터(`chewCount`)는 실 씹기와 무관한
+        // in-app 화폐 기능이라 ML 추론 결과를 카운터에 반영하지 않음.
         startFakeChewLoop()
 
         if !startHeadphoneMotionLoop() {
@@ -197,6 +221,9 @@ final class AppState {
 
         // IMU 세션 봉인 → Storage 업로드 → chewing_session INSERT.
         // 결과를 sessionUploadStatus로 publish해서 UI alert이 관찰할 수 있게 한다.
+        let builder = statsBuilder
+        statsBuilder = nil
+        predictor = nil
         if let recorder = imuSessionRecorder {
             imuSessionRecorder = nil
             let endedAt = Date()
@@ -205,7 +232,8 @@ final class AppState {
             guard output.sampleCount > 0 else { return }
             sessionUploadStatus = .uploading
             Task { [weak self] in
-                await self?.performSessionUpload(output)
+                let stats = await builder?.build(modelVersion: AppState.modelVersion)
+                await self?.performSessionUpload(output, stats: stats)
             }
         }
     }
@@ -344,6 +372,7 @@ final class AppState {
         owned = []
         equipped = Equipped()
         ownedAcornPacks = [:]
+        todaySessions = []
         // 저장된 스냅샷도 비워서 다음 실행에서 시드값이 살아남도록
         clearPersistedSnapshot()
     }
@@ -414,29 +443,39 @@ final class AppState {
             )
             // raw 채널 전체(18컬럼)를 recorder에 누적. 출시 후 재학습 데이터셋으로
             // 그대로 쓸 수 있도록 attitude/gravity/magneticField까지 보존.
-            if let recorder = self.imuSessionRecorder {
-                let tRel = Date().timeIntervalSince(recorder.startedAt)
-                recorder.append(IMURow(
-                    tMach: sample.timestamp,
-                    tRelSec: tRel,
-                    attitudeRoll: sample.attitudeRoll,
-                    attitudePitch: sample.attitudePitch,
-                    attitudeYaw: sample.attitudeYaw,
-                    rotationX: sample.rotationX,
-                    rotationY: sample.rotationY,
-                    rotationZ: sample.rotationZ,
-                    gravityX: sample.gravityX,
-                    gravityY: sample.gravityY,
-                    gravityZ: sample.gravityZ,
-                    userAccelX: sample.userAccelX,
-                    userAccelY: sample.userAccelY,
-                    userAccelZ: sample.userAccelZ,
-                    magneticFieldX: sample.magneticFieldX,
-                    magneticFieldY: sample.magneticFieldY,
-                    magneticFieldZ: sample.magneticFieldZ,
-                    sensorLocation: sample.sensorLocation
-                ))
-                recorder.updateSensorLocation(sample.sensorLocation)
+            // 같은 row를 ML predictor에도 흘려보내 SessionStatsBuilder에 누적.
+            guard let recorder = self.imuSessionRecorder else { return }
+            let tRel = Date().timeIntervalSince(recorder.startedAt)
+            let row = IMURow(
+                tMach: sample.timestamp,
+                tRelSec: tRel,
+                attitudeRoll: sample.attitudeRoll,
+                attitudePitch: sample.attitudePitch,
+                attitudeYaw: sample.attitudeYaw,
+                rotationX: sample.rotationX,
+                rotationY: sample.rotationY,
+                rotationZ: sample.rotationZ,
+                gravityX: sample.gravityX,
+                gravityY: sample.gravityY,
+                gravityZ: sample.gravityZ,
+                userAccelX: sample.userAccelX,
+                userAccelY: sample.userAccelY,
+                userAccelZ: sample.userAccelZ,
+                magneticFieldX: sample.magneticFieldX,
+                magneticFieldY: sample.magneticFieldY,
+                magneticFieldZ: sample.magneticFieldZ,
+                sensorLocation: sample.sensorLocation
+            )
+            recorder.append(row)
+            recorder.updateSensorLocation(sample.sensorLocation)
+
+            // ML 추론은 별도 Task로 — actor 호출이 sample 콜백 빈도(50Hz)를 막지 않도록.
+            // 결과는 통계 누적용으로만 사용; 화면 카운터(`chewCount` = 도토리)는 절대 건드리지 않음.
+            if let predictor = self.predictor, let statsBuilder = self.statsBuilder {
+                Task {
+                    guard let prediction = await predictor.feed(row) else { return }
+                    await statsBuilder.append(prediction)
+                }
             }
         } onError: { [weak self] message in
             guard let self else { return }
@@ -655,11 +694,12 @@ final class AppState {
         return snapshot.savedAt
     }
 
-    /// 식사 종료 후 IMU 세션 봉인 결과를 받아 Storage 업로드 → chewing_session INSERT.
+    /// 식사 종료 후 IMU 세션 봉인 결과 + 분석 통계를 받아 Storage 업로드 → chewing_session INSERT.
     /// 결과는 `sessionUploadStatus`로 publish되어 UI alert이 관찰한다. 실패 시 payload를
-    /// `pendingUploadOutput`에 보관해 "다시 시도"가 가능하게.
+    /// `pendingUpload`에 보관해 "다시 시도"가 가능하게.
+    /// `stats`는 추론이 동작한 세션에서만 비-nil (시뮬레이터/AirPods 미연결 세션은 nil).
     @MainActor
-    private func performSessionUpload(_ output: IMUSessionRecorder.Output) async {
+    private func performSessionUpload(_ output: IMUSessionRecorder.Output, stats: SessionStats?) async {
         sessionUploadStatus = .uploading
         do {
             let deviceId = DeviceIdentity.shared
@@ -678,24 +718,44 @@ final class AppState {
                 sampleCount: output.sampleCount,
                 sampleRateHz: 50,
                 storagePath: storagePath,
-                appVersion: Self.appVersion
+                appVersion: Self.appVersion,
+                chewingSeconds: stats?.chewingSeconds,
+                restSeconds: stats?.restSeconds,
+                chewingFraction: stats?.chewingFraction,
+                estimatedTotalChews: stats?.estimatedTotalChews,
+                modelVersion: stats?.modelVersion
             )
             try await remoteStore.insertSession(dto)
             sessionUploadStatus = .success
-            pendingUploadOutput = nil
+            pendingUpload = nil
+            // 방금 INSERT한 행을 즉시 리스트에 반영 — GET 라운드트립 생략.
+            // started_at 오름차순 정렬을 유지하기 위해 append (방금 종료된 세션이 가장 최신).
+            todaySessions.append(dto)
         } catch {
             sessionUploadStatus = .failure
-            pendingUploadOutput = output
+            pendingUpload = (output: output, stats: stats)
         }
+    }
+
+    /// Tracking 탭 .task에서 호출 — 오늘 0시 이후 세션을 원격에서 가져와 리스트 동기화.
+    /// 실패는 silent (네트워크 끊김 등); 사용자에겐 빈 리스트로 보이는 게 alert보다 덜 거슬림.
+    @MainActor
+    func fetchTodaySessions() async {
+        let startOfDay = Calendar.current.startOfDay(for: Date())
+        let deviceId = DeviceIdentity.shared
+        guard let rows = try? await remoteStore.fetchChewingSessions(deviceId: deviceId, since: startOfDay) else {
+            return
+        }
+        todaySessions = rows
     }
 
     /// Alert "다시 시도" 버튼에서 호출 — 마지막 실패한 payload로 1회 재시도.
     /// 영구 retry 큐는 후속 PR.
     @MainActor
     func retryLastSessionUpload() {
-        guard let output = pendingUploadOutput else { return }
+        guard let pending = pendingUpload else { return }
         Task { [weak self] in
-            await self?.performSessionUpload(output)
+            await self?.performSessionUpload(pending.output, stats: pending.stats)
         }
     }
 
@@ -703,7 +763,7 @@ final class AppState {
     @MainActor
     func dismissSessionUploadStatus() {
         if sessionUploadStatus == .failure {
-            pendingUploadOutput = nil
+            pendingUpload = nil
         }
         sessionUploadStatus = .idle
     }

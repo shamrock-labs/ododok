@@ -32,6 +32,10 @@ struct UserStatsDTO: Codable, Equatable {
 
 /// `chewing_session` row와 1:1 DTO. 클라이언트가 한 끼 식사 종료 시 INSERT.
 /// raw IMU는 별도로 imu-sessions 버킷에 gzip CSV로 올리고 `storagePath`에 경로만 보관.
+///
+/// 분석 5필드(`chewingSeconds`/`restSeconds`/`chewingFraction`/`estimatedTotalChews`/`modelVersion`)는
+/// 온디바이스 ChewingPredictor 추론이 동작한 세션에서만 채워진다. 시뮬레이터/AirPods 미연결 등
+/// 추론이 돌지 않은 세션은 모두 nil — DB 컬럼도 nullable.
 struct ChewingSessionDTO: Codable, Equatable {
     var id: UUID
     var deviceId: String
@@ -43,6 +47,11 @@ struct ChewingSessionDTO: Codable, Equatable {
     var sampleRateHz: Int
     var storagePath: String?
     var appVersion: String?
+    var chewingSeconds: Double?
+    var restSeconds: Double?
+    var chewingFraction: Double?
+    var estimatedTotalChews: Int?
+    var modelVersion: String?
 }
 
 /// AirPods CMDeviceMotion에서 받은 한 샘플. 학습 레포의 18컬럼 CSV와 컬럼 1:1 매칭.
