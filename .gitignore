@@ -21,3 +21,19 @@ Package.resolved
 
 # Generated
 *.hmap
+
+# InsForge & AI agent skills
+.insforge
+.agent
+.agents
+.augment
+.claude
+.cline
+.github/copilot*
+.kilocode
+.omc
+.qoder
+.qwen
+.roo
+.trae
+.windsurf
