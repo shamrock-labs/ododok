@@ -620,16 +620,16 @@ final class AppState {
         remoteStore: RemoteStore,
         appVersion: String?
     ) async {
-        do {
-            let output = try recorder.finalize(endedAt: endedAt)
-            // 빈 세션(시뮬레이터 등에서 IMU 샘플 0개)은 업로드 스킵.
-            guard output.sampleCount > 0 else { return }
+        let output = recorder.finalize(endedAt: endedAt)
+        // 빈 세션(시뮬레이터 등에서 IMU 샘플 0개)은 업로드 스킵.
+        guard output.sampleCount > 0 else { return }
 
+        do {
             let deviceId = DeviceIdentity.shared
             let storagePath = try await remoteStore.uploadIMUCSV(
                 sessionId: output.sessionId,
                 deviceId: deviceId,
-                gzippedData: output.gzippedCSV
+                csvData: output.csvData
             )
             let dto = ChewingSessionDTO(
                 id: output.sessionId,

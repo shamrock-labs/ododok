@@ -7,7 +7,7 @@ protocol RemoteStore {
     func fetchProgress(deviceId: String) async throws -> ProgressDTO?
     func deleteProgress(deviceId: String) async throws
     func insertSession(_ session: ChewingSessionDTO) async throws
-    func uploadIMUCSV(sessionId: UUID, deviceId: String, gzippedData: Data) async throws -> String
+    func uploadIMUCSV(sessionId: UUID, deviceId: String, csvData: Data) async throws -> String
 }
 
 struct NoopRemoteStore: RemoteStore {
@@ -15,7 +15,7 @@ struct NoopRemoteStore: RemoteStore {
     func fetchProgress(deviceId: String) async throws -> ProgressDTO? { nil }
     func deleteProgress(deviceId: String) async throws {}
     func insertSession(_ session: ChewingSessionDTO) async throws {}
-    func uploadIMUCSV(sessionId: UUID, deviceId: String, gzippedData: Data) async throws -> String { "" }
+    func uploadIMUCSV(sessionId: UUID, deviceId: String, csvData: Data) async throws -> String { "" }
 }
 
 struct InsForgeConfig {
@@ -105,17 +105,17 @@ final class InsForgeRemoteStore: RemoteStore {
 
     // MARK: - imu-sessions storage (3-step)
 
-    func uploadIMUCSV(sessionId: UUID, deviceId: String, gzippedData: Data) async throws -> String {
-        let filename = "\(deviceId)/\(sessionId.uuidString).csv.gz"
+    func uploadIMUCSV(sessionId: UUID, deviceId: String, csvData: Data) async throws -> String {
+        let filename = "\(deviceId)/\(sessionId.uuidString).csv"
         let strategy = try await fetchUploadStrategy(
             bucket: "imu-sessions",
             filename: filename,
-            contentType: "application/gzip",
-            size: gzippedData.count
+            contentType: "text/csv",
+            size: csvData.count
         )
-        try await performUpload(strategy: strategy, data: gzippedData)
+        try await performUpload(strategy: strategy, data: csvData)
         if strategy.confirmRequired {
-            try await confirmUpload(strategy: strategy, size: gzippedData.count)
+            try await confirmUpload(strategy: strategy, size: csvData.count)
         }
         return strategy.key
     }
@@ -171,7 +171,7 @@ final class InsForgeRemoteStore: RemoteStore {
             fields: isPresigned ? (strategy.fields ?? [:]) : [:],
             fileFieldName: "file",
             filename: strategy.key,
-            fileContentType: "application/gzip",
+            fileContentType: "text/csv",
             fileData: data
         )
         _ = try await sendExpectingSuccess(req)
@@ -180,7 +180,7 @@ final class InsForgeRemoteStore: RemoteStore {
     private func confirmUpload(strategy: UploadStrategy, size: Int) async throws {
         guard let confirmPath = strategy.confirmUrl else { return }
         var req = try jsonRequest(method: "POST", path: confirmPath, allowAbsolute: true)
-        let body: [String: Any] = ["size": size, "contentType": "application/gzip"]
+        let body: [String: Any] = ["size": size, "contentType": "text/csv"]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         _ = try await sendExpectingSuccess(req)
     }
