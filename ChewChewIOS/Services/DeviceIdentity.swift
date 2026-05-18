@@ -5,7 +5,7 @@ import Security
 /// 앱 삭제·재설치로 사라질 수 있는 UserDefaults와 달리 Keychain은 (시스템 정책상)
 /// 재설치 후에도 살아남는 경우가 있어 익명 식별자 안정성이 더 높다.
 ///
-/// InsForge `user_progress` / `chewing_session`의 `device_id` 컬럼과 1:1 매칭.
+/// InsForge `profiles` / `user_stats` / `chewing_session`의 `device_id` 컬럼과 1:1 매칭.
 enum DeviceIdentity {
     private static let service = "com.sungho.chewchewios"
     private static let account = "deviceId"

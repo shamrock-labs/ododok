@@ -1,10 +1,17 @@
 import Foundation
 
-/// `user_progress` row와 1:1로 매핑되는 DTO. 기존 PersistedSnapshot(`AppState.swift`)이
-/// JSON Blob으로 갖고 있던 필드 그대로를 컬럼 단위로 풀어놓은 것.
+/// `profiles` row와 1:1 매핑되는 DTO. 디바이스 신원 메타.
+/// display_name은 향후 사용을 위해 비워둠.
+struct ProfileDTO: Codable, Equatable {
+    var deviceId: String
+    var displayName: String?
+}
+
+/// `user_stats` row와 1:1 매핑되는 DTO. 게임 진행 상태(카운터 + 인벤토리 + 플래그)를 보관.
+/// 기존 PersistedSnapshot(`AppState.swift`)이 JSON Blob으로 갖고 있던 필드를 컬럼 단위로 풀어놓은 것.
 ///
 /// snake_case ↔ camelCase 매핑은 PostgREST 호출부에서 keyEncodingStrategy로 처리한다.
-struct ProgressDTO: Codable, Equatable {
+struct UserStatsDTO: Codable, Equatable {
     var deviceId: String
     var chewCount: Int
     var streak: Int

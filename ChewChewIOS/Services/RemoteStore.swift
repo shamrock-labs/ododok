@@ -2,18 +2,25 @@ import Foundation
 
 /// 원격 영속화 추상화. AppState는 이 프로토콜에만 의존해서, 시뮬레이터/유닛테스트에서
 /// `NoopRemoteStore`로 갈아끼울 수 있다.
+///
+/// 게임 상태는 두 테이블로 분리되어 있다 (`profiles` + `user_stats`).
+///   profiles: 디바이스 신원 — `upsertProfile`로 최초 1회 보장.
+///   user_stats: 게임 진행 상태 — 매 mutate 시 `upsertUserStats`로 동기화.
+/// 삭제는 `deleteUserData` 한 번 (profiles → user_stats FK ON DELETE CASCADE).
 protocol RemoteStore {
-    func upsertProgress(_ snapshot: ProgressDTO) async throws
-    func fetchProgress(deviceId: String) async throws -> ProgressDTO?
-    func deleteProgress(deviceId: String) async throws
+    func upsertProfile(_ profile: ProfileDTO) async throws
+    func upsertUserStats(_ stats: UserStatsDTO) async throws
+    func fetchUserStats(deviceId: String) async throws -> UserStatsDTO?
+    func deleteUserData(deviceId: String) async throws
     func insertSession(_ session: ChewingSessionDTO) async throws
     func uploadIMUCSV(sessionId: UUID, deviceId: String, csvData: Data) async throws -> String
 }
 
 struct NoopRemoteStore: RemoteStore {
-    func upsertProgress(_ snapshot: ProgressDTO) async throws {}
-    func fetchProgress(deviceId: String) async throws -> ProgressDTO? { nil }
-    func deleteProgress(deviceId: String) async throws {}
+    func upsertProfile(_ profile: ProfileDTO) async throws {}
+    func upsertUserStats(_ stats: UserStatsDTO) async throws {}
+    func fetchUserStats(deviceId: String) async throws -> UserStatsDTO? { nil }
+    func deleteUserData(deviceId: String) async throws {}
     func insertSession(_ session: ChewingSessionDTO) async throws {}
     func uploadIMUCSV(sessionId: UUID, deviceId: String, csvData: Data) async throws -> String { "" }
 }
@@ -66,31 +73,39 @@ final class InsForgeRemoteStore: RemoteStore {
         self.decoder = dec
     }
 
-    // MARK: - user_progress
+    // MARK: - profiles + user_stats
 
-    func upsertProgress(_ snapshot: ProgressDTO) async throws {
-        var req = try jsonRequest(method: "POST", path: "/api/database/records/user_progress")
+    func upsertProfile(_ profile: ProfileDTO) async throws {
+        var req = try jsonRequest(method: "POST", path: "/api/database/records/profiles")
         req.setValue("resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
-        req.httpBody = try encoder.encode([snapshot])
+        req.httpBody = try encoder.encode([profile])
         _ = try await sendExpectingSuccess(req)
     }
 
-    func fetchProgress(deviceId: String) async throws -> ProgressDTO? {
+    func upsertUserStats(_ stats: UserStatsDTO) async throws {
+        var req = try jsonRequest(method: "POST", path: "/api/database/records/user_stats")
+        req.setValue("resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
+        req.httpBody = try encoder.encode([stats])
+        _ = try await sendExpectingSuccess(req)
+    }
+
+    func fetchUserStats(deviceId: String) async throws -> UserStatsDTO? {
         let escaped = deviceId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? deviceId
         let req = try jsonRequest(
             method: "GET",
-            path: "/api/database/records/user_progress?device_id=eq.\(escaped)&limit=1"
+            path: "/api/database/records/user_stats?device_id=eq.\(escaped)&limit=1"
         )
         let data = try await sendExpectingSuccess(req)
-        let rows = try decoder.decode([ProgressDTO].self, from: data)
+        let rows = try decoder.decode([UserStatsDTO].self, from: data)
         return rows.first
     }
 
-    func deleteProgress(deviceId: String) async throws {
+    /// profiles 삭제 → FK ON DELETE CASCADE로 user_stats도 함께 제거.
+    func deleteUserData(deviceId: String) async throws {
         let escaped = deviceId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? deviceId
         let req = try jsonRequest(
             method: "DELETE",
-            path: "/api/database/records/user_progress?device_id=eq.\(escaped)"
+            path: "/api/database/records/profiles?device_id=eq.\(escaped)"
         )
         _ = try await sendExpectingSuccess(req)
     }

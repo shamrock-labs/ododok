@@ -128,6 +128,11 @@ final class AppState {
     /// 중간 상태가 winner로 굳을 수 있어, 각 작업이 이전 작업 종료를 await하는 체인으로 직렬화한다.
     @ObservationIgnored private var remoteSyncChain: Task<Void, Never> = Task {}
 
+    /// user_stats는 profiles에 FK가 걸려 있어 첫 upsert 전에 profile 행이 존재해야 한다.
+    /// 동기화 체인에서 한 번만 보장하면 되므로 플래그로 추적 — fetchUserStats 성공 또는
+    /// upsertProfile 완료 시 true.
+    @ObservationIgnored private var profileEnsured: Bool = false
+
     /// 한 끼 식사의 raw IMU 6채널을 메모리에 모으는 버퍼. 식사 종료 시 봉인 + 업로드.
     @ObservationIgnored private var imuSessionRecorder: IMUSessionRecorder?
 
@@ -523,12 +528,19 @@ final class AppState {
 
         // 원격 동기화는 best-effort — 실패해도 로컬은 위에서 이미 보장됨.
         // remoteSyncChain으로 직렬화해 짧은 시간 내 여러 mutate가 도착 순서로 뒤집히는 race를 방지.
-        let dto = makeProgressDTO(savedAt: now)
+        // user_stats는 profiles에 FK가 걸려 있어 첫 호출 한 번은 profile upsert 선행.
+        let stats = makeUserStatsDTO(savedAt: now)
+        let deviceId = DeviceIdentity.shared
         let store = remoteStore
         let previous = remoteSyncChain
+        let needProfile = !profileEnsured
+        profileEnsured = true
         remoteSyncChain = Task.detached {
             _ = await previous.value
-            try? await store.upsertProgress(dto)
+            if needProfile {
+                try? await store.upsertProfile(ProfileDTO(deviceId: deviceId, displayName: nil))
+            }
+            try? await store.upsertUserStats(stats)
         }
     }
 
@@ -560,18 +572,22 @@ final class AppState {
     func clearPersistedSnapshot() {
         UserDefaults.standard.removeObject(forKey: Self.persistenceKey)
         // 같은 체인으로 — 직전 upsert가 끝난 뒤 delete가 나가야 결과가 결정적.
+        // profiles 삭제 → FK ON DELETE CASCADE로 user_stats도 자동 정리.
+        // 다음 persistSnapshot이 profile을 다시 만들 수 있도록 플래그 리셋.
+        profileEnsured = false
+        let deviceId = DeviceIdentity.shared
         let store = remoteStore
         let previous = remoteSyncChain
         remoteSyncChain = Task.detached {
             _ = await previous.value
-            try? await store.deleteProgress(deviceId: DeviceIdentity.shared)
+            try? await store.deleteUserData(deviceId: deviceId)
         }
     }
 
     // MARK: - Remote sync helpers
 
-    private func makeProgressDTO(savedAt: Date) -> ProgressDTO {
-        ProgressDTO(
+    private func makeUserStatsDTO(savedAt: Date) -> UserStatsDTO {
+        UserStatsDTO(
             deviceId: DeviceIdentity.shared,
             chewCount: chewCount,
             streak: streak,
@@ -579,7 +595,7 @@ final class AppState {
             weeklyScores: weeklyScores,
             goalAlreadyHit: goalAlreadyHit,
             owned: Array(owned),
-            equipped: ProgressDTO.EquippedDTO(
+            equipped: UserStatsDTO.EquippedDTO(
                 hat: equipped.hat,
                 glasses: equipped.glasses,
                 acc: equipped.acc
@@ -593,7 +609,9 @@ final class AppState {
     /// `saved_at` 기준 최신 우선 — 다중 기기 동기화는 익명 디바이스 ID 정책상 보장 안 함.
     @MainActor
     private func syncFromRemoteIfNewer() async {
-        guard let remote = try? await remoteStore.fetchProgress(deviceId: DeviceIdentity.shared) else { return }
+        guard let remote = try? await remoteStore.fetchUserStats(deviceId: DeviceIdentity.shared) else { return }
+        // user_stats가 존재 = profiles도 존재 (FK 보장). 다음 persistSnapshot에서 profile 재호출 생략.
+        profileEnsured = true
         let localSavedAt = localPersistedSavedAt() ?? .distantPast
         guard remote.savedAt > localSavedAt else { return }
 
