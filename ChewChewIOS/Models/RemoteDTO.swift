@@ -38,25 +38,42 @@ struct ChewingSessionDTO: Codable, Equatable {
     var appVersion: String?
 }
 
-/// AirPods CMDeviceMotion에서 받은 한 샘플의 추론용 6채널 + 시간.
-/// CSV 직렬화 전용이라 Codable 불필요. 학습 레포 18컬럼 중 실제 추론에 쓰이는 것만.
+/// AirPods CMDeviceMotion에서 받은 한 샘플. 학습 레포의 18컬럼 CSV와 컬럼 1:1 매칭.
+/// 출시 후 모인 raw 데이터를 그대로 재학습 데이터셋으로 쓸 수 있도록 attitude/gravity/
+/// magneticField까지 보존한다. 추론 input(rotation + user_accel 6채널)은 이 중 일부.
 struct IMURow {
+    let tMach: Double
     let tRelSec: Double
+    let attitudeRoll: Double
+    let attitudePitch: Double
+    let attitudeYaw: Double
     let rotationX: Double
     let rotationY: Double
     let rotationZ: Double
+    let gravityX: Double
+    let gravityY: Double
+    let gravityZ: Double
     let userAccelX: Double
     let userAccelY: Double
     let userAccelZ: Double
+    let magneticFieldX: Double
+    let magneticFieldY: Double
+    let magneticFieldZ: Double
+    let sensorLocation: String
 
-    static let csvHeader =
-        "t_rel_sec,rotation_x,rotation_y,rotation_z,user_accel_x,user_accel_y,user_accel_z"
+    static let csvHeader = "t_mach,t_rel_sec,attitude_roll,attitude_pitch,attitude_yaw,rotation_x,rotation_y,rotation_z,gravity_x,gravity_y,gravity_z,user_accel_x,user_accel_y,user_accel_z,magnetic_field_x,magnetic_field_y,magnetic_field_z,sensor_location"
 
     /// CSV 한 줄. Double은 `%.6f` 고정 — Locale 영향 없도록 C locale 포맷터 사용.
     func csvLine() -> String {
-        String(
-            format: "%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f",
-            tRelSec, rotationX, rotationY, rotationZ, userAccelX, userAccelY, userAccelZ
+        let nums = String(
+            format: "%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f,%.6f",
+            tMach, tRelSec,
+            attitudeRoll, attitudePitch, attitudeYaw,
+            rotationX, rotationY, rotationZ,
+            gravityX, gravityY, gravityZ,
+            userAccelX, userAccelY, userAccelZ,
+            magneticFieldX, magneticFieldY, magneticFieldZ
         )
+        return "\(nums),\(sensorLocation)"
     }
 }

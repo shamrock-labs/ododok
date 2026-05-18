@@ -396,17 +396,29 @@ final class AppState {
                 rotationRateMagnitude: sample.rotationRateMagnitude,
                 userAccelerationMagnitude: sample.userAccelerationMagnitude
             )
-            // raw 6채널을 recorder에 누적 — 시각화는 위에서 magnitude 기반으로 이미 끝났음.
+            // raw 채널 전체(18컬럼)를 recorder에 누적. 출시 후 재학습 데이터셋으로
+            // 그대로 쓸 수 있도록 attitude/gravity/magneticField까지 보존.
             if let recorder = self.imuSessionRecorder {
                 let tRel = Date().timeIntervalSince(recorder.startedAt)
                 recorder.append(IMURow(
+                    tMach: sample.timestamp,
                     tRelSec: tRel,
+                    attitudeRoll: sample.attitudeRoll,
+                    attitudePitch: sample.attitudePitch,
+                    attitudeYaw: sample.attitudeYaw,
                     rotationX: sample.rotationX,
                     rotationY: sample.rotationY,
                     rotationZ: sample.rotationZ,
+                    gravityX: sample.gravityX,
+                    gravityY: sample.gravityY,
+                    gravityZ: sample.gravityZ,
                     userAccelX: sample.userAccelX,
                     userAccelY: sample.userAccelY,
-                    userAccelZ: sample.userAccelZ
+                    userAccelZ: sample.userAccelZ,
+                    magneticFieldX: sample.magneticFieldX,
+                    magneticFieldY: sample.magneticFieldY,
+                    magneticFieldZ: sample.magneticFieldZ,
+                    sensorLocation: sample.sensorLocation
                 ))
                 recorder.updateSensorLocation(sample.sensorLocation)
             }
