@@ -8,6 +8,7 @@ struct MealCalendarView: View {
     @State private var displayedMonth: Date = .now
     @State private var monthSessions: [ChewingSessionDTO] = []
     @State private var isLoading: Bool = false
+    @State private var showDeleteAllConfirm: Bool = false
 
     private var calendar: Calendar {
         var c = Calendar(identifier: .gregorian)
@@ -31,12 +32,50 @@ struct MealCalendarView: View {
             .background(LinearGradient.appBackground.ignoresSafeArea())
             .navigationTitle("식사 캘린더")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button(role: .destructive) {
+                            showDeleteAllConfirm = true
+                        } label: {
+                            Label("모든 식사 기록 삭제", systemImage: "trash")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                            .foregroundStyle(Color.acorn700)
+                    }
+                }
+            }
+            .confirmationDialog(
+                "모든 식사 기록을 삭제할까요?",
+                isPresented: $showDeleteAllConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("전체 삭제", role: .destructive) {
+                    Task {
+                        await state.deleteAllChewingSessions()
+                        await reload()
+                    }
+                }
+                Button("취소", role: .cancel) { }
+            } message: {
+                Text("이 기기의 모든 식사 세션이 사라집니다.\n도토리/꾸미기 등 게임 상태는 보존돼요.\n되돌릴 수 없어요.")
+            }
             .task { await reload() }
             .onChange(of: displayedMonth) { _, _ in
                 Task { await reload() }
             }
             .navigationDestination(for: Date.self) { date in
-                DaySessionsView(date: date, sessions: sessionsOn(date))
+                DaySessionsView(
+                    date: date,
+                    sessions: sessionsOn(date),
+                    onDelete: { session in
+                        Task {
+                            await state.deleteSession(session)
+                            await reload()
+                        }
+                    }
+                )
             }
             .navigationDestination(for: UUID.self) { sessionId in
                 if let session = monthSessions.first(where: { $0.id == sessionId }) {
@@ -215,28 +254,37 @@ struct MealCalendarView: View {
 private struct DaySessionsView: View {
     let date: Date
     let sessions: [ChewingSessionDTO]
+    let onDelete: (ChewingSessionDTO) -> Void
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 10) {
-                if sessions.isEmpty {
-                    Text("이 날엔 식사 기록이 없어요.")
-                        .font(.system(size: 13))
-                        .foregroundStyle(Color.ink600)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 60)
-                } else {
+        ZStack {
+            LinearGradient.appBackground.ignoresSafeArea()
+            if sessions.isEmpty {
+                Text("이 날엔 식사 기록이 없어요.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Color.ink600)
+            } else {
+                List {
                     ForEach(sessions, id: \.id) { session in
                         NavigationLink(value: session.id) {
                             sessionRow(session)
                         }
-                        .buttonStyle(.plain)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                onDelete(session)
+                            } label: {
+                                Label("삭제", systemImage: "trash")
+                            }
+                        }
                     }
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
-            .padding(20)
         }
-        .background(LinearGradient.appBackground.ignoresSafeArea())
         .navigationTitle(dateLabel)
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -272,9 +320,6 @@ private struct DaySessionsView: View {
                 }
             }
             Spacer(minLength: 0)
-            Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundStyle(Color.ink400)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)

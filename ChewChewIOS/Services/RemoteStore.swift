@@ -17,6 +17,11 @@ protocol RemoteStore {
     /// "오늘의 식사 기록"은 since=오늘 0시 / until=nil, 월간 캘린더는 since=월 첫날 /
     /// until=다음 달 첫날로 호출.
     func fetchChewingSessions(deviceId: String, since: Date, until: Date?) async throws -> [ChewingSessionDTO]
+    /// 단일 세션 삭제 (swipe 삭제). device_id 매칭을 추가로 걸어 안전장치.
+    func deleteChewingSession(id: UUID, deviceId: String) async throws
+    /// 이 기기의 모든 chewing_session 일괄 삭제. profiles/user_stats는 보존 — 게임
+    /// 진행 상태는 남김.
+    func deleteAllChewingSessions(deviceId: String) async throws
     func uploadIMUCSV(sessionId: UUID, deviceId: String, csvData: Data) async throws -> String
 }
 
@@ -35,6 +40,8 @@ struct NoopRemoteStore: RemoteStore {
     func deleteUserData(deviceId: String) async throws {}
     func insertSession(_ session: ChewingSessionDTO) async throws {}
     func fetchChewingSessions(deviceId: String, since: Date, until: Date?) async throws -> [ChewingSessionDTO] { [] }
+    func deleteChewingSession(id: UUID, deviceId: String) async throws {}
+    func deleteAllChewingSessions(deviceId: String) async throws {}
     func uploadIMUCSV(sessionId: UUID, deviceId: String, csvData: Data) async throws -> String { "" }
 }
 
@@ -145,6 +152,26 @@ final class InsForgeRemoteStore: RemoteStore {
         let req = try jsonRequest(method: "GET", path: path)
         let data = try await sendExpectingSuccess(req)
         return try decoder.decode([ChewingSessionDTO].self, from: data)
+    }
+
+    func deleteChewingSession(id: UUID, deviceId: String) async throws {
+        let escapedDevice = deviceId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? deviceId
+        let idStr = id.uuidString.lowercased()
+        let escapedId = idStr.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? idStr
+        let req = try jsonRequest(
+            method: "DELETE",
+            path: "/api/database/records/chewing_session?id=eq.\(escapedId)&device_id=eq.\(escapedDevice)"
+        )
+        _ = try await sendExpectingSuccess(req)
+    }
+
+    func deleteAllChewingSessions(deviceId: String) async throws {
+        let escapedDevice = deviceId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? deviceId
+        let req = try jsonRequest(
+            method: "DELETE",
+            path: "/api/database/records/chewing_session?device_id=eq.\(escapedDevice)"
+        )
+        _ = try await sendExpectingSuccess(req)
     }
 
     // MARK: - imu-sessions storage (3-step)

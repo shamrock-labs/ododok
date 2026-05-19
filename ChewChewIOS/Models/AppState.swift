@@ -756,6 +756,32 @@ final class AppState {
         todaySessions = rows
     }
 
+    /// 단일 세션 삭제 — 캘린더 DaySessionsView에서 swipe로 호출. todaySessions에서도
+    /// 즉시 제거해 UI 동기화. 실패는 silent — 다음 reload에서 서버 상태와 다시 sync.
+    @MainActor
+    func deleteSession(_ session: ChewingSessionDTO) async {
+        let deviceId = DeviceIdentity.shared
+        do {
+            try await remoteStore.deleteChewingSession(id: session.id, deviceId: deviceId)
+            todaySessions.removeAll { $0.id == session.id }
+        } catch {
+            return
+        }
+    }
+
+    /// 모든 chewing_session 행 삭제 — MealCalendarView 도구바에서 confirm 후 호출.
+    /// profiles / user_stats(도토리 등 게임 상태)는 보존. todaySessions도 비움.
+    @MainActor
+    func deleteAllChewingSessions() async {
+        let deviceId = DeviceIdentity.shared
+        do {
+            try await remoteStore.deleteAllChewingSessions(deviceId: deviceId)
+            todaySessions = []
+        } catch {
+            return
+        }
+    }
+
     /// Alert "다시 시도" 버튼에서 호출 — 마지막 실패한 payload로 1회 재시도.
     /// 영구 retry 큐는 후속 PR.
     @MainActor
