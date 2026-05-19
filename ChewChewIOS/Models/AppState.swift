@@ -338,11 +338,20 @@ final class AppState {
 
     // MARK: - Scene phase
 
-    /// SwiftUI `scenePhase` 변화 시 호출. background/foreground 전환 시각만 기록하고
-    /// IMU 수집 자체는 OS 정책에 맡김 — 실기기에서 BG 동작 여부를 카운터로 검증할 수 있음.
+    /// SwiftUI `scenePhase` 변화 시 호출. background/foreground 전환 시각 기록 +
+    /// 일일 출석 보너스 적립 trigger.
+    @MainActor
     func sceneDidChange(toForeground: Bool) {
         let wasInForeground = isInForeground
         isInForeground = toForeground
+        if !wasInForeground && toForeground {
+            // foreground 진입 시 일일 출석 보너스 시도. 같은 날엔 한 번만 적립.
+            let granted = RewardLedger.claimDailyAttendance()
+            if granted > 0 {
+                points += granted
+                persistSnapshot()
+            }
+        }
         if wasInForeground && !toForeground {
             lastBackgroundedAt = Date()
             // 백그라운드 진입 시 안전하게 스냅샷 — 시스템 종료/메모리 회수 대비
@@ -624,6 +633,9 @@ final class AppState {
 
     func clearPersistedSnapshot() {
         UserDefaults.standard.removeObject(forKey: Self.persistenceKey)
+        // RewardLedger도 함께 비움 — 사용자가 명시적 reset 했을 때 출석/세션 적립
+        // idempotency 키도 같이 사라져 다음 첫 진입에서 다시 적립 가능.
+        RewardLedger.resetAll()
         // 같은 체인으로 — 직전 upsert가 끝난 뒤 delete가 나가야 결과가 결정적.
         // profiles 삭제 → FK ON DELETE CASCADE로 user_stats도 자동 정리.
         // 다음 persistSnapshot이 profile을 다시 만들 수 있도록 플래그 리셋.
@@ -747,6 +759,13 @@ final class AppState {
             todaySessions.append(dto)
             // 식사 종료 직후 ReportCardView를 sheet로 띄울 trigger. 사용자가 닫으면 nil.
             lastCompletedSession = dto
+            // PRD #8: 세션 종료 적립 = estimatedTotalChews × 0.05. RewardLedger가
+            // idempotency(같은 sessionId 중복 차단) + 일일 상한 500🌰 enforcement.
+            let granted = RewardLedger.accrue(forSession: dto.id, chewCount: dto.estimatedTotalChews)
+            if granted > 0 {
+                points += granted
+                persistSnapshot()
+            }
         } catch {
             sessionUploadStatus = .failure
             pendingUpload = (output: output, stats: stats)
