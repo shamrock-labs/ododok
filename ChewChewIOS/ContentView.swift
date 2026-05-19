@@ -88,6 +88,20 @@ struct ContentView: View {
                 SessionResultSheet(dto: dto, onClose: closeResultSheet)
             }
         }
+        .overlay(alignment: .center) {
+            if let grant = state.pendingRewardGrant {
+                ZStack {
+                    Color.black.opacity(0.28).ignoresSafeArea()
+                    RewardDialogView(grant: grant) {
+                        state.dismissPendingRewardGrant()
+                    }
+                    .padding(.horizontal, 32)
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.92)))
+                .zIndex(10)
+                .animation(.spring(response: 0.35, dampingFraction: 0.85), value: state.pendingRewardGrant)
+            }
+        }
     }
 
     private var failureAlertBinding: Binding<Bool> {

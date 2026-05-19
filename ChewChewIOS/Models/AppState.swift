@@ -56,12 +56,16 @@ final class AppState {
     }
 
     // MARK: - Persisted-ish state (현재는 인메모리)
+    //
+    // 신규 디바이스 첫 실행은 모두 0/빈 상태에서 시작. 시드값을 더미로 박아 두면
+    // 새 사용자에게 "이미 누군가 사용한 듯한" 느낌을 주고, `dailyGoal` 도달 보너스가
+    // 첫 식사에서 즉시 트리거되는 부작용도 있어 제거.
 
-    var chewCount: Int = 247
-    var streak: Int = 7
-    var points: Int = 1240
+    var chewCount: Int = 0
+    var streak: Int = 0
+    var points: Int = 0
     var animKey: Int = 0
-    var weeklyScores: [Int] = [72, 85, 68, 78, 82, 88, 41]
+    var weeklyScores: [Int] = []
 
     // MARK: - Wardrobe (다람쥐 꾸미기)
 
@@ -161,6 +165,11 @@ final class AppState {
     /// ContentView가 .sheet binding으로 관찰. PRD #3 — 종료 후 2초 이내 카드 표시.
     var lastCompletedSession: ChewingSessionDTO?
 
+    /// 도토리 적립 시 ContentView가 overlay로 보여줄 RewardDialogView trigger.
+    /// RewardLedger가 +n🌰 반환했을 때 set, 사용자가 다이얼로그 dismiss 시 nil.
+    /// 이번 PR에선 일일 출석 보너스만 trigger — 세션 종료 적립 trigger는 후속.
+    var pendingRewardGrant: RewardGrant?
+
     /// 업로드 실패 시 사용자가 "다시 시도"를 누르면 재시도할 payload (finalize 결과 + 분석 통계).
     /// in-memory 1회 retry 한정 — 영구 retry 큐는 다음 PR.
     @ObservationIgnored private var pendingUpload: (output: IMUSessionRecorder.Output, stats: SessionStats?)?
@@ -249,9 +258,12 @@ final class AppState {
     // MARK: - Chew (한 입 = 한 번의 저작 신호)
 
     /// 한 번의 chew 이벤트. 추후 실제 IMU 감지기가 호출할 진입점.
+    /// 도토리(`points`) 적립은 이 함수에서 분리됨 — PRD #8의 보상 정책(일일 출석 +2🌰,
+    /// 세션 종료 시 `estimatedTotalChews × 0.05`, 일일 상한 500🌰)이 fake Timer로 굴러
+    /// 실 씹기와 무관하게 자동 누적되는 옛 동작과 어긋났던 문제 해소. 실제 도토리 적립은
+    /// `RewardLedger`(commit ③)에서 세션 종료 시 / foreground 진입 시 처리.
     func chew() {
         chewCount += 1
-        points += 1
         animKey &+= 1
 
         let now = Date()
@@ -259,9 +271,10 @@ final class AppState {
         chewTimestamps.append(now)
         chewRatePerMinute = chewTimestamps.count
 
+        // dailyGoal 첫 도달 flag는 유지 — 향후 트로피/스트릭 trigger 등으로 활용.
+        // 더 이상 여기서 도토리 보너스를 주지 않음.
         if chewCount >= Constants.dailyGoal && !goalAlreadyHit {
             goalAlreadyHit = true
-            points += 200
         }
     }
 
@@ -330,11 +343,23 @@ final class AppState {
 
     // MARK: - Scene phase
 
-    /// SwiftUI `scenePhase` 변화 시 호출. background/foreground 전환 시각만 기록하고
-    /// IMU 수집 자체는 OS 정책에 맡김 — 실기기에서 BG 동작 여부를 카운터로 검증할 수 있음.
+    /// SwiftUI `scenePhase` 변화 시 호출. background/foreground 전환 시각 기록 +
+    /// 일일 출석 보너스 적립 trigger.
+    @MainActor
     func sceneDidChange(toForeground: Bool) {
         let wasInForeground = isInForeground
         isInForeground = toForeground
+        if !wasInForeground && toForeground {
+            // foreground 진입 시 일일 출석 보너스 시도. 같은 날엔 한 번만 적립.
+            let granted = RewardLedger.claimDailyAttendance()
+            if granted > 0 {
+                points += granted
+                persistSnapshot()
+                // ContentView overlay가 RewardDialogView를 표시. 같은 날 두 번째 진입은
+                // granted=0이라 trigger 안 됨 — idempotency가 보장.
+                pendingRewardGrant = RewardGrant(amount: granted, kind: .attendance)
+            }
+        }
         if wasInForeground && !toForeground {
             lastBackgroundedAt = Date()
             // 백그라운드 진입 시 안전하게 스냅샷 — 시스템 종료/메모리 회수 대비
@@ -365,11 +390,11 @@ final class AppState {
 
     func reset() {
         stopEating()
-        chewCount = 247
-        streak = 7
-        points = 1240
+        chewCount = 0
+        streak = 0
+        points = 0
         animKey = 0
-        weeklyScores = [72, 85, 68, 78, 82, 88, 41]
+        weeklyScores = []
         resetIMUWaveform()
         imuWaveformSource = .idle
         goalAlreadyHit = false
@@ -596,8 +621,9 @@ final class AppState {
         chewCount = snapshot.chewCount
         streak = snapshot.streak
         points = snapshot.points
-        // 주간 점수는 7개 보장 — 저장본이 손상되면 시드 유지
-        if snapshot.weeklyScores.count == 7 {
+        // 주간 점수는 7개 또는 빈 배열만 허용. 손상된 저장본(예: 다른 길이)은 무시하고
+        // 현재 상태(시드 = 빈 배열) 유지.
+        if snapshot.weeklyScores.isEmpty || snapshot.weeklyScores.count == 7 {
             weeklyScores = snapshot.weeklyScores
         }
         goalAlreadyHit = snapshot.goalAlreadyHit
@@ -615,6 +641,9 @@ final class AppState {
 
     func clearPersistedSnapshot() {
         UserDefaults.standard.removeObject(forKey: Self.persistenceKey)
+        // RewardLedger도 함께 비움 — 사용자가 명시적 reset 했을 때 출석/세션 적립
+        // idempotency 키도 같이 사라져 다음 첫 진입에서 다시 적립 가능.
+        RewardLedger.resetAll()
         // 같은 체인으로 — 직전 upsert가 끝난 뒤 delete가 나가야 결과가 결정적.
         // profiles 삭제 → FK ON DELETE CASCADE로 user_stats도 자동 정리.
         // 다음 persistSnapshot이 profile을 다시 만들 수 있도록 플래그 리셋.
@@ -662,7 +691,7 @@ final class AppState {
         chewCount = remote.chewCount
         streak = remote.streak
         points = remote.points
-        if remote.weeklyScores.count == 7 {
+        if remote.weeklyScores.isEmpty || remote.weeklyScores.count == 7 {
             weeklyScores = remote.weeklyScores
         }
         goalAlreadyHit = remote.goalAlreadyHit
@@ -738,6 +767,13 @@ final class AppState {
             todaySessions.append(dto)
             // 식사 종료 직후 ReportCardView를 sheet로 띄울 trigger. 사용자가 닫으면 nil.
             lastCompletedSession = dto
+            // PRD #8: 세션 종료 적립 = estimatedTotalChews × 0.05. RewardLedger가
+            // idempotency(같은 sessionId 중복 차단) + 일일 상한 500🌰 enforcement.
+            let granted = RewardLedger.accrue(forSession: dto.id, chewCount: dto.estimatedTotalChews)
+            if granted > 0 {
+                points += granted
+                persistSnapshot()
+            }
         } catch {
             sessionUploadStatus = .failure
             pendingUpload = (output: output, stats: stats)
@@ -793,6 +829,12 @@ final class AppState {
     }
 
     /// Alert dismiss 시 호출. 실패 상태에서 dismiss 하면 payload 폐기(= 데이터 손실 수용).
+    /// RewardDialogView가 자동(2.5s) 또는 탭으로 dismiss 시 호출.
+    @MainActor
+    func dismissPendingRewardGrant() {
+        pendingRewardGrant = nil
+    }
+
     @MainActor
     func dismissSessionUploadStatus() {
         if sessionUploadStatus == .failure {
