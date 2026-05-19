@@ -251,7 +251,7 @@ struct MealCalendarView: View {
             .navigationDestination(for: Date.self) { date in
                 DaySessionsView(
                     date: date,
-                    sessions: monthSessions.filter { calendar.isDate($0.startedAt, inSameDayAs: date) },
+                    monthSessions: $monthSessions,
                     onDelete: { session in
                         Task {
                             await state.deleteSession(session)
@@ -276,10 +276,16 @@ struct MealCalendarView: View {
 
 struct DaySessionsView: View {
     let date: Date
-    let sessions: [ChewingSessionDTO]
+    /// 전체 월간 세션을 Binding으로 받아 view body 호출 시점마다 latest로 self-filter.
+    /// closure 안에서 한 번 평가된 sessions를 stale capture하는 race 회피.
+    @Binding var monthSessions: [ChewingSessionDTO]
     let onDelete: (ChewingSessionDTO) -> Void
     /// row 탭 시 호출. 호출자가 NavigationPath append 또는 다른 전환 처리.
     let onTapSession: (ChewingSessionDTO) -> Void
+
+    private var sessions: [ChewingSessionDTO] {
+        monthSessions.filter { mealCalendarCalendar.isDate($0.startedAt, inSameDayAs: date) }
+    }
 
     var body: some View {
         Group {

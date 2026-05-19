@@ -47,9 +47,7 @@ struct TrackingView: View {
             NavigationStack(path: $inlineSheetPath) {
                 DaySessionsView(
                     date: day.date,
-                    sessions: inlineMonthSessions.filter {
-                        mealCalendarCalendar.isDate($0.startedAt, inSameDayAs: day.date)
-                    },
+                    monthSessions: $inlineMonthSessions,
                     onDelete: { session in
                         Task {
                             await state.deleteSession(session)
