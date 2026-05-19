@@ -111,7 +111,10 @@ final class AppState {
     var lastIMUSampleAt: Date?
 
     /// 앱 foreground 여부. scenePhase 관찰자가 갱신.
-    var isInForeground: Bool = true
+    /// 초기값 false — 앱 launch 시점엔 아직 .active phase가 아니므로, scenePhase가
+    /// `.active`로 처음 도달할 때 `sceneDidChange(toForeground:true)`의 전이
+    /// 조건(`!wasInForeground && toForeground`)이 성립해 일일 출석 보너스가 트리거된다.
+    var isInForeground: Bool = false
 
     /// 마지막으로 background로 전환된 시각. 백그라운드 체류 시간 표시용.
     var lastBackgroundedAt: Date?

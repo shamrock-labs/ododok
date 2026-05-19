@@ -14,7 +14,10 @@ struct ChewChewIOSApp: App {
                 .preferredColorScheme(.light)
                 .onAppear(perform: handleLaunchArguments)
         }
-        .onChange(of: scenePhase) { _, newPhase in
+        // `initial: true` — 콜드 스타트 시 첫 .active 도달도 콜백으로 받기 위함.
+        // 기본 onChange는 변경 시에만 호출돼, 앱 launch 직후 phase가 .active로
+        // 세팅되는 순간을 놓쳐 일일 출석 보너스 트리거가 누락됐다.
+        .onChange(of: scenePhase, initial: true) { _, newPhase in
             appState.sceneDidChange(toForeground: newPhase == .active)
         }
     }
