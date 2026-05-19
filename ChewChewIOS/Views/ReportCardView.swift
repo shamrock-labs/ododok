@@ -269,17 +269,21 @@ private extension ReportCardModel.Grade {
     }
 }
 
-/// 분석 5필드가 없는 세션(시뮬레이터/AirPods 미연결/60초 미만)에 표시되는 빈 카드.
-/// 같은 카드 frame을 유지해 디자인 일관성. SessionResultSheet(종료 직후)과
-/// SessionReportDetailView(캘린더 재현) 양쪽에서 사용.
+/// 카드 frame을 유지한 채 본문에 안내 메시지를 표시하는 빈 카드. 기본값은 분석 5필드가
+/// 없는 세션(시뮬레이터/AirPods 미연결/60초 미만)용. emoji/title/subtitle을 갈아끼우면
+/// "오늘 식사 0건" 같은 다른 빈 상태에도 같은 디자인으로 재사용 가능.
 struct EmptyReportCardView: View {
+    var emoji: String = "🐿️"
+    var title: String = "데이터가 부족해요"
+    var subtitle: String = "식사 시간이 너무 짧거나, AirPods IMU 신호를 받지 못해\n이번 식사의 분석을 만들지 못했어요."
+
     var body: some View {
         VStack(spacing: 14) {
-            Text("🐿️").font(.system(size: 48))
-            Text("데이터가 부족해요")
+            Text(emoji).font(.system(size: 48))
+            Text(title)
                 .font(.system(size: 18, weight: .heavy))
                 .foregroundStyle(Color.ink800)
-            Text("식사 시간이 너무 짧거나, AirPods IMU 신호를 받지 못해\n이번 식사의 분석을 만들지 못했어요.")
+            Text(subtitle)
                 .font(.system(size: 13))
                 .foregroundStyle(Color.ink600)
                 .multilineTextAlignment(.center)

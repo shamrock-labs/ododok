@@ -5,7 +5,9 @@ struct TrackingView: View {
 
     @State private var feedback: FeedbackLine?
     @State private var fbTimer: Timer?
-    @State private var showCalendar: Bool = false
+    @State private var inlineMonth: Date = .now
+    @State private var inlineMonthSessions: [ChewingSessionDTO] = []
+    @State private var showCalendarSheet: Bool = false
 
     /// 식사 중 여부 — 식사 세션은 AppState가 관리하고 이 화면은 관찰만.
     private var isEating: Bool { state.isEating }
@@ -14,15 +16,12 @@ struct TrackingView: View {
         VStack(spacing: 14) {
             header
             // 라이브 IMU 진단(AirPods 상태 + 샘플 카운터)은 식사 중에만 노출.
-            // 식사 사이에도 "마지막 샘플 N초 전 → 1분 전..."이 흘러서 "계속 트래킹 중"
-            // 처럼 보였던 문제 해소.
             if isEating {
                 airpodsCard
                 imuDebugPanel
             }
             todaySessionsCard
-                .frame(maxHeight: .infinity)
-            scoreCard
+            calendarSection
             tipCard
         }
         .padding(.horizontal, 24)
@@ -37,7 +36,7 @@ struct TrackingView: View {
             }
         }
         .task { await state.fetchTodaySessions() }
-        .sheet(isPresented: $showCalendar) {
+        .sheet(isPresented: $showCalendarSheet) {
             MealCalendarView()
         }
         .onChange(of: isEating) { _, isOn in
@@ -62,7 +61,7 @@ struct TrackingView: View {
         }
     }
 
-    // MARK: Demo sensor status
+    // MARK: AirPods + IMU diagnostics (식사 중에만)
 
     private var airpodsCard: some View {
         HStack(spacing: 14) {
@@ -113,10 +112,6 @@ struct TrackingView: View {
         .neuoShadow(.sm)
     }
 
-    // MARK: IMU diagnostics (작고 조용한 디버그 라인)
-
-    /// 실기기 + AirPods에서 IMU가 식사 세션 동안, 그리고 background 동안 데이터를
-    /// 받고 있는지 한눈에 확인하기 위한 디버그 라인. 원시 IMU 데이터는 저장하지 않음.
     private var imuDebugPanel: some View {
         HStack(spacing: 6) {
             Circle()
@@ -129,8 +124,6 @@ struct TrackingView: View {
                 .monospacedDigit()
             dotSeparator
             if let last = state.lastIMUSampleAt {
-                // `style: .relative` 는 1초마다 SwiftUI가 자동 갱신 → 폴링 없이 BG 복귀 후
-                // 마지막 수신 시각이 얼마나 오래됐는지 보임
                 Text(last, style: .relative)
                     .monospacedDigit()
             } else {
@@ -159,14 +152,10 @@ struct TrackingView: View {
         return "IMU 진단: \(phase), 샘플 수신 안 됨"
     }
 
-    // MARK: Today sessions card
-    //
-    // 구 dailySummaryCard 자리. 도토리/식사점수/진행률 같은 in-app 화폐 위젯은 HomeView로
-    // 분리돼 있어 여기서 제거. 사용자가 기대한 건 "사후 식사 기록"이라 chewing_session 행을
-    // 인라인 리스트로 표시. 월별 캘린더는 별도 이슈 — 이번 PR에선 캘린더 아이콘도 제거.
+    // MARK: Today sessions — 최신 1개 카드만 표시
 
     private var todaySessionsCard: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(trackingDateLabel)
@@ -183,112 +172,58 @@ struct TrackingView: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
                     .background(Color.white.opacity(0.8), in: Capsule())
-                Button { showCalendar = true } label: {
-                    Image(systemName: "calendar")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundStyle(Color.acorn600)
-                        .frame(width: 36, height: 36)
-                        .background(Color.white.opacity(0.85), in: RoundedRectangle(cornerRadius: 12))
-                }
-                .accessibilityLabel("월간 식사 캘린더")
             }
+            .padding(.horizontal, 4)
 
-            if state.todaySessions.isEmpty {
-                emptyTodaySessions
-            } else {
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 10) {
-                        ForEach(state.todaySessions, id: \.id) { session in
-                            todaySessionRow(session)
-                        }
-                    }
-                }
-            }
+            latestSessionView
         }
-        .padding(20)
+    }
+
+    @ViewBuilder
+    private var latestSessionView: some View {
+        if let latest = state.todaySessions.last {
+            if let model = ReportCardModel.from(latest) {
+                ReportCardView(model: model)
+            } else {
+                EmptyReportCardView()
+            }
+        } else {
+            EmptyReportCardView(
+                emoji: "🍽️",
+                title: "아직 오늘 식사 기록이 없어요",
+                subtitle: "홈에서 식사를 시작하면 여기에 표시돼요"
+            )
+        }
+    }
+
+    // MARK: Inline calendar (구 scoreCard 자리)
+
+    private var calendarSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("식사 캘린더")
+                    .font(.system(size: 14, weight: .heavy))
+                    .foregroundStyle(Color.ink800)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
+
+            MealCalendarGrid(
+                displayedMonth: $inlineMonth,
+                monthSessions: $inlineMonthSessions,
+                onTapDay: { _ in showCalendarSheet = true }
+            )
+        }
         .frame(maxWidth: .infinity)
-        .frame(minHeight: 250)
         .background(
             LinearGradient(
                 colors: [Color.acorn50, .cream, Color.sage50],
                 startPoint: .topLeading, endPoint: .bottomTrailing
             ),
-            in: RoundedRectangle(cornerRadius: 28)
+            in: RoundedRectangle(cornerRadius: 24)
         )
-        .neuoShadow(.md)
-    }
-
-    private var emptyTodaySessions: some View {
-        VStack(spacing: 6) {
-            Text("🍽️").font(.system(size: 30))
-            Text("아직 오늘 식사 기록이 없어요")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Color.ink600)
-            Text("홈에서 식사를 시작하면 여기에 표시돼요")
-                .font(.system(size: 11))
-                .foregroundStyle(Color.ink400)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-    }
-
-    private func todaySessionRow(_ session: ChewingSessionDTO) -> some View {
-        HStack(alignment: .center, spacing: 14) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(formatSessionTime(session.startedAt))
-                    .font(.system(size: 15, weight: .heavy))
-                    .foregroundStyle(Color.ink800)
-                    .monospacedDigit()
-                Text(formatSessionDuration(session.durationSec))
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Color.ink400)
-            }
-            .frame(width: 60, alignment: .leading)
-
-            HStack(spacing: 10) {
-                sessionMetricChip(
-                    label: "저작",
-                    value: session.estimatedTotalChews.map { "\($0.koLocale)회" } ?? "—",
-                    color: Color.acorn700
-                )
-                sessionMetricChip(
-                    label: "씹은 비율",
-                    value: session.chewingFraction.map { String(format: "%.0f%%", $0 * 100) } ?? "—",
-                    color: Color.sage600
-                )
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 16))
-    }
-
-    private func sessionMetricChip(label: String, value: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(label)
-                .font(.system(size: 9, weight: .medium))
-                .foregroundStyle(Color.ink400)
-            Text(value)
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(color)
-                .monospacedDigit()
-        }
-    }
-
-    private func formatSessionTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ko_KR")
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: date)
-    }
-
-    private func formatSessionDuration(_ seconds: Double) -> String {
-        let total = max(0, Int(seconds.rounded()))
-        let mins = total / 60
-        let secs = total % 60
-        return mins == 0 ? "\(secs)초" : "\(mins)분 \(secs)초"
+        .neuoShadow(.sm)
     }
 
     private var trackingDateLabel: String {
@@ -296,76 +231,6 @@ struct TrackingView: View {
         formatter.locale = Locale(identifier: "ko_KR")
         formatter.dateFormat = "M월 d일 EEEE"
         return formatter.string(from: Date())
-    }
-
-    // MARK: Score card
-
-    private var scoreCard: some View {
-        let todayScore = min(100, Int(Double(state.chewCount) / Double(Constants.dailyGoal) * 90))
-        let weekAvg = state.weeklyScores.reduce(0, +) / max(1, state.weeklyScores.count)
-        let diff = max(0, todayScore - weekAvg)
-
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("주간 식사 점수")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(Color.ink400)
-                    HStack(alignment: .firstTextBaseline, spacing: 4) {
-                        Text("\(todayScore)")
-                            .font(.system(size: 30, weight: .heavy))
-                            .foregroundStyle(Color.ink800)
-                        Text("점")
-                            .font(.system(size: 13))
-                            .foregroundStyle(Color.ink400)
-                    }
-                }
-                Spacer()
-                HStack(spacing: 4) {
-                    Image(systemName: "arrow.up.right")
-                        .font(.system(size: 10, weight: .bold))
-                    Text("주간 평균 +\(diff)점")
-                        .font(.system(size: 11, weight: .bold))
-                }
-                .foregroundStyle(Color.sage600)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background(Color.sage50, in: Capsule())
-            }
-
-            weeklyBars
-        }
-        .padding(16)
-        .background(.white, in: RoundedRectangle(cornerRadius: 18))
-        .neuoShadow(.sm)
-    }
-
-    private var weeklyBars: some View {
-        let days = ["월","화","수","목","금","토","일"]
-        return HStack(alignment: .bottom, spacing: 8) {
-            ForEach(state.weeklyScores.indices, id: \.self) { i in
-                let isToday = i == state.weeklyScores.count - 1
-                VStack(spacing: 4) {
-                    Spacer(minLength: 0)
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(
-                            isToday
-                                ? LinearGradient(
-                                    colors: [Color.acorn500, Color.butter400],
-                                    startPoint: .bottom, endPoint: .top)
-                                : LinearGradient(
-                                    colors: [Color.acorn200, Color.acorn100],
-                                    startPoint: .bottom, endPoint: .top)
-                        )
-                        .frame(height: CGFloat(state.weeklyScores[i]) * 0.8)
-                    Text(days[i])
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(isToday ? Color.acorn600 : Color.ink400)
-                }
-                .frame(maxWidth: .infinity)
-            }
-        }
-        .frame(height: 110)
     }
 
     // MARK: Tip card
