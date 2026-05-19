@@ -388,7 +388,16 @@ final class AppState {
             let granted = RewardLedger.claimDailyAttendance()
             if granted > 0 {
                 points += granted
+            }
+            // PRD #11 streak foreground 자동 방어 — 2일+ 공백 시 프리즈 소진 또는 리셋 trigger.
+            let streakEvents = StreakService.evaluateForegroundDefense(self)
+            if !streakEvents.isEmpty || granted > 0 {
                 persistSnapshot()
+            }
+            // dialog 우선순위: streak event(savedByFreeze/reset) > 출석 보너스.
+            if let streakGrant = StreakService.noticeGrant(from: streakEvents) {
+                pendingRewardGrant = streakGrant
+            } else if granted > 0 {
                 // ContentView overlay가 RewardDialogView를 표시. 같은 날 두 번째 진입은
                 // granted=0이라 trigger 안 됨 — idempotency가 보장.
                 pendingRewardGrant = RewardGrant(amount: granted, kind: .attendance)
