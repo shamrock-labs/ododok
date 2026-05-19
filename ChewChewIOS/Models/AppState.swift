@@ -165,6 +165,11 @@ final class AppState {
     /// ContentView가 .sheet binding으로 관찰. PRD #3 — 종료 후 2초 이내 카드 표시.
     var lastCompletedSession: ChewingSessionDTO?
 
+    /// 도토리 적립 시 ContentView가 overlay로 보여줄 RewardDialogView trigger.
+    /// RewardLedger가 +n🌰 반환했을 때 set, 사용자가 다이얼로그 dismiss 시 nil.
+    /// 이번 PR에선 일일 출석 보너스만 trigger — 세션 종료 적립 trigger는 후속.
+    var pendingRewardGrant: RewardGrant?
+
     /// 업로드 실패 시 사용자가 "다시 시도"를 누르면 재시도할 payload (finalize 결과 + 분석 통계).
     /// in-memory 1회 retry 한정 — 영구 retry 큐는 다음 PR.
     @ObservationIgnored private var pendingUpload: (output: IMUSessionRecorder.Output, stats: SessionStats?)?
@@ -350,6 +355,9 @@ final class AppState {
             if granted > 0 {
                 points += granted
                 persistSnapshot()
+                // ContentView overlay가 RewardDialogView를 표시. 같은 날 두 번째 진입은
+                // granted=0이라 trigger 안 됨 — idempotency가 보장.
+                pendingRewardGrant = RewardGrant(amount: granted, kind: .attendance)
             }
         }
         if wasInForeground && !toForeground {
@@ -821,6 +829,12 @@ final class AppState {
     }
 
     /// Alert dismiss 시 호출. 실패 상태에서 dismiss 하면 payload 폐기(= 데이터 손실 수용).
+    /// RewardDialogView가 자동(2.5s) 또는 탭으로 dismiss 시 호출.
+    @MainActor
+    func dismissPendingRewardGrant() {
+        pendingRewardGrant = nil
+    }
+
     @MainActor
     func dismissSessionUploadStatus() {
         if sessionUploadStatus == .failure {
