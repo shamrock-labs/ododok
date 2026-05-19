@@ -12,6 +12,7 @@ struct ReportCardModel: Equatable {
     let chewCount: Int
     let totalDurationSec: Double
     let chewsPerMinute: Double
+    /// 만족 표정 0~5 (PRD #3 — 점수가 아니라 5단계 표정 척도). 표시는 "n/5".
     let satisfaction: Int
     /// 한 줄 캡션. nil이면 기본 멘트 fallback.
     let caption: String?
@@ -102,7 +103,7 @@ struct ReportCardView: View {
             metric(label: "씹기 횟수", value: model.chewCount.koLocale, unit: "회")
             metric(label: "총 시간",  value: formatDurationShort(model.totalDurationSec), unit: nil)
             metric(label: "분당 속도", value: String(format: "%.0f", model.chewsPerMinute), unit: "회/분")
-            metric(label: "만족도",   value: "\(model.satisfaction)", unit: "점")
+            metric(label: "만족도",   value: "\(model.satisfaction)", unit: "/5")
         }
     }
 
@@ -187,7 +188,7 @@ struct ReportCardView: View {
             chewCount: 318,
             totalDurationSec: 642,
             chewsPerMinute: 29.7,
-            satisfaction: 88,
+            satisfaction: 4,
             caption: "오늘은 천천히 잘 씹었어요. 한 입에 30회 목표 달성!",
             endedAt: Date()
         ))
@@ -204,7 +205,7 @@ struct ReportCardView: View {
             chewCount: 192,
             totalDurationSec: 420,
             chewsPerMinute: 27.4,
-            satisfaction: 70,
+            satisfaction: 3,
             caption: nil,
             endedAt: Date()
         ))
@@ -221,10 +222,49 @@ struct ReportCardView: View {
             chewCount: 87,
             totalDurationSec: 180,
             chewsPerMinute: 29.0,
-            satisfaction: 45,
+            satisfaction: 2,
             caption: "조금 빨리 먹은 것 같아요. 다음 식사엔 한 입 30회를 의식해 봐요.",
             endedAt: Date()
         ))
         .padding(20)
+    }
+}
+
+// MARK: - ChewingSessionDTO → ReportCardModel mapper
+//
+// UI 레이어가 DTO 변경에 직접 결합되지 않도록 카드용 변환 진입점만 이 extension에서
+// 노출. 점수 산출은 `SessionScore.compute(_:)`에 위임.
+
+extension ReportCardModel {
+    /// `ChewingSessionDTO` → 카드 모델. 분석 5필드가 채워진 세션에서만 nil 아닌 값을
+    /// 반환. nil이면 호출자가 빈 상태 카드를 표시 (PRD #3 "데이터가 부족해요").
+    static func from(_ dto: ChewingSessionDTO) -> ReportCardModel? {
+        guard let score = SessionScore.compute(dto) else { return nil }
+        let mins = max(0.001, dto.durationSec / 60)
+        let chews = dto.estimatedTotalChews ?? 0
+        let chewsPerMin = Double(chews) / mins
+        // 만족 표정 0~5 — PRD가 산출식을 명시하지 않아 잠정적으로 점수에 단조 매핑.
+        // 후속 PR에서 사용자 피드백 입력으로 분리될 여지.
+        let satisfaction = max(0, min(5, Int((Double(score.total) / 20.0).rounded())))
+        return ReportCardModel(
+            score: score.total,
+            grade: Grade(scoreGrade: score.grade),
+            chewCount: chews,
+            totalDurationSec: dto.durationSec,
+            chewsPerMinute: chewsPerMin,
+            satisfaction: satisfaction,
+            caption: nil,
+            endedAt: dto.endedAt
+        )
+    }
+}
+
+private extension ReportCardModel.Grade {
+    init(scoreGrade: SessionScore.Grade) {
+        switch scoreGrade {
+        case .good: self = .good
+        case .soso: self = .soso
+        case .bad:  self = .bad
+        }
     }
 }
