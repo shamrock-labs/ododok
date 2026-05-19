@@ -8,6 +8,10 @@ struct SessionResultSheet: View {
     let dto: ChewingSessionDTO
     let onClose: () -> Void
 
+    /// PNG 렌더는 ImageRenderer 호출 비용이 작지 않아 sheet 진입 시 1회만 만든다.
+    /// 빈 상태(분석 5필드 nil) 세션에선 nil로 남아 공유 버튼이 자동 hidden.
+    @State private var sharePayload: ReportCardSharePayload?
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -24,10 +28,25 @@ struct SessionResultSheet: View {
             .navigationTitle("식사 리포트")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                if let payload = sharePayload {
+                    ToolbarItem(placement: .topBarLeading) {
+                        ShareLink(item: payload, preview: SharePreview("식사 리포트")) {
+                            Image(systemName: "square.and.arrow.up")
+                        }
+                        .foregroundStyle(Color.acorn600)
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("닫기") { onClose() }
                         .foregroundStyle(Color.ink600)
                 }
+            }
+            .task {
+                guard sharePayload == nil,
+                      let model = ReportCardModel.from(dto),
+                      let data = ReportCardRenderer.render(model)
+                else { return }
+                sharePayload = ReportCardSharePayload(imageData: data)
             }
         }
     }
