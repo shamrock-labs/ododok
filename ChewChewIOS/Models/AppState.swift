@@ -111,7 +111,10 @@ final class AppState {
     var lastIMUSampleAt: Date?
 
     /// 앱 foreground 여부. scenePhase 관찰자가 갱신.
-    var isInForeground: Bool = true
+    /// 초기값 false — 앱 launch 시점엔 아직 .active phase가 아니므로, scenePhase가
+    /// `.active`로 처음 도달할 때 `sceneDidChange(toForeground:true)`의 전이
+    /// 조건(`!wasInForeground && toForeground`)이 성립해 일일 출석 보너스가 트리거된다.
+    var isInForeground: Bool = false
 
     /// 마지막으로 background로 전환된 시각. 백그라운드 체류 시간 표시용.
     var lastBackgroundedAt: Date?
@@ -167,7 +170,9 @@ final class AppState {
 
     /// 도토리 적립 시 ContentView가 overlay로 보여줄 RewardDialogView trigger.
     /// RewardLedger가 +n🌰 반환했을 때 set, 사용자가 다이얼로그 dismiss 시 nil.
-    /// 이번 PR에선 일일 출석 보너스만 trigger — 세션 종료 적립 trigger는 후속.
+    /// 출석 보너스(`.attendance`) + 세션 종료 적립(`.sessionComplete`) 두 종 trigger.
+    /// 세션 적립 trigger는 `SessionResultSheet`와 동시 표시되지 않도록 ContentView
+    /// overlay가 `lastCompletedSession == nil`(=sheet 닫힘)일 때만 그려진다.
     var pendingRewardGrant: RewardGrant?
 
     /// 업로드 실패 시 사용자가 "다시 시도"를 누르면 재시도할 payload (finalize 결과 + 분석 통계).
@@ -773,6 +778,10 @@ final class AppState {
             if granted > 0 {
                 points += granted
                 persistSnapshot()
+                // SessionResultSheet가 먼저 떠 있는 상태 — ContentView overlay는
+                // sheet 닫힌 후(`lastCompletedSession == nil`)에만 그려져, 다이얼로그가
+                // sheet에 가려지지 않고 순차로 등장한다.
+                pendingRewardGrant = RewardGrant(amount: granted, kind: .sessionComplete)
             }
         } catch {
             sessionUploadStatus = .failure
