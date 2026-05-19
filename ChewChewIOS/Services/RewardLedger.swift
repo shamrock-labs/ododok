@@ -12,7 +12,10 @@ import Foundation
 ///
 /// 저장은 `UserDefaults`로 단순화 (앱 재시작 후에도 유지). 다른 디바이스 sync는
 /// 익명 device id 정책상 보장 안 함. 서버 ledger 테이블로 옮기는 건 별도 PR.
-@MainActor
+///
+/// `@MainActor` 격리는 두지 않음 — UserDefaults는 thread-safe하고 호출자(AppState의
+/// main actor 메서드)는 어쨌든 main에서 부른다. `resetAll()`이 nonisolated 컨텍스트
+/// (`clearPersistedSnapshot`)에서도 호출되어 actor 충돌이 나는 걸 피한다.
 enum RewardLedger {
     static let dailyAttendanceBonus: Int = 2
     static let chewMultiplier: Double = 0.05
