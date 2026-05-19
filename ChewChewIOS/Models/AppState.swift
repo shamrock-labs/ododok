@@ -253,9 +253,12 @@ final class AppState {
     // MARK: - Chew (한 입 = 한 번의 저작 신호)
 
     /// 한 번의 chew 이벤트. 추후 실제 IMU 감지기가 호출할 진입점.
+    /// 도토리(`points`) 적립은 이 함수에서 분리됨 — PRD #8의 보상 정책(일일 출석 +2🌰,
+    /// 세션 종료 시 `estimatedTotalChews × 0.05`, 일일 상한 500🌰)이 fake Timer로 굴러
+    /// 실 씹기와 무관하게 자동 누적되는 옛 동작과 어긋났던 문제 해소. 실제 도토리 적립은
+    /// `RewardLedger`(commit ③)에서 세션 종료 시 / foreground 진입 시 처리.
     func chew() {
         chewCount += 1
-        points += 1
         animKey &+= 1
 
         let now = Date()
@@ -263,9 +266,10 @@ final class AppState {
         chewTimestamps.append(now)
         chewRatePerMinute = chewTimestamps.count
 
+        // dailyGoal 첫 도달 flag는 유지 — 향후 트로피/스트릭 trigger 등으로 활용.
+        // 더 이상 여기서 도토리 보너스를 주지 않음.
         if chewCount >= Constants.dailyGoal && !goalAlreadyHit {
             goalAlreadyHit = true
-            points += 200
         }
     }
 
