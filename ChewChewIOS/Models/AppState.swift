@@ -157,6 +157,10 @@ final class AppState {
     /// 세션 종료 + INSERT 성공 시 자동 append, 탭 진입 시 fetchTodaySessions로 재동기화.
     var todaySessions: [ChewingSessionDTO] = []
 
+    /// 식사 종료 직후 표시할 리포트 카드의 source. INSERT 성공 시 set, 카드 dismiss 시 nil.
+    /// ContentView가 .sheet binding으로 관찰. PRD #3 — 종료 후 2초 이내 카드 표시.
+    var lastCompletedSession: ChewingSessionDTO?
+
     /// 업로드 실패 시 사용자가 "다시 시도"를 누르면 재시도할 payload (finalize 결과 + 분석 통계).
     /// in-memory 1회 retry 한정 — 영구 retry 큐는 다음 PR.
     @ObservationIgnored private var pendingUpload: (output: IMUSessionRecorder.Output, stats: SessionStats?)?
@@ -373,6 +377,7 @@ final class AppState {
         equipped = Equipped()
         ownedAcornPacks = [:]
         todaySessions = []
+        lastCompletedSession = nil
         // 저장된 스냅샷도 비워서 다음 실행에서 시드값이 살아남도록
         clearPersistedSnapshot()
     }
@@ -731,6 +736,8 @@ final class AppState {
             // 방금 INSERT한 행을 즉시 리스트에 반영 — GET 라운드트립 생략.
             // started_at 오름차순 정렬을 유지하기 위해 append (방금 종료된 세션이 가장 최신).
             todaySessions.append(dto)
+            // 식사 종료 직후 ReportCardView를 sheet로 띄울 trigger. 사용자가 닫으면 nil.
+            lastCompletedSession = dto
         } catch {
             sessionUploadStatus = .failure
             pendingUpload = (output: output, stats: stats)
@@ -747,6 +754,32 @@ final class AppState {
             return
         }
         todaySessions = rows
+    }
+
+    /// 단일 세션 삭제 — 캘린더 DaySessionsView에서 swipe로 호출. todaySessions에서도
+    /// 즉시 제거해 UI 동기화. 실패는 silent — 다음 reload에서 서버 상태와 다시 sync.
+    @MainActor
+    func deleteSession(_ session: ChewingSessionDTO) async {
+        let deviceId = DeviceIdentity.shared
+        do {
+            try await remoteStore.deleteChewingSession(id: session.id, deviceId: deviceId)
+            todaySessions.removeAll { $0.id == session.id }
+        } catch {
+            return
+        }
+    }
+
+    /// 모든 chewing_session 행 삭제 — MealCalendarView 도구바에서 confirm 후 호출.
+    /// profiles / user_stats(도토리 등 게임 상태)는 보존. todaySessions도 비움.
+    @MainActor
+    func deleteAllChewingSessions() async {
+        let deviceId = DeviceIdentity.shared
+        do {
+            try await remoteStore.deleteAllChewingSessions(deviceId: deviceId)
+            todaySessions = []
+        } catch {
+            return
+        }
     }
 
     /// Alert "다시 시도" 버튼에서 호출 — 마지막 실패한 payload로 1회 재시도.
