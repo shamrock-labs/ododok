@@ -9,6 +9,9 @@ import Foundation
 /// 삭제는 `deleteUserData` 한 번 (profiles → user_stats FK ON DELETE CASCADE).
 protocol RemoteStore {
     func upsertProfile(_ profile: ProfileDTO) async throws
+    /// 디바이스 식별자에 매칭되는 profile 행 1개 조회. 신규 디바이스면 nil.
+    /// `displayName` 등 사용자 식별 정보 로딩에 사용.
+    func fetchProfile(deviceId: String) async throws -> ProfileDTO?
     func upsertUserStats(_ stats: UserStatsDTO) async throws
     func fetchUserStats(deviceId: String) async throws -> UserStatsDTO?
     func deleteUserData(deviceId: String) async throws
@@ -35,6 +38,7 @@ extension RemoteStore {
 
 struct NoopRemoteStore: RemoteStore {
     func upsertProfile(_ profile: ProfileDTO) async throws {}
+    func fetchProfile(deviceId: String) async throws -> ProfileDTO? { nil }
     func upsertUserStats(_ stats: UserStatsDTO) async throws {}
     func fetchUserStats(deviceId: String) async throws -> UserStatsDTO? { nil }
     func deleteUserData(deviceId: String) async throws {}
@@ -100,6 +104,17 @@ final class InsForgeRemoteStore: RemoteStore {
         req.setValue("resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
         req.httpBody = try encoder.encode([profile])
         _ = try await sendExpectingSuccess(req)
+    }
+
+    func fetchProfile(deviceId: String) async throws -> ProfileDTO? {
+        let escaped = deviceId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? deviceId
+        let req = try jsonRequest(
+            method: "GET",
+            path: "/api/database/records/profiles?device_id=eq.\(escaped)&limit=1"
+        )
+        let data = try await sendExpectingSuccess(req)
+        let rows = try decoder.decode([ProfileDTO].self, from: data)
+        return rows.first
     }
 
     func upsertUserStats(_ stats: UserStatsDTO) async throws {

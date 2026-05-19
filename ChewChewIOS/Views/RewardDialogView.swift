@@ -16,20 +16,31 @@ struct RewardDialogView: View {
                 .frame(width: 110, height: 110)
 
             Text(grant.kind.title)
-                .font(.system(size: 18, weight: .heavy))
+                .font(.appFont(.heavy, size: 18))
                 .foregroundStyle(Color.ink800)
 
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text("+\(grant.amount)")
-                    .font(.system(size: 36, weight: .heavy))
-                    .foregroundStyle(Color.acorn700)
-                    .monospacedDigit()
-                Text("🌰")
-                    .font(.system(size: 28))
+            if grant.kind.isAcorn {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text("+\(grant.amount)")
+                        .font(.appFont(.heavy, size: 36))
+                        .foregroundStyle(Color.acorn700)
+                        .monospacedDigit()
+                    Text("🌰")
+                        .font(.appFont(.regular, size: 28))
+                }
+            } else if grant.kind.isFreezeGain {
+                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                    Text("+\(grant.amount)")
+                        .font(.appFont(.heavy, size: 36))
+                        .foregroundStyle(Color.sage600)
+                        .monospacedDigit()
+                    Text("🛡️")
+                        .font(.appFont(.regular, size: 28))
+                }
             }
 
             Text(grant.kind.subtitle)
-                .font(.system(size: 12))
+                .font(.appFont(.regular, size: 12))
                 .foregroundStyle(Color.ink600)
                 .multilineTextAlignment(.center)
                 .lineSpacing(3)
@@ -54,20 +65,29 @@ struct RewardDialogView: View {
     }
 }
 
-/// AppState가 publish하는 적립 trigger. `ContentView` overlay가 이 값을 관찰해서
-/// 다이얼로그를 띄운다. dismiss 시 nil로 비움.
+/// AppState가 publish하는 적립/알림 trigger. `ContentView` overlay가 이 값을 관찰해서
+/// 다이얼로그를 띄운다. dismiss 시 nil로 비움. 도토리 적립(`attendance`/`sessionComplete`)과
+/// PRD #11 streak 이벤트(`streakMilestone`/`streakSaved`/`streakReset`)를 한 type으로
+/// 묶어 ContentView overlay 코드를 단순화.
 struct RewardGrant: Equatable {
+    /// 표시할 숫자(도토리 또는 프리즈 잔여). kind에 따라 의미가 다름. 0이면 숫자 표시 안 함.
     let amount: Int
     let kind: Kind
 
     enum Kind: Equatable {
-        case attendance
-        case sessionComplete
+        case attendance                          // 도토리 출석 보너스 +n
+        case sessionComplete                     // 도토리 세션 종료 적립 +n
+        case streakMilestone(streakCount: Int)   // 7/30/100일 도달, 프리즈 +n(amount)
+        case streakSaved                         // 프리즈 1 자동 소진, amount=잔여
+        case streakReset                         // 끊김 리셋
 
         var title: String {
             switch self {
             case .attendance:      "출석 보상!"
             case .sessionComplete: "식사 완료!"
+            case .streakMilestone(let count): "🔥 \(count)일 달성!"
+            case .streakSaved:     "🛡️ 프리즈로 스트릭 유지"
+            case .streakReset:     "스트릭이 끊겼어요"
             }
         }
 
@@ -75,7 +95,24 @@ struct RewardGrant: Equatable {
             switch self {
             case .attendance:      "오늘도 와줘서 고마워요"
             case .sessionComplete: "꼭꼭 잘 씹었어요"
+            case .streakMilestone: "프리즈를 받았어요"
+            case .streakSaved:     "프리즈 1개로 스트릭을 지켰어요"
+            case .streakReset:     "다시 시작해 볼까요?"
             }
+        }
+
+        /// 도토리 적립 케이스 — RewardDialogView가 "+n🌰" 표시
+        var isAcorn: Bool {
+            switch self {
+            case .attendance, .sessionComplete: true
+            default: false
+            }
+        }
+
+        /// 프리즈 적립 케이스 — "+n🛡️" 표시
+        var isFreezeGain: Bool {
+            if case .streakMilestone = self { return true }
+            return false
         }
     }
 }

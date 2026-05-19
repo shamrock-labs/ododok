@@ -47,18 +47,18 @@ struct MealCalendarGrid: View {
         HStack {
             Button { goToMonth(-1) } label: {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appFont(.bold, size: 13))
                     .frame(width: 32, height: 32)
                     .background(Color.white.opacity(0.7), in: Circle())
             }
             Spacer()
             Text(monthTitle)
-                .font(.system(size: 15, weight: .heavy))
+                .font(.appFont(.heavy, size: 15))
                 .foregroundStyle(Color.ink800)
             Spacer()
             Button { goToMonth(+1) } label: {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appFont(.bold, size: 13))
                     .frame(width: 32, height: 32)
                     .background(Color.white.opacity(0.7), in: Circle())
             }
@@ -71,7 +71,7 @@ struct MealCalendarGrid: View {
         return HStack(spacing: 4) {
             ForEach(symbols, id: \.self) { sym in
                 Text(sym)
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.appFont(.bold, size: 10))
                     .foregroundStyle(weekdayLabelColor(sym))
                     .frame(maxWidth: .infinity)
             }
@@ -293,7 +293,7 @@ struct DaySessionsView: View {
                 VStack {
                     Spacer()
                     Text("이 날엔 식사 기록이 없어요.")
-                        .font(.system(size: 13))
+                        .font(.appFont(.regular, size: 13))
                         .foregroundStyle(Color.ink600)
                     Spacer()
                 }
@@ -336,22 +336,22 @@ struct DaySessionsView: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(formatTime(session.startedAt))
-                    .font(.system(size: 15, weight: .heavy))
+                    .font(.appFont(.heavy, size: 15))
                     .foregroundStyle(Color.ink800)
                     .monospacedDigit()
                 Text(formatDuration(session.durationSec))
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.appFont(.medium, size: 11))
                     .foregroundStyle(Color.ink400)
             }
             .frame(width: 70, alignment: .leading)
             VStack(alignment: .leading, spacing: 4) {
                 if let chews = session.estimatedTotalChews {
                     Text("\(chews.koLocale)회 · 씹은 비율 \(String(format: "%.0f%%", (session.chewingFraction ?? 0) * 100))")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appFont(.bold, size: 13))
                         .foregroundStyle(Color.ink800)
                 } else {
                     Text("분석 없음")
-                        .font(.system(size: 13))
+                        .font(.appFont(.regular, size: 13))
                         .foregroundStyle(Color.ink400)
                 }
             }
