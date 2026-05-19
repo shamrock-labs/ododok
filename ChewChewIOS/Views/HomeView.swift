@@ -30,44 +30,11 @@ struct HomeView: View {
                     .foregroundStyle(Color.ink800)
             }
             Spacer()
-            streakHeaderBadge
             HStack(spacing: 10) {
                 circleButton("bell.fill")
                 circleButton("gearshape.fill")
             }
         }
-    }
-
-    /// PRD #11 — 메인 상단 🔥 N일 배지. 프리즈 보유 시 🛡️도 옆에 함께 노출.
-    private var streakHeaderBadge: some View {
-        HStack(spacing: 6) {
-            HStack(spacing: 3) {
-                Text("🔥").font(.appFont(.regular, size: 14))
-                Text("\(state.streak)")
-                    .font(.appFont(.heavy, size: 14))
-                    .foregroundStyle(Color.blush500)
-                    .monospacedDigit()
-            }
-            if state.freezeInventory > 0 {
-                HStack(spacing: 2) {
-                    Text("🛡️").font(.appFont(.regular, size: 12))
-                    Text("\(state.freezeInventory)")
-                        .font(.appFont(.heavy, size: 12))
-                        .foregroundStyle(Color.sage600)
-                        .monospacedDigit()
-                }
-            }
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(Color.white, in: Capsule())
-        .neuoShadow(.sm)
-        .accessibilityLabel(streakAccessibilityLabel)
-    }
-
-    private var streakAccessibilityLabel: String {
-        let base = "연속 출석 \(state.streak)일"
-        return state.freezeInventory > 0 ? "\(base), 프리즈 \(state.freezeInventory)개 보유" : base
     }
 
     private var todayLabel: String {
@@ -94,7 +61,7 @@ struct HomeView: View {
     private var statRow: some View {
         HStack(spacing: 14) {
             statCard(
-                label: "연속 출석",
+                label: state.freezeInventory > 0 ? "연속 출석 · 🛡️\(state.freezeInventory)" : "연속 출석",
                 value: "\(state.streak)일째 🔥",
                 iconBG: Color.blush100
             ) {

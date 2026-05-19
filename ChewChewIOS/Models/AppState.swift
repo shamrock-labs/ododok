@@ -851,12 +851,16 @@ final class AppState {
     /// 결정할 때 참조.
     @MainActor
     private func fetchAndApplyDisplayName() async {
-        defer { didLoadProfile = true }
         let deviceId = DeviceIdentity.shared
-        guard let profile = try? await remoteStore.fetchProfile(deviceId: deviceId) else { return }
-        if let name = profile.displayName, !name.isEmpty, name != displayName {
+        let profile = try? await remoteStore.fetchProfile(deviceId: deviceId)
+        if let name = profile?.displayName, !name.isEmpty, name != displayName {
             displayName = name
         }
+        // displayName 먼저 set 후 마지막에 didLoadProfile = true. 둘이 같은 main-actor
+        // 동기 블록에서 순차로 갱신되면 ContentView의 onboardingBinding 평가가 한 frame에
+        // 일관된 두 값으로 수행돼, "didLoadProfile만 true + displayName 아직 nil" 중간
+        // 상태에서 sheet이 열리는 race를 피한다.
+        didLoadProfile = true
     }
 
     /// Onboarding sheet의 "저장" 버튼에서 호출. trim 후 in-memory + DB upsert.
