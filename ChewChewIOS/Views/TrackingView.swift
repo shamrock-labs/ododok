@@ -5,6 +5,7 @@ struct TrackingView: View {
 
     @State private var feedback: FeedbackLine?
     @State private var fbTimer: Timer?
+    @State private var showCalendar: Bool = false
 
     /// 식사 중 여부 — 식사 세션은 AppState가 관리하고 이 화면은 관찰만.
     private var isEating: Bool { state.isEating }
@@ -36,6 +37,9 @@ struct TrackingView: View {
             }
         }
         .task { await state.fetchTodaySessions() }
+        .sheet(isPresented: $showCalendar) {
+            MealCalendarView()
+        }
         .onChange(of: isEating) { _, isOn in
             if isOn { startFeedbackLoop() } else { stopFeedbackLoop() }
         }
@@ -179,6 +183,14 @@ struct TrackingView: View {
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
                     .background(Color.white.opacity(0.8), in: Capsule())
+                Button { showCalendar = true } label: {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundStyle(Color.acorn600)
+                        .frame(width: 36, height: 36)
+                        .background(Color.white.opacity(0.85), in: RoundedRectangle(cornerRadius: 12))
+                }
+                .accessibilityLabel("월간 식사 캘린더")
             }
 
             if state.todaySessions.isEmpty {

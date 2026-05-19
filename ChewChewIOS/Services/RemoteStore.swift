@@ -13,9 +13,19 @@ protocol RemoteStore {
     func fetchUserStats(deviceId: String) async throws -> UserStatsDTO?
     func deleteUserData(deviceId: String) async throws
     func insertSession(_ session: ChewingSessionDTO) async throws
-    /// 특정 시각 이후 시작된 세션을 시간 오름차순으로 조회. "오늘의 식사 기록" 등에 사용.
-    func fetchChewingSessions(deviceId: String, since: Date) async throws -> [ChewingSessionDTO]
+    /// `since` 이후 + 옵셔널 `until` 이전에 시작된 세션을 시간 오름차순으로 조회.
+    /// "오늘의 식사 기록"은 since=오늘 0시 / until=nil, 월간 캘린더는 since=월 첫날 /
+    /// until=다음 달 첫날로 호출.
+    func fetchChewingSessions(deviceId: String, since: Date, until: Date?) async throws -> [ChewingSessionDTO]
     func uploadIMUCSV(sessionId: UUID, deviceId: String, csvData: Data) async throws -> String
+}
+
+extension RemoteStore {
+    /// 상한 없는 편의 메서드 — `fetchChewingSessions(deviceId:since:until:)`에 `until: nil`을
+    /// 위임. 기존 "오늘의 식사 기록" 호출자(`AppState.fetchTodaySessions`) 그대로 사용.
+    func fetchChewingSessions(deviceId: String, since: Date) async throws -> [ChewingSessionDTO] {
+        try await fetchChewingSessions(deviceId: deviceId, since: since, until: nil)
+    }
 }
 
 struct NoopRemoteStore: RemoteStore {
@@ -24,7 +34,7 @@ struct NoopRemoteStore: RemoteStore {
     func fetchUserStats(deviceId: String) async throws -> UserStatsDTO? { nil }
     func deleteUserData(deviceId: String) async throws {}
     func insertSession(_ session: ChewingSessionDTO) async throws {}
-    func fetchChewingSessions(deviceId: String, since: Date) async throws -> [ChewingSessionDTO] { [] }
+    func fetchChewingSessions(deviceId: String, since: Date, until: Date?) async throws -> [ChewingSessionDTO] { [] }
     func uploadIMUCSV(sessionId: UUID, deviceId: String, csvData: Data) async throws -> String { "" }
 }
 
@@ -121,14 +131,18 @@ final class InsForgeRemoteStore: RemoteStore {
         _ = try await sendExpectingSuccess(req)
     }
 
-    func fetchChewingSessions(deviceId: String, since: Date) async throws -> [ChewingSessionDTO] {
+    func fetchChewingSessions(deviceId: String, since: Date, until: Date?) async throws -> [ChewingSessionDTO] {
         let escapedDevice = deviceId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? deviceId
         let sinceIso = Self.isoFormatter.string(from: since)
         let escapedSince = sinceIso.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? sinceIso
-        let req = try jsonRequest(
-            method: "GET",
-            path: "/api/database/records/chewing_session?device_id=eq.\(escapedDevice)&started_at=gte.\(escapedSince)&order=started_at.asc"
-        )
+        var path = "/api/database/records/chewing_session?device_id=eq.\(escapedDevice)&started_at=gte.\(escapedSince)"
+        if let until {
+            let untilIso = Self.isoFormatter.string(from: until)
+            let escapedUntil = untilIso.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? untilIso
+            path += "&started_at=lt.\(escapedUntil)"
+        }
+        path += "&order=started_at.asc"
+        let req = try jsonRequest(method: "GET", path: path)
         let data = try await sendExpectingSuccess(req)
         return try decoder.decode([ChewingSessionDTO].self, from: data)
     }
