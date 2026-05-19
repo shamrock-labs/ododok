@@ -16,31 +16,31 @@ struct RewardDialogView: View {
                 .frame(width: 110, height: 110)
 
             Text(grant.kind.title)
-                .font(.system(size: 18, weight: .heavy))
+                .font(.appFont(.heavy, size: 18))
                 .foregroundStyle(Color.ink800)
 
             if grant.kind.isAcorn {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text("+\(grant.amount)")
-                        .font(.system(size: 36, weight: .heavy))
+                        .font(.appFont(.heavy, size: 36))
                         .foregroundStyle(Color.acorn700)
                         .monospacedDigit()
                     Text("🌰")
-                        .font(.system(size: 28))
+                        .font(.appFont(.regular, size: 28))
                 }
             } else if grant.kind.isFreezeGain {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
                     Text("+\(grant.amount)")
-                        .font(.system(size: 36, weight: .heavy))
+                        .font(.appFont(.heavy, size: 36))
                         .foregroundStyle(Color.sage600)
                         .monospacedDigit()
                     Text("🛡️")
-                        .font(.system(size: 28))
+                        .font(.appFont(.regular, size: 28))
                 }
             }
 
             Text(grant.kind.subtitle)
-                .font(.system(size: 12))
+                .font(.appFont(.regular, size: 12))
                 .foregroundStyle(Color.ink600)
                 .multilineTextAlignment(.center)
                 .lineSpacing(3)

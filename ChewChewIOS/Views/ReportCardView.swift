@@ -62,14 +62,14 @@ struct ReportCardView: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(headerDateLabel)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.appFont(.medium, size: 11))
                     .foregroundStyle(Color.ink400)
                 Text("식사 리포트")
-                    .font(.system(size: 22, weight: .heavy))
+                    .font(.appFont(.heavy, size: 22))
                     .foregroundStyle(Color.ink800)
             }
             Spacer()
-            Text("🌰").font(.system(size: 28))
+            Text("🌰").font(.appFont(.regular, size: 28))
         }
     }
 
@@ -77,15 +77,15 @@ struct ReportCardView: View {
         VStack(spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
                 Text("\(model.score)")
-                    .font(.system(size: 72, weight: .heavy))
+                    .font(.appFont(.heavy, size: 72))
                     .foregroundStyle(gradeColor)
                     .monospacedDigit()
                 Text("점")
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.appFont(.bold, size: 22))
                     .foregroundStyle(Color.ink400)
             }
             Text(model.grade.label)
-                .font(.system(size: 13, weight: .bold))
+                .font(.appFont(.bold, size: 13))
                 .foregroundStyle(gradeColor)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 6)
@@ -110,18 +110,18 @@ struct ReportCardView: View {
     private func metric(label: String, value: String, unit: String?) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(label)
-                .font(.system(size: 11, weight: .medium))
+                .font(.appFont(.medium, size: 11))
                 .foregroundStyle(Color.ink400)
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text(value)
-                    .font(.system(size: 22, weight: .heavy))
+                    .font(.appFont(.heavy, size: 22))
                     .foregroundStyle(Color.ink800)
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
                     .monospacedDigit()
                 if let unit {
                     Text(unit)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appFont(.bold, size: 12))
                         .foregroundStyle(Color.acorn600)
                 }
             }
@@ -133,9 +133,9 @@ struct ReportCardView: View {
 
     private var captionSection: some View {
         HStack(alignment: .top, spacing: 10) {
-            Text("💬").font(.system(size: 16))
+            Text("💬").font(.appFont(.regular, size: 16))
             Text(model.caption ?? "오늘도 잘 챙겨 먹었어요.")
-                .font(.system(size: 13))
+                .font(.appFont(.regular, size: 13))
                 .foregroundStyle(Color.ink600)
                 .lineSpacing(3)
             Spacer(minLength: 0)
@@ -149,7 +149,7 @@ struct ReportCardView: View {
         HStack {
             Spacer()
             Text("다람이 · chewchew.app")
-                .font(.system(size: 10, weight: .medium))
+                .font(.appFont(.medium, size: 10))
                 .foregroundStyle(Color.ink400)
         }
     }
@@ -279,12 +279,12 @@ struct EmptyReportCardView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            Text(emoji).font(.system(size: 48))
+            Text(emoji).font(.appFont(.regular, size: 48))
             Text(title)
-                .font(.system(size: 18, weight: .heavy))
+                .font(.appFont(.heavy, size: 18))
                 .foregroundStyle(Color.ink800)
             Text(subtitle)
-                .font(.system(size: 13))
+                .font(.appFont(.regular, size: 13))
                 .foregroundStyle(Color.ink600)
                 .multilineTextAlignment(.center)
                 .lineSpacing(3)

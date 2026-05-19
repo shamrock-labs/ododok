@@ -15,7 +15,7 @@ struct TabBarView: View {
                             .font(.system(size: 22, weight: active ? .bold : .regular))
                             .foregroundStyle(active ? Color.acorn600 : Color.ink400)
                         Text(tab.label)
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.appFont(.bold, size: 10))
                             .foregroundStyle(active ? Color.acorn700 : Color.ink400)
                     }
                     .frame(maxWidth: .infinity)

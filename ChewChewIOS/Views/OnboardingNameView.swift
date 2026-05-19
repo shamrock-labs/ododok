@@ -21,10 +21,10 @@ struct OnboardingNameView: View {
 
             VStack(spacing: 8) {
                 Text("처음 오셨네요!")
-                    .font(.system(size: 22, weight: .heavy))
+                    .font(.appFont(.heavy, size: 22))
                     .foregroundStyle(Color.ink800)
                 Text("어떻게 불러드릴까요?")
-                    .font(.system(size: 14))
+                    .font(.appFont(.regular, size: 14))
                     .foregroundStyle(Color.ink600)
             }
 
@@ -32,7 +32,7 @@ struct OnboardingNameView: View {
                 .focused($isFocused)
                 .submitLabel(.done)
                 .onSubmit { submit() }
-                .font(.system(size: 16, weight: .semibold))
+                .font(.appFont(.semibold, size: 16))
                 .padding(.horizontal, 18)
                 .padding(.vertical, 14)
                 .background(Color.white.opacity(0.85), in: RoundedRectangle(cornerRadius: 14))
@@ -41,7 +41,7 @@ struct OnboardingNameView: View {
 
             Button { submit() } label: {
                 Text("시작하기")
-                    .font(.system(size: 16, weight: .heavy))
+                    .font(.appFont(.heavy, size: 16))
                     .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)

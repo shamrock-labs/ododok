@@ -37,10 +37,10 @@ private struct ShopPlaceholderView: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("출시 예정")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.appFont(.medium, size: 11))
                     .foregroundStyle(Color.ink400)
                 Text("상점")
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.appFont(.bold, size: 24))
                     .foregroundStyle(Color.ink800)
             }
             Spacer()
@@ -58,18 +58,18 @@ private struct ShopPlaceholderView: View {
                     .frame(width: 108, height: 108)
                     .neuoShadow(.sm)
                 Text("상점은\n준비 중")
-                    .font(.system(size: 20, weight: .heavy))
+                    .font(.appFont(.heavy, size: 20))
                     .multilineTextAlignment(.center)
                     .foregroundStyle(Color.acorn700)
             }
 
             VStack(spacing: 6) {
                 Text("상점은 곧 열려요")
-                    .font(.system(size: 21, weight: .heavy))
+                    .font(.appFont(.heavy, size: 21))
                     .foregroundStyle(Color.ink800)
                     .multilineTextAlignment(.center)
                 Text("도토리로 다람쥐를 꾸미는 기능을 준비 중이에요.\n우선은 저작 트래킹과 목표 달성에 집중해주세요.")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.appFont(.medium, size: 13))
                     .foregroundStyle(Color.ink600)
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
@@ -93,17 +93,17 @@ private struct ShopPlaceholderView: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 Image(systemName: "sparkles")
-                    .font(.system(size: 18, weight: .bold))
+                    .font(.appFont(.bold, size: 18))
                     .foregroundStyle(Color.butter600)
                     .frame(width: 38, height: 38)
                     .background(Color.butter100, in: RoundedRectangle(cornerRadius: 12))
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("다음 라운드")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appFont(.bold, size: 12))
                         .foregroundStyle(Color.ink800)
                     Text("모자 · 안경 · 액세서리 · 도토리 팩")
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.appFont(.medium, size: 11))
                         .foregroundStyle(Color.ink400)
                 }
 
@@ -111,7 +111,7 @@ private struct ShopPlaceholderView: View {
             }
 
             Text("저작 트래킹이 안정화되면 상점이 열릴 예정이에요.")
-                .font(.system(size: 12))
+                .font(.appFont(.regular, size: 12))
                 .foregroundStyle(Color.ink600)
                 .lineSpacing(3)
         }
@@ -185,17 +185,17 @@ private struct ShopGridView: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("다람쥐 꾸미기")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.appFont(.medium, size: 11))
                     .foregroundStyle(Color.ink400)
                 Text("상점")
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.appFont(.bold, size: 24))
                     .foregroundStyle(Color.ink800)
             }
             Spacer()
             HStack(spacing: 6) {
-                Text("🌰").font(.system(size: 16))
+                Text("🌰").font(.appFont(.regular, size: 16))
                 Text(state.points.koLocale)
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.appFont(.bold, size: 14))
                     .foregroundStyle(Color.acorn700)
                     .monospacedDigit()
             }
@@ -217,9 +217,9 @@ private struct ShopGridView: View {
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: cat.icon)
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.appFont(.bold, size: 11))
                             Text(cat.label)
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.appFont(.bold, size: 12))
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
@@ -270,7 +270,7 @@ private struct ShopGridView: View {
             HStack {
                 if item.rarity == .rare {
                     Text("RARE")
-                        .font(.system(size: 9, weight: .heavy))
+                        .font(.appFont(.heavy, size: 9))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
@@ -286,11 +286,11 @@ private struct ShopGridView: View {
                 Spacer()
                 if equipped {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 14))
+                        .font(.appFont(.regular, size: 14))
                         .foregroundStyle(Color.sage500)
                 } else if owned {
                     Text("보유")
-                        .font(.system(size: 9, weight: .bold))
+                        .font(.appFont(.bold, size: 9))
                         .foregroundStyle(Color.acorn700)
                         .padding(.horizontal, 6)
                         .padding(.vertical, 2)
@@ -299,16 +299,16 @@ private struct ShopGridView: View {
             }
 
             Text(item.emoji)
-                .font(.system(size: 44))
+                .font(.appFont(.regular, size: 44))
                 .frame(height: 60)
 
             VStack(spacing: 2) {
                 Text(item.name)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appFont(.bold, size: 13))
                     .foregroundStyle(Color.ink800)
                     .lineLimit(1)
                 Text(typeLabel(item.type))
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.appFont(.medium, size: 10))
                     .foregroundStyle(Color.ink400)
             }
 
@@ -381,7 +381,7 @@ private struct ShopGridView: View {
 
     private func pillLabel(_ text: String, style: PillStyle) -> some View {
         Text(text)
-            .font(.system(size: 12, weight: .bold))
+            .font(.appFont(.bold, size: 12))
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 8)
@@ -397,9 +397,9 @@ private struct ShopGridView: View {
 
     private func pricePill(_ price: Int, enabled: Bool) -> some View {
         HStack(spacing: 4) {
-            Text("🌰").font(.system(size: 11))
+            Text("🌰").font(.appFont(.regular, size: 11))
             Text(price.koLocale)
-                .font(.system(size: 12, weight: .bold))
+                .font(.appFont(.bold, size: 12))
                 .monospacedDigit()
         }
         .foregroundStyle(enabled ? .white : Color.ink400)
@@ -423,7 +423,7 @@ private struct ShopGridView: View {
                 packCard(pack)
             }
             Text("도토리팩 효과는 추후 자동 연동돼요. 지금은 보유 카운트만 누적됩니다.")
-                .font(.system(size: 11))
+                .font(.appFont(.regular, size: 11))
                 .foregroundStyle(Color.ink400)
                 .multilineTextAlignment(.center)
                 .padding(.top, 6)
@@ -438,18 +438,18 @@ private struct ShopGridView: View {
 
         return HStack(spacing: 14) {
             Text(pack.emoji)
-                .font(.system(size: 32))
+                .font(.appFont(.regular, size: 32))
                 .frame(width: 56, height: 56)
                 .background(Color.butter100, in: RoundedRectangle(cornerRadius: 14))
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Text(pack.name)
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.appFont(.bold, size: 14))
                         .foregroundStyle(Color.ink800)
                     if count > 0 {
                         Text("보유 \(count)")
-                            .font(.system(size: 9, weight: .bold))
+                            .font(.appFont(.bold, size: 9))
                             .foregroundStyle(Color.acorn700)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 1)
@@ -457,7 +457,7 @@ private struct ShopGridView: View {
                     }
                 }
                 Text(pack.effect)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.appFont(.medium, size: 11))
                     .foregroundStyle(Color.ink400)
             }
 
@@ -474,9 +474,9 @@ private struct ShopGridView: View {
                 }
             } label: {
                 HStack(spacing: 4) {
-                    Text("🌰").font(.system(size: 11))
+                    Text("🌰").font(.appFont(.regular, size: 11))
                     Text(pack.price.koLocale)
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.appFont(.bold, size: 12))
                         .monospacedDigit()
                 }
                 .foregroundStyle(canAfford ? .white : Color.ink400)
@@ -521,9 +521,9 @@ private struct ShopGridView: View {
         if let t = toast {
             HStack(spacing: 8) {
                 Image(systemName: toastIcon(t.kind))
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appFont(.bold, size: 13))
                 Text(t.text)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appFont(.bold, size: 13))
             }
             .foregroundStyle(.white)
             .padding(.horizontal, 16)

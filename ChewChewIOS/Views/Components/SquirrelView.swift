@@ -41,23 +41,23 @@ struct SquirrelView: View {
 
             if let hat {
                 Text(hat.emoji)
-                    .font(.system(size: 30))
+                    .font(.appFont(.regular, size: 30))
                     .offset(y: -52)
             }
             if let glasses {
                 Text(glasses.emoji)
-                    .font(.system(size: 20))
+                    .font(.appFont(.regular, size: 20))
                     .offset(y: -2)
             }
             if let acc {
                 Text(acc.emoji)
-                    .font(.system(size: 18))
+                    .font(.appFont(.regular, size: 18))
                     .offset(x: 40, y: 36)
             }
 
             if mood == .sleepy {
                 Text("💤")
-                    .font(.system(size: 18))
+                    .font(.appFont(.regular, size: 18))
                     .offset(x: 48, y: -50)
             }
 
@@ -66,7 +66,7 @@ struct SquirrelView: View {
                     let xs: [CGFloat] = [-48, -34, 48]
                     let ys: [CGFloat] = [-48, 48, -34]
                     Image(systemName: "sparkles")
-                        .font(.system(size: 18))
+                        .font(.appFont(.regular, size: 18))
                         .foregroundStyle(Color.butter500)
                         .offset(x: xs[i], y: ys[i])
                 }
