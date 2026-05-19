@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// 캘린더/그리드/리스트 모두에서 같은 day boundary 동작 보장. 두 view가 각자 instance를
-/// 생성했을 때 발생할 수 있는 미세한 차이를 차단.
-private let mealCalendarCalendar: Calendar = {
+/// 생성했을 때 발생할 수 있는 미세한 차이를 차단. TrackingView 인라인 캘린더에서도
+/// 같은 instance로 filter해야 dot/리스트 일관성이 깨지지 않아 internal 노출.
+let mealCalendarCalendar: Calendar = {
     var c = Calendar(identifier: .gregorian)
     c.locale = Locale(identifier: "ko_KR")
     return c
@@ -102,24 +103,17 @@ struct MealCalendarGrid: View {
     }
 
     private func dayCell(date: Date) -> some View {
+        // LazyVGrid 안 NavigationLink / Button + buttonStyle.plain 조합이 일부 환경에서
+        // 탭 자체가 안 먹는 회귀가 있어, 단순 `onTapGesture` + `contentShape(Rectangle())`
+        // 패턴으로 통일. 풀스크린 sheet 모드도 같은 closure 경로를 쓰도록 onTapDay를
+        // 호출자가 반드시 전달.
         let count = sessionsCount(on: date)
-        return Group {
-            if count > 0 {
-                if let onTap = onTapDay {
-                    Button { onTap(date) } label: {
-                        dayCellContent(date: date)
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    NavigationLink(value: date) {
-                        dayCellContent(date: date)
-                    }
-                    .buttonStyle(.plain)
-                }
-            } else {
-                dayCellContent(date: date)
+        return dayCellContent(date: date)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard count > 0 else { return }
+                onTapDay?(date)
             }
-        }
     }
 
     private func dayCellContent(date: Date) -> some View {
@@ -206,15 +200,19 @@ struct MealCalendarView: View {
     @State private var displayedMonth: Date = .now
     @State private var monthSessions: [ChewingSessionDTO] = []
     @State private var showDeleteAllConfirm: Bool = false
+    @State private var path = NavigationPath()
 
     private var calendar: Calendar { mealCalendarCalendar }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ScrollView {
                 MealCalendarGrid(
                     displayedMonth: $displayedMonth,
-                    monthSessions: $monthSessions
+                    monthSessions: $monthSessions,
+                    onTapDay: { date in
+                        path.append(date)
+                    }
                 )
                 .padding(20)
             }
@@ -259,6 +257,9 @@ struct MealCalendarView: View {
                             await state.deleteSession(session)
                             monthSessions.removeAll { $0.id == session.id }
                         }
+                    },
+                    onTapSession: { session in
+                        path.append(session.id)
                     }
                 )
             }
@@ -277,6 +278,8 @@ struct DaySessionsView: View {
     let date: Date
     let sessions: [ChewingSessionDTO]
     let onDelete: (ChewingSessionDTO) -> Void
+    /// row 탭 시 호출. 호출자가 NavigationPath append 또는 다른 전환 처리.
+    let onTapSession: (ChewingSessionDTO) -> Void
 
     var body: some View {
         Group {
@@ -291,19 +294,19 @@ struct DaySessionsView: View {
             } else {
                 List {
                     ForEach(sessions, id: \.id) { session in
-                        NavigationLink(value: session.id) {
-                            sessionRow(session)
-                        }
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                onDelete(session)
-                            } label: {
-                                Label("삭제", systemImage: "trash")
+                        sessionRow(session)
+                            .contentShape(Rectangle())
+                            .onTapGesture { onTapSession(session) }
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    onDelete(session)
+                                } label: {
+                                    Label("삭제", systemImage: "trash")
+                                }
                             }
-                        }
                     }
                 }
                 .listStyle(.plain)
