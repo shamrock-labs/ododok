@@ -35,6 +35,14 @@ struct MealCalendarView: View {
             .onChange(of: displayedMonth) { _, _ in
                 Task { await reload() }
             }
+            .navigationDestination(for: Date.self) { date in
+                DaySessionsView(date: date, sessions: sessionsOn(date))
+            }
+            .navigationDestination(for: UUID.self) { sessionId in
+                if let session = monthSessions.first(where: { $0.id == sessionId }) {
+                    SessionReportDetailView(dto: session)
+                }
+            }
         }
     }
 
@@ -103,6 +111,20 @@ struct MealCalendarView: View {
 
     private func dayCell(date: Date) -> some View {
         let count = sessionsCount(on: date)
+        return Group {
+            if count > 0 {
+                NavigationLink(value: date) {
+                    dayCellContent(date: date)
+                }
+                .buttonStyle(.plain)
+            } else {
+                dayCellContent(date: date)
+            }
+        }
+    }
+
+    private func dayCellContent(date: Date) -> some View {
+        let count = sessionsCount(on: date)
         let isToday = calendar.isDateInToday(date)
         return VStack(spacing: 4) {
             Text("\(calendar.component(.day, from: date))")
@@ -155,8 +177,12 @@ struct MealCalendarView: View {
         return cells
     }
 
+    private func sessionsOn(_ date: Date) -> [ChewingSessionDTO] {
+        monthSessions.filter { calendar.isDate($0.startedAt, inSameDayAs: date) }
+    }
+
     private func sessionsCount(on date: Date) -> Int {
-        monthSessions.filter { calendar.isDate($0.startedAt, inSameDayAs: date) }.count
+        sessionsOn(date).count
     }
 
     private func goToMonth(_ delta: Int) {
@@ -181,5 +207,117 @@ struct MealCalendarView: View {
             until: monthInterval.end
         )) ?? []
         monthSessions = rows
+    }
+}
+
+// MARK: - Day sessions list (캘린더 셀 → 그날 세션 리스트)
+
+private struct DaySessionsView: View {
+    let date: Date
+    let sessions: [ChewingSessionDTO]
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 10) {
+                if sessions.isEmpty {
+                    Text("이 날엔 식사 기록이 없어요.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.ink600)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 60)
+                } else {
+                    ForEach(sessions, id: \.id) { session in
+                        NavigationLink(value: session.id) {
+                            sessionRow(session)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .padding(20)
+        }
+        .background(LinearGradient.appBackground.ignoresSafeArea())
+        .navigationTitle(dateLabel)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var dateLabel: String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ko_KR")
+        f.dateFormat = "M월 d일 EEEE"
+        return f.string(from: date)
+    }
+
+    private func sessionRow(_ session: ChewingSessionDTO) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(formatTime(session.startedAt))
+                    .font(.system(size: 15, weight: .heavy))
+                    .foregroundStyle(Color.ink800)
+                    .monospacedDigit()
+                Text(formatDuration(session.durationSec))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(Color.ink400)
+            }
+            .frame(width: 70, alignment: .leading)
+            VStack(alignment: .leading, spacing: 4) {
+                if let chews = session.estimatedTotalChews {
+                    Text("\(chews.koLocale)회 · 씹은 비율 \(String(format: "%.0f%%", (session.chewingFraction ?? 0) * 100))")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Color.ink800)
+                } else {
+                    Text("분석 없음")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.ink400)
+                }
+            }
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(Color.ink400)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .background(Color.white.opacity(0.78), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    private func formatTime(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ko_KR")
+        f.dateFormat = "HH:mm"
+        return f.string(from: d)
+    }
+
+    private func formatDuration(_ seconds: Double) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        let mins = total / 60
+        let secs = total % 60
+        if mins == 0 { return "\(secs)초" }
+        if secs == 0 { return "\(mins)분" }
+        return "\(mins)분 \(secs)초"
+    }
+}
+
+// MARK: - Single session detail (NavigationStack push)
+
+/// 캘린더에서 push되는 단일 세션 리포트 화면. SessionResultSheet과 같은 카드를 보여주지만
+/// modal sheet이 아니라 navigation push라 닫기 CTA 없고 system back button만 사용.
+private struct SessionReportDetailView: View {
+    let dto: ChewingSessionDTO
+
+    var body: some View {
+        ScrollView {
+            Group {
+                if let model = ReportCardModel.from(dto) {
+                    ReportCardView(model: model)
+                } else {
+                    EmptyReportCardView()
+                }
+            }
+            .padding(20)
+        }
+        .background(LinearGradient.appBackground.ignoresSafeArea())
+        .navigationTitle("식사 리포트")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }
