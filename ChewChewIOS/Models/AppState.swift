@@ -67,6 +67,25 @@ final class AppState {
     var animKey: Int = 0
     var weeklyScores: [Int] = []
 
+    /// 사용자가 onboarding에서 입력한 표시 이름. `profiles.displayName`과 매핑.
+    /// nil이면 HomeView는 "친구" 등 fallback. didSet에서 UserDefaults 캐시 갱신.
+    var displayName: String? {
+        didSet {
+            if let name = displayName {
+                UserDefaults.standard.set(name, forKey: Self.displayNameKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.displayNameKey)
+            }
+        }
+    }
+
+    /// `fetchAndApplyDisplayName` 한 번 끝났는지. 시작 직후 DB fetch 완료 전엔 false로 두어
+    /// "기존 사용자가 reinstall한 cold-start에서 sheet이 잠깐 깜빡이는" 케이스를 차단.
+    /// 처음 fetch가 끝나면 true로 마크 — 그 시점에 displayName nil이면 진짜 신규 디바이스.
+    var didLoadProfile: Bool = false
+
+    private static let displayNameKey = "ChewChewIOS.AppState.displayName"
+
     // MARK: - Wardrobe (다람쥐 꾸미기)
 
     /// 보유 중인 ShopItem id 집합.
@@ -191,10 +210,14 @@ final class AppState {
 
     init(remoteStore: RemoteStore = NoopRemoteStore()) {
         self.remoteStore = remoteStore
+        // displayName은 game state(`PersistedSnapshot`)과 다른 별도 캐시 키 — cold-start
+        // 시 UserDefaults에서 즉시 read해 HomeView가 빈 이름으로 깜빡이지 않도록.
+        displayName = UserDefaults.standard.string(forKey: Self.displayNameKey)
         loadPersistedSnapshot()
         // 로컬 즉시 표시 후, 더 최신인 원격 스냅샷이 있으면 머지.
         Task { [weak self] in
             await self?.syncFromRemoteIfNewer()
+            await self?.fetchAndApplyDisplayName()
         }
     }
 
@@ -408,6 +431,7 @@ final class AppState {
         ownedAcornPacks = [:]
         todaySessions = []
         lastCompletedSession = nil
+        displayName = nil
         // 저장된 스냅샷도 비워서 다음 실행에서 시드값이 살아남도록
         clearPersistedSnapshot()
     }
@@ -787,6 +811,31 @@ final class AppState {
             sessionUploadStatus = .failure
             pendingUpload = (output: output, stats: stats)
         }
+    }
+
+    /// DB의 `profiles.displayName`을 가져와 in-memory + UserDefaults 갱신.
+    /// 신규 디바이스(profile 없음)거나 displayName이 nil/빈 문자열이면 그대로 둠.
+    /// 종료 시 `didLoadProfile = true`로 마크 — ContentView가 onboarding sheet 띄울지
+    /// 결정할 때 참조.
+    @MainActor
+    private func fetchAndApplyDisplayName() async {
+        defer { didLoadProfile = true }
+        let deviceId = DeviceIdentity.shared
+        guard let profile = try? await remoteStore.fetchProfile(deviceId: deviceId) else { return }
+        if let name = profile.displayName, !name.isEmpty, name != displayName {
+            displayName = name
+        }
+    }
+
+    /// Onboarding sheet의 "저장" 버튼에서 호출. trim 후 in-memory + DB upsert.
+    @MainActor
+    func saveDisplayName(_ rawName: String) async {
+        let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        displayName = trimmed
+        profileEnsured = true
+        let deviceId = DeviceIdentity.shared
+        try? await remoteStore.upsertProfile(ProfileDTO(deviceId: deviceId, displayName: trimmed))
     }
 
     /// Tracking 탭 .task에서 호출 — 오늘 0시 이후 세션을 원격에서 가져와 리스트 동기화.

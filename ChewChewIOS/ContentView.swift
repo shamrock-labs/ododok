@@ -88,6 +88,9 @@ struct ContentView: View {
                 SessionResultSheet(dto: dto, onClose: closeResultSheet)
             }
         }
+        .sheet(isPresented: onboardingBinding) {
+            OnboardingNameView(onComplete: {})
+        }
         // RewardDialogView는 overlay라 SessionResultSheet에 가려진다. sheet가 떠 있는 동안엔
         // 그리지 않고 대기 — sheet 닫히는 순간 자연스럽게 등장하고 그때부터 2.5s 자동 dismiss
         // 타이머가 시작되어, 세션 종료 보상 다이얼로그가 가려진 채 사라지는 회귀를 차단.
@@ -135,6 +138,17 @@ struct ContentView: View {
         if state.sessionUploadStatus == .success {
             state.dismissSessionUploadStatus()
         }
+    }
+
+    /// 첫 실행 onboarding sheet binding — DB fetch 한 번 끝났고 displayName이 nil일 때만
+    /// 표시. `didLoadProfile` 가드로 reinstall cold-start의 sheet 깜빡임 방지.
+    /// OnboardingNameView의 `interactiveDismissDisabled`로 사용자 강제 dismiss 차단.
+    /// 저장 시 displayName이 갱신되면 binding이 false가 되어 자동 dismiss.
+    private var onboardingBinding: Binding<Bool> {
+        Binding(
+            get: { state.didLoadProfile && state.displayName == nil },
+            set: { _ in }
+        )
     }
 
     private func tabPage<Content: View>(@ViewBuilder content: @escaping () -> Content) -> some View {
