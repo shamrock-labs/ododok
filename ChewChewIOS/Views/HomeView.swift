@@ -1,7 +1,15 @@
 import SwiftUI
+import CoreMotion
 
 struct HomeView: View {
     @Environment(AppState.self) private var state
+
+    // MARK: - AirPods 미연결 토스트
+    @State private var showAirPodsToast = false
+    @State private var toastTask: Task<Void, Never>?
+
+    // MARK: - 측정 시작 햅틱 trigger
+    @State private var hapticTrigger = false
 
     var body: some View {
         VStack(spacing: 14) {
@@ -15,6 +23,63 @@ struct HomeView: View {
         .padding(.top, 12)
         .padding(.bottom, 18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .overlay(alignment: .top) {
+            if showAirPodsToast {
+                airPodsToast
+                    .padding(.top, 16)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: showAirPodsToast)
+        .sensoryFeedback(.impact(weight: .medium), trigger: hapticTrigger)
+    }
+
+    // MARK: - AirPods 토스트 뷰
+
+    private var airPodsToast: some View {
+        Text("AirPods Pro · AirPods 3/4세대 · AirPods Max 중 하나를 연결해주세요")
+            .font(.appFont(.medium, size: 13))
+            .foregroundStyle(.white)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 11)
+            .background(Color.ink800.opacity(0.92), in: Capsule())
+            .padding(.horizontal, 32)
+    }
+
+    // MARK: - 식사 시작 가드
+
+    private func handleMealToggle() {
+        if state.isEating {
+            state.toggleEating()
+            return
+        }
+
+        // 시뮬레이터에선 가드 없이 바로 시작 (데모 흐름 유지)
+        #if !targetEnvironment(simulator)
+        let service = CMHeadphoneMotionManager()
+        let status = CMHeadphoneMotionManager.authorizationStatus()
+        let available = service.isDeviceMotionAvailable
+
+        if status == .denied || status == .restricted || !available {
+            presentAirPodsToast()
+            return
+        }
+        #endif
+
+        // 차단 안 됐을 때만 햅틱 + 시작
+        hapticTrigger.toggle()
+        state.toggleEating()
+    }
+
+    private func presentAirPodsToast() {
+        toastTask?.cancel()
+        showAirPodsToast = true
+        toastTask = Task {
+            try? await Task.sleep(for: .seconds(1.8))
+            guard !Task.isCancelled else { return }
+            await MainActor.run { showAirPodsToast = false }
+        }
     }
 
     // MARK: Top bar
@@ -189,7 +254,7 @@ struct HomeView: View {
 
     private var mealToggleButton: some View {
         Button {
-            state.toggleEating()
+            handleMealToggle()
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: state.isEating ? "stop.fill" : "fork.knife")
