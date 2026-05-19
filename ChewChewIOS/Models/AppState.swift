@@ -56,12 +56,16 @@ final class AppState {
     }
 
     // MARK: - Persisted-ish state (현재는 인메모리)
+    //
+    // 신규 디바이스 첫 실행은 모두 0/빈 상태에서 시작. 시드값을 더미로 박아 두면
+    // 새 사용자에게 "이미 누군가 사용한 듯한" 느낌을 주고, `dailyGoal` 도달 보너스가
+    // 첫 식사에서 즉시 트리거되는 부작용도 있어 제거.
 
-    var chewCount: Int = 247
-    var streak: Int = 7
-    var points: Int = 1240
+    var chewCount: Int = 0
+    var streak: Int = 0
+    var points: Int = 0
     var animKey: Int = 0
-    var weeklyScores: [Int] = [72, 85, 68, 78, 82, 88, 41]
+    var weeklyScores: [Int] = []
 
     // MARK: - Wardrobe (다람쥐 꾸미기)
 
@@ -365,11 +369,11 @@ final class AppState {
 
     func reset() {
         stopEating()
-        chewCount = 247
-        streak = 7
-        points = 1240
+        chewCount = 0
+        streak = 0
+        points = 0
         animKey = 0
-        weeklyScores = [72, 85, 68, 78, 82, 88, 41]
+        weeklyScores = []
         resetIMUWaveform()
         imuWaveformSource = .idle
         goalAlreadyHit = false
@@ -596,8 +600,9 @@ final class AppState {
         chewCount = snapshot.chewCount
         streak = snapshot.streak
         points = snapshot.points
-        // 주간 점수는 7개 보장 — 저장본이 손상되면 시드 유지
-        if snapshot.weeklyScores.count == 7 {
+        // 주간 점수는 7개 또는 빈 배열만 허용. 손상된 저장본(예: 다른 길이)은 무시하고
+        // 현재 상태(시드 = 빈 배열) 유지.
+        if snapshot.weeklyScores.isEmpty || snapshot.weeklyScores.count == 7 {
             weeklyScores = snapshot.weeklyScores
         }
         goalAlreadyHit = snapshot.goalAlreadyHit
@@ -662,7 +667,7 @@ final class AppState {
         chewCount = remote.chewCount
         streak = remote.streak
         points = remote.points
-        if remote.weeklyScores.count == 7 {
+        if remote.weeklyScores.isEmpty || remote.weeklyScores.count == 7 {
             weeklyScores = remote.weeklyScores
         }
         goalAlreadyHit = remote.goalAlreadyHit
