@@ -88,8 +88,11 @@ struct ContentView: View {
                 SessionResultSheet(dto: dto, onClose: closeResultSheet)
             }
         }
+        // RewardDialogView는 overlay라 SessionResultSheet에 가려진다. sheet가 떠 있는 동안엔
+        // 그리지 않고 대기 — sheet 닫히는 순간 자연스럽게 등장하고 그때부터 2.5s 자동 dismiss
+        // 타이머가 시작되어, 세션 종료 보상 다이얼로그가 가려진 채 사라지는 회귀를 차단.
         .overlay(alignment: .center) {
-            if let grant = state.pendingRewardGrant {
+            if state.lastCompletedSession == nil, let grant = state.pendingRewardGrant {
                 ZStack {
                     Color.black.opacity(0.28).ignoresSafeArea()
                     RewardDialogView(grant: grant) {
