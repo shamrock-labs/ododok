@@ -142,11 +142,17 @@ final class InsForgeRemoteStore: RemoteStore {
         let escapedDevice = deviceId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? deviceId
         let sinceIso = Self.isoFormatter.string(from: since)
         let escapedSince = sinceIso.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? sinceIso
-        var path = "/api/database/records/chewing_session?device_id=eq.\(escapedDevice)&started_at=gte.\(escapedSince)"
+        // 같은 컬럼에 두 조건이 필요한 경우 PostgREST는 query string 같은 key 중복을
+        // 마지막 값으로만 처리하는 클라이언트가 있어 둘 다 보장되지 않을 수 있다.
+        // `and=(a,b)` 명시 grouping을 쓰면 두 조건이 확실히 AND로 묶인다.
+        var path: String
         if let until {
             let untilIso = Self.isoFormatter.string(from: until)
             let escapedUntil = untilIso.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? untilIso
-            path += "&started_at=lt.\(escapedUntil)"
+            let andClause = "and=(started_at.gte.\(escapedSince),started_at.lt.\(escapedUntil))"
+            path = "/api/database/records/chewing_session?device_id=eq.\(escapedDevice)&\(andClause)"
+        } else {
+            path = "/api/database/records/chewing_session?device_id=eq.\(escapedDevice)&started_at=gte.\(escapedSince)"
         }
         path += "&order=started_at.asc"
         let req = try jsonRequest(method: "GET", path: path)
