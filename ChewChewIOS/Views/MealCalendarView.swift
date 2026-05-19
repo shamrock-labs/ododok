@@ -1,5 +1,13 @@
 import SwiftUI
 
+/// 캘린더/그리드/리스트 모두에서 같은 day boundary 동작 보장. 두 view가 각자 instance를
+/// 생성했을 때 발생할 수 있는 미세한 차이를 차단.
+private let mealCalendarCalendar: Calendar = {
+    var c = Calendar(identifier: .gregorian)
+    c.locale = Locale(identifier: "ko_KR")
+    return c
+}()
+
 // MARK: - MealCalendarGrid (인라인 임베드 + 풀스크린 sheet 양쪽에서 재사용)
 
 /// 월간 캘린더 그리드. 자체 fetch + month navigation 보유. 셀 탭 동작은 두 모드:
@@ -14,11 +22,7 @@ struct MealCalendarGrid: View {
     @Binding var monthSessions: [ChewingSessionDTO]
     var onTapDay: ((Date) -> Void)? = nil
 
-    private var calendar: Calendar {
-        var c = Calendar(identifier: .gregorian)
-        c.locale = Locale(identifier: "ko_KR")
-        return c
-    }
+    private var calendar: Calendar { mealCalendarCalendar }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -203,11 +207,7 @@ struct MealCalendarView: View {
     @State private var monthSessions: [ChewingSessionDTO] = []
     @State private var showDeleteAllConfirm: Bool = false
 
-    private var calendar: Calendar {
-        var c = Calendar(identifier: .gregorian)
-        c.locale = Locale(identifier: "ko_KR")
-        return c
-    }
+    private var calendar: Calendar { mealCalendarCalendar }
 
     var body: some View {
         NavigationStack {
@@ -279,12 +279,15 @@ struct DaySessionsView: View {
     let onDelete: (ChewingSessionDTO) -> Void
 
     var body: some View {
-        ZStack {
-            LinearGradient.appBackground.ignoresSafeArea()
+        Group {
             if sessions.isEmpty {
-                Text("이 날엔 식사 기록이 없어요.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color.ink600)
+                VStack {
+                    Spacer()
+                    Text("이 날엔 식사 기록이 없어요.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Color.ink600)
+                    Spacer()
+                }
             } else {
                 List {
                     ForEach(sessions, id: \.id) { session in
@@ -307,6 +310,8 @@ struct DaySessionsView: View {
                 .scrollContentBackground(.hidden)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(LinearGradient.appBackground.ignoresSafeArea())
         .navigationTitle(dateLabel)
         .navigationBarTitleDisplayMode(.inline)
     }
