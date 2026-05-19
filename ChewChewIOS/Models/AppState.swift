@@ -67,6 +67,12 @@ final class AppState {
     var animKey: Int = 0
     var weeklyScores: [Int] = []
 
+    /// PRD #11 streak 상태 — 프리즈 인벤토리 (0~3) + 마지막 성공 자정 시각.
+    /// `streak`(count)과 함께 `StreakService.evaluate(_:)`가 일관 mutate.
+    /// 마일스톤 7/30/100일 도달 시 프리즈 +1 적립, 2일 공백 시 자동 소진.
+    var freezeInventory: Int = 0
+    var lastSuccessDate: Date?
+
     /// 사용자가 onboarding에서 입력한 표시 이름. `profiles.displayName`과 매핑.
     /// nil이면 HomeView는 "친구" 등 fallback. didSet에서 UserDefaults 캐시 갱신.
     var displayName: String? {
@@ -432,6 +438,8 @@ final class AppState {
         todaySessions = []
         lastCompletedSession = nil
         displayName = nil
+        freezeInventory = 0
+        lastSuccessDate = nil
         // 저장된 스냅샷도 비워서 다음 실행에서 시드값이 살아남도록
         clearPersistedSnapshot()
     }
@@ -594,8 +602,9 @@ final class AppState {
 
     private static let persistenceKey = "ChewChewIOS.AppState.snapshot.v1"
 
-    /// v2 — `owned`/`equipped`/`ownedAcornPacks` 추가. 모두 옵셔널이라
-    /// v1 스냅샷을 디코드하면 자동으로 nil → 빈 상태로 초기화된다.
+    /// v2 — `owned`/`equipped`/`ownedAcornPacks` 추가.
+    /// v3 — PRD #11 streak: `freezeInventory`/`lastSuccessDate` 추가. 모두 옵셔널이라
+    /// 옛 스냅샷을 디코드하면 자동으로 nil → 기본값(0/nil)으로 초기화된다.
     private struct PersistedSnapshot: Codable {
         let chewCount: Int
         let streak: Int
@@ -606,6 +615,8 @@ final class AppState {
         var owned: [String]?
         var equipped: Equipped?
         var ownedAcornPacks: [String: Int]?
+        var freezeInventory: Int?
+        var lastSuccessDate: Date?
     }
 
     func persistSnapshot() {
@@ -619,7 +630,9 @@ final class AppState {
             savedAt: now,
             owned: Array(owned),
             equipped: equipped,
-            ownedAcornPacks: ownedAcornPacks
+            ownedAcornPacks: ownedAcornPacks,
+            freezeInventory: freezeInventory,
+            lastSuccessDate: lastSuccessDate
         )
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         UserDefaults.standard.set(data, forKey: Self.persistenceKey)
@@ -665,6 +678,13 @@ final class AppState {
         }
         if let savedPacks = snapshot.ownedAcornPacks {
             ownedAcornPacks = savedPacks
+        }
+        // v3 옵셔널 필드 — 옛 스냅샷에선 nil이라 신규 streak 상태(0/nil)로 시작
+        if let savedFreeze = snapshot.freezeInventory {
+            freezeInventory = savedFreeze
+        }
+        if let savedLastSuccess = snapshot.lastSuccessDate {
+            lastSuccessDate = savedLastSuccess
         }
     }
 
@@ -801,7 +821,19 @@ final class AppState {
             let granted = RewardLedger.accrue(forSession: dto.id, chewCount: dto.estimatedTotalChews)
             if granted > 0 {
                 points += granted
+            }
+            // PRD #11 streak — 세션 종료 시 카운트 평가 + 마일스톤 프리즈 적립 + 2일+ 공백
+            // 시 자동 방어. foreground 진입에선 evaluate 안 함(이번 PR 단순화) — 다음
+            // 세션 종료에서 한 번에 정리.
+            let streakEvents = StreakService.evaluate(self)
+            if granted > 0 || !streakEvents.isEmpty {
                 persistSnapshot()
+            }
+            // 우선순위: streak event(milestone/saved/reset) > 세션 종료 도토리.
+            // 같은 시점에 둘 다 발생할 수 있어도 dialog는 1개만 — milestone이 더 임팩트.
+            if let streakGrant = StreakService.noticeGrant(from: streakEvents) {
+                pendingRewardGrant = streakGrant
+            } else if granted > 0 {
                 // SessionResultSheet가 먼저 떠 있는 상태 — ContentView overlay는
                 // sheet 닫힌 후(`lastCompletedSession == nil`)에만 그려져, 다이얼로그가
                 // sheet에 가려지지 않고 순차로 등장한다.

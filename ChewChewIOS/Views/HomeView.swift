@@ -20,21 +20,54 @@ struct HomeView: View {
     // MARK: Top bar
 
     private var topBar: some View {
-        HStack {
+        HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(todayLabel)
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(Color.ink400)
-                Text("안녕, 성호님")
+                Text("안녕, \(state.displayName ?? "친구")님")
                     .font(.system(size: 26, weight: .bold))
                     .foregroundStyle(Color.ink800)
             }
             Spacer()
+            streakHeaderBadge
             HStack(spacing: 10) {
                 circleButton("bell.fill")
                 circleButton("gearshape.fill")
             }
         }
+    }
+
+    /// PRD #11 — 메인 상단 🔥 N일 배지. 프리즈 보유 시 🛡️도 옆에 함께 노출.
+    private var streakHeaderBadge: some View {
+        HStack(spacing: 6) {
+            HStack(spacing: 3) {
+                Text("🔥").font(.system(size: 14))
+                Text("\(state.streak)")
+                    .font(.system(size: 14, weight: .heavy))
+                    .foregroundStyle(Color.blush500)
+                    .monospacedDigit()
+            }
+            if state.freezeInventory > 0 {
+                HStack(spacing: 2) {
+                    Text("🛡️").font(.system(size: 12))
+                    Text("\(state.freezeInventory)")
+                        .font(.system(size: 12, weight: .heavy))
+                        .foregroundStyle(Color.sage600)
+                        .monospacedDigit()
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(Color.white, in: Capsule())
+        .neuoShadow(.sm)
+        .accessibilityLabel(streakAccessibilityLabel)
+    }
+
+    private var streakAccessibilityLabel: String {
+        let base = "연속 출석 \(state.streak)일"
+        return state.freezeInventory > 0 ? "\(base), 프리즈 \(state.freezeInventory)개 보유" : base
     }
 
     private var todayLabel: String {
