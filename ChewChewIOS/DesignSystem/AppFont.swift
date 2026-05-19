@@ -14,7 +14,9 @@ extension Font {
             case .medium:   "Pretendard-Medium"
             case .semibold: "Pretendard-SemiBold"
             case .bold:     "Pretendard-Bold"
-            case .heavy:    "Pretendard-Heavy"
+            // Pretendard 패키지엔 Heavy weight가 없어 가장 굵은 Black을 사용.
+            // system fallback weight는 `.heavy`로 유지해 폰트 없을 때 그 weight로 노출.
+            case .heavy:    "Pretendard-Black"
             }
         }
 

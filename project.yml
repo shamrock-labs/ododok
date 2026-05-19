@@ -33,7 +33,7 @@ targets:
           - Pretendard-Medium.otf
           - Pretendard-SemiBold.otf
           - Pretendard-Bold.otf
-          - Pretendard-Heavy.otf
+          - Pretendard-Black.otf
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
