@@ -396,23 +396,12 @@ final class AppState {
         let wasInForeground = isInForeground
         isInForeground = toForeground
         if !wasInForeground && toForeground {
-            // foreground 진입 시 일일 출석 보너스 시도. 같은 날엔 한 번만 적립.
-            let granted = RewardLedger.claimDailyAttendance()
-            if granted > 0 {
-                points += granted
-            }
-            // PRD #11 streak foreground 자동 방어 — 2일+ 공백 시 프리즈 소진 또는 리셋 trigger.
-            let streakEvents = StreakService.evaluateForegroundDefense(self)
-            if !streakEvents.isEmpty || granted > 0 {
-                persistSnapshot()
-            }
-            // dialog 우선순위: streak event(savedByFreeze/reset) > 출석 보너스.
-            if let streakGrant = StreakService.noticeGrant(from: streakEvents) {
-                pendingRewardGrant = streakGrant
-            } else if granted > 0 {
-                // ContentView overlay가 RewardDialogView를 표시. 같은 날 두 번째 진입은
-                // granted=0이라 trigger 안 됨 — idempotency가 보장.
-                pendingRewardGrant = RewardGrant(amount: granted, kind: .attendance)
+            // 신규 디바이스 첫 실행에선 onboarding 이름 입력이 완료(=displayName set)되기
+            // 전까지 출석/스트릭 보상 다이얼로그를 띄우지 않는다. 보상이 이름 입력 sheet
+            // 위로 먼저 떠 사용자가 보상→이름 순으로 마주치는 회귀를 차단.
+            // saveDisplayName이 이름 저장 직후 동일 경로를 호출해 이어준다.
+            if displayName != nil {
+                grantDailyAttendanceIfNeeded()
             }
         }
         if wasInForeground && !toForeground {
@@ -888,6 +877,11 @@ final class AppState {
         // 일관된 두 값으로 수행돼, "didLoadProfile만 true + displayName 아직 nil" 중간
         // 상태에서 sheet이 열리는 race를 피한다.
         didLoadProfile = true
+        // 다른 기기에서 등록한 이름을 신규 설치에서 처음 받아온 경우: foreground 진입 시점엔
+        // displayName이 nil이라 attendance를 건너뛰었으므로, 여기서 이어서 트리거한다.
+        if isInForeground && displayName != nil {
+            grantDailyAttendanceIfNeeded()
+        }
     }
 
     /// Onboarding sheet의 "저장" 버튼에서 호출. trim 후 in-memory + DB upsert.
@@ -897,8 +891,32 @@ final class AppState {
         guard !trimmed.isEmpty else { return }
         displayName = trimmed
         profileEnsured = true
+        // 이름 입력 sheet이 dismiss되어 메인 화면이 보이는 시점에 비로소 도토리 출석 보상을
+        // 표시한다. sceneDidChange는 displayName==nil 동안엔 attendance를 건너뛰므로, 신규
+        // 디바이스의 첫 보상 trigger 책임은 이 경로가 진다.
+        grantDailyAttendanceIfNeeded()
         let deviceId = DeviceIdentity.shared
         try? await remoteStore.upsertProfile(ProfileDTO(deviceId: deviceId, displayName: trimmed))
+    }
+
+    /// 일일 출석 보상 + 스트릭 foreground 자동 방어를 한 번에 평가한다. RewardLedger와
+    /// StreakService 양쪽 다 같은 날 중복 호출에 idempotent하므로 여러 진입점에서 안전.
+    @MainActor
+    private func grantDailyAttendanceIfNeeded() {
+        let granted = RewardLedger.claimDailyAttendance()
+        if granted > 0 {
+            points += granted
+        }
+        let streakEvents = StreakService.evaluateForegroundDefense(self)
+        if !streakEvents.isEmpty || granted > 0 {
+            persistSnapshot()
+        }
+        // dialog 우선순위: streak event(savedByFreeze/reset) > 출석 보너스.
+        if let streakGrant = StreakService.noticeGrant(from: streakEvents) {
+            pendingRewardGrant = streakGrant
+        } else if granted > 0 {
+            pendingRewardGrant = RewardGrant(amount: granted, kind: .attendance)
+        }
     }
 
     /// Tracking 탭 .task에서 호출 — 오늘 0시 이후 세션을 원격에서 가져와 리스트 동기화.
