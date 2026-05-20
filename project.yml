@@ -28,6 +28,8 @@ targets:
         CFBundleDisplayName: ChewChew
         InsForgeAPIKey: "$(INSFORGE_API_KEY)"
         NSMotionUsageDescription: 식사 중 AirPods 움직임을 분석해 저작 리듬을 시각화합니다.
+        UIBackgroundModes:
+          - audio
         UIAppFonts:
           - Pretendard-Regular.otf
           - Pretendard-Medium.otf

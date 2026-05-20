@@ -152,6 +152,10 @@ final class AppState {
     @ObservationIgnored private var imuWaveformPhase: Double = 0
     @ObservationIgnored private var goalAlreadyHit = false
 
+    /// 식사 세션 동안 백그라운드 IMU 수집이 끊기지 않도록 무음 오디오를 굴려 앱을 깨워두는 keep-alive.
+    /// 식사 종료 시 stop. 시뮬레이터에선 노옵 (`BackgroundAudioKeepAlive` 내부 가드).
+    @ObservationIgnored private let backgroundKeepAlive = BackgroundAudioKeepAlive()
+
     // MARK: - ML inference
 
     /// 식사 세션 동안 활성. nil이면 추론 없이 (모델 로드 실패) 가짜 Timer만 동작.
@@ -247,6 +251,10 @@ final class AppState {
         // in-app 화폐 기능이라 ML 추론 결과를 카운터에 반영하지 않음.
         startFakeChewLoop()
 
+        // 잠금 화면/홈 화면으로 빠져도 AirPods IMU 콜백이 끊기지 않도록 무음 오디오 keep-alive 활성.
+        // 시뮬레이터에선 내부적으로 노옵.
+        backgroundKeepAlive.start()
+
         if !startHeadphoneMotionLoop() {
             startDemoIMUWaveformLoop(source: imuWaveformSource)
         }
@@ -259,6 +267,10 @@ final class AppState {
         stopHeadphoneMotionLoop()
         stopFakeChewLoop()
         stopDemoIMUWaveformLoop()
+        // 식사가 끝나면 더 이상 백그라운드 wake가 필요 없으므로 즉시 stop —
+        // 무음이라도 오디오 세션이 살아있는 동안엔 다른 앱(타이머/시스템 사운드 등)
+        // 미디어 라우팅에 영향이 가니, 세션 끝과 동시에 해제하는 게 안전.
+        backgroundKeepAlive.stop()
         resetIMUWaveform()
         imuWaveformSource = .idle
         chewTimestamps.removeAll()
