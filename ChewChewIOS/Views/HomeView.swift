@@ -20,13 +20,13 @@ struct HomeView: View {
     // MARK: Top bar
 
     private var topBar: some View {
-        HStack {
+        HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(todayLabel)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.appFont(.medium, size: 13))
                     .foregroundStyle(Color.ink400)
-                Text("안녕, 성호님")
-                    .font(.system(size: 26, weight: .bold))
+                Text("안녕, \(state.displayName ?? "친구")님")
+                    .font(.appFont(.bold, size: 26))
                     .foregroundStyle(Color.ink800)
             }
             Spacer()
@@ -47,7 +47,7 @@ struct HomeView: View {
     private func circleButton(_ symbol: String) -> some View {
         Button {} label: {
             Image(systemName: symbol)
-                .font(.system(size: 18, weight: .medium))
+                .font(.appFont(.medium, size: 18))
                 .foregroundStyle(Color.ink600)
                 .frame(width: 46, height: 46)
                 .background(Color.white, in: Circle())
@@ -61,13 +61,13 @@ struct HomeView: View {
     private var statRow: some View {
         HStack(spacing: 14) {
             statCard(
-                label: "연속 출석",
+                label: state.freezeInventory > 0 ? "연속 출석 · 🛡️\(state.freezeInventory)" : "연속 출석",
                 value: "\(state.streak)일째 🔥",
                 iconBG: Color.blush100
             ) {
                 Image(systemName: "flame.fill")
                     .foregroundStyle(Color.blush500)
-                    .font(.system(size: 26))
+                    .font(.appFont(.regular, size: 26))
             }
 
             statCard(
@@ -75,7 +75,7 @@ struct HomeView: View {
                 value: state.points.koLocale,
                 iconBG: Color.butter100
             ) {
-                Text("🌰").font(.system(size: 26))
+                Text("🌰").font(.appFont(.regular, size: 26))
             }
         }
     }
@@ -94,11 +94,11 @@ struct HomeView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.appFont(.medium, size: 11))
                     .foregroundStyle(Color.ink400)
                     .lineLimit(1)
                 Text(value)
-                    .font(.system(size: 17, weight: .bold))
+                    .font(.appFont(.bold, size: 17))
                     .foregroundStyle(Color.ink800)
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
@@ -130,10 +130,10 @@ struct HomeView: View {
 
             VStack(spacing: 2) {
                 Text(state.status.title)
-                    .font(.system(size: 19, weight: .bold))
+                    .font(.appFont(.bold, size: 19))
                     .foregroundStyle(Color.ink800)
                 Text(state.status.subtitle)
-                    .font(.system(size: 13))
+                    .font(.appFont(.regular, size: 13))
                     .foregroundStyle(Color.ink400)
             }
 
@@ -162,17 +162,17 @@ struct HomeView: View {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("IMU 파형")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appFont(.bold, size: 13))
                         .foregroundStyle(Color.ink800)
                     Text(state.imuWaveformStatusText)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.appFont(.medium, size: 11))
                         .foregroundStyle(state.isIMUWaveformLive ? Color.sage600 : Color.ink400)
                 }
 
                 Spacer()
 
                 Image(systemName: "waveform.path.ecg")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.appFont(.bold, size: 15))
                     .foregroundStyle(state.isIMUWaveformLive ? Color.sage600 : Color.ink400)
                     .frame(width: 32, height: 32)
                     .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
@@ -193,9 +193,9 @@ struct HomeView: View {
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: state.isEating ? "stop.fill" : "fork.knife")
-                    .font(.system(size: 22, weight: .bold))
+                    .font(.appFont(.bold, size: 22))
                 Text(state.isEating ? "식사 종료" : "식사 시작")
-                    .font(.system(size: 20, weight: .bold))
+                    .font(.appFont(.bold, size: 20))
             }
             .foregroundStyle(.white)
             .frame(maxWidth: .infinity)

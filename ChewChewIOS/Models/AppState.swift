@@ -56,12 +56,41 @@ final class AppState {
     }
 
     // MARK: - Persisted-ish state (현재는 인메모리)
+    //
+    // 신규 디바이스 첫 실행은 모두 0/빈 상태에서 시작. 시드값을 더미로 박아 두면
+    // 새 사용자에게 "이미 누군가 사용한 듯한" 느낌을 주고, `dailyGoal` 도달 보너스가
+    // 첫 식사에서 즉시 트리거되는 부작용도 있어 제거.
 
-    var chewCount: Int = 247
-    var streak: Int = 7
-    var points: Int = 1240
+    var chewCount: Int = 0
+    var streak: Int = 0
+    var points: Int = 0
     var animKey: Int = 0
-    var weeklyScores: [Int] = [72, 85, 68, 78, 82, 88, 41]
+    var weeklyScores: [Int] = []
+
+    /// PRD #11 streak 상태 — 프리즈 인벤토리 (0~3) + 마지막 성공 자정 시각.
+    /// `streak`(count)과 함께 `StreakService.evaluate(_:)`가 일관 mutate.
+    /// 마일스톤 7/30/100일 도달 시 프리즈 +1 적립, 2일 공백 시 자동 소진.
+    var freezeInventory: Int = 0
+    var lastSuccessDate: Date?
+
+    /// 사용자가 onboarding에서 입력한 표시 이름. `profiles.displayName`과 매핑.
+    /// nil이면 HomeView는 "친구" 등 fallback. didSet에서 UserDefaults 캐시 갱신.
+    var displayName: String? {
+        didSet {
+            if let name = displayName {
+                UserDefaults.standard.set(name, forKey: Self.displayNameKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.displayNameKey)
+            }
+        }
+    }
+
+    /// `fetchAndApplyDisplayName` 한 번 끝났는지. 시작 직후 DB fetch 완료 전엔 false로 두어
+    /// "기존 사용자가 reinstall한 cold-start에서 sheet이 잠깐 깜빡이는" 케이스를 차단.
+    /// 처음 fetch가 끝나면 true로 마크 — 그 시점에 displayName nil이면 진짜 신규 디바이스.
+    var didLoadProfile: Bool = false
+
+    private static let displayNameKey = "ChewChewIOS.AppState.displayName"
 
     // MARK: - Wardrobe (다람쥐 꾸미기)
 
@@ -107,7 +136,10 @@ final class AppState {
     var lastIMUSampleAt: Date?
 
     /// 앱 foreground 여부. scenePhase 관찰자가 갱신.
-    var isInForeground: Bool = true
+    /// 초기값 false — 앱 launch 시점엔 아직 .active phase가 아니므로, scenePhase가
+    /// `.active`로 처음 도달할 때 `sceneDidChange(toForeground:true)`의 전이
+    /// 조건(`!wasInForeground && toForeground`)이 성립해 일일 출석 보너스가 트리거된다.
+    var isInForeground: Bool = false
 
     /// 마지막으로 background로 전환된 시각. 백그라운드 체류 시간 표시용.
     var lastBackgroundedAt: Date?
@@ -165,6 +197,13 @@ final class AppState {
     /// ContentView가 .sheet binding으로 관찰. PRD #3 — 종료 후 2초 이내 카드 표시.
     var lastCompletedSession: ChewingSessionDTO?
 
+    /// 도토리 적립 시 ContentView가 overlay로 보여줄 RewardDialogView trigger.
+    /// RewardLedger가 +n🌰 반환했을 때 set, 사용자가 다이얼로그 dismiss 시 nil.
+    /// 출석 보너스(`.attendance`) + 세션 종료 적립(`.sessionComplete`) 두 종 trigger.
+    /// 세션 적립 trigger는 `SessionResultSheet`와 동시 표시되지 않도록 ContentView
+    /// overlay가 `lastCompletedSession == nil`(=sheet 닫힘)일 때만 그려진다.
+    var pendingRewardGrant: RewardGrant?
+
     /// 업로드 실패 시 사용자가 "다시 시도"를 누르면 재시도할 payload (finalize 결과 + 분석 통계).
     /// in-memory 1회 retry 한정 — 영구 retry 큐는 다음 PR.
     @ObservationIgnored private var pendingUpload: (output: IMUSessionRecorder.Output, stats: SessionStats?)?
@@ -181,10 +220,14 @@ final class AppState {
 
     init(remoteStore: RemoteStore = NoopRemoteStore()) {
         self.remoteStore = remoteStore
+        // displayName은 game state(`PersistedSnapshot`)과 다른 별도 캐시 키 — cold-start
+        // 시 UserDefaults에서 즉시 read해 HomeView가 빈 이름으로 깜빡이지 않도록.
+        displayName = UserDefaults.standard.string(forKey: Self.displayNameKey)
         loadPersistedSnapshot()
         // 로컬 즉시 표시 후, 더 최신인 원격 스냅샷이 있으면 머지.
         Task { [weak self] in
             await self?.syncFromRemoteIfNewer()
+            await self?.fetchAndApplyDisplayName()
         }
     }
 
@@ -261,9 +304,12 @@ final class AppState {
     // MARK: - Chew (한 입 = 한 번의 저작 신호)
 
     /// 한 번의 chew 이벤트. 추후 실제 IMU 감지기가 호출할 진입점.
+    /// 도토리(`points`) 적립은 이 함수에서 분리됨 — PRD #8의 보상 정책(일일 출석 +2🌰,
+    /// 세션 종료 시 `estimatedTotalChews × 0.05`, 일일 상한 500🌰)이 fake Timer로 굴러
+    /// 실 씹기와 무관하게 자동 누적되는 옛 동작과 어긋났던 문제 해소. 실제 도토리 적립은
+    /// `RewardLedger`(commit ③)에서 세션 종료 시 / foreground 진입 시 처리.
     func chew() {
         chewCount += 1
-        points += 1
         animKey &+= 1
 
         let now = Date()
@@ -271,9 +317,10 @@ final class AppState {
         chewTimestamps.append(now)
         chewRatePerMinute = chewTimestamps.count
 
+        // dailyGoal 첫 도달 flag는 유지 — 향후 트로피/스트릭 trigger 등으로 활용.
+        // 더 이상 여기서 도토리 보너스를 주지 않음.
         if chewCount >= Constants.dailyGoal && !goalAlreadyHit {
             goalAlreadyHit = true
-            points += 200
         }
     }
 
@@ -342,11 +389,23 @@ final class AppState {
 
     // MARK: - Scene phase
 
-    /// SwiftUI `scenePhase` 변화 시 호출. background/foreground 전환 시각만 기록하고
-    /// IMU 수집 자체는 OS 정책에 맡김 — 실기기에서 BG 동작 여부를 카운터로 검증할 수 있음.
+    /// SwiftUI `scenePhase` 변화 시 호출. background/foreground 전환 시각 기록 +
+    /// 일일 출석 보너스 적립 trigger.
+    @MainActor
     func sceneDidChange(toForeground: Bool) {
         let wasInForeground = isInForeground
         isInForeground = toForeground
+        if !wasInForeground && toForeground {
+            // foreground 진입 시 일일 출석 보너스 시도. 같은 날엔 한 번만 적립.
+            let granted = RewardLedger.claimDailyAttendance()
+            if granted > 0 {
+                points += granted
+                persistSnapshot()
+                // ContentView overlay가 RewardDialogView를 표시. 같은 날 두 번째 진입은
+                // granted=0이라 trigger 안 됨 — idempotency가 보장.
+                pendingRewardGrant = RewardGrant(amount: granted, kind: .attendance)
+            }
+        }
         if wasInForeground && !toForeground {
             lastBackgroundedAt = Date()
             // 백그라운드 진입 시 안전하게 스냅샷 — 시스템 종료/메모리 회수 대비
@@ -377,11 +436,11 @@ final class AppState {
 
     func reset() {
         stopEating()
-        chewCount = 247
-        streak = 7
-        points = 1240
+        chewCount = 0
+        streak = 0
+        points = 0
         animKey = 0
-        weeklyScores = [72, 85, 68, 78, 82, 88, 41]
+        weeklyScores = []
         resetIMUWaveform()
         imuWaveformSource = .idle
         goalAlreadyHit = false
@@ -390,6 +449,9 @@ final class AppState {
         ownedAcornPacks = [:]
         todaySessions = []
         lastCompletedSession = nil
+        displayName = nil
+        freezeInventory = 0
+        lastSuccessDate = nil
         // 저장된 스냅샷도 비워서 다음 실행에서 시드값이 살아남도록
         clearPersistedSnapshot()
     }
@@ -552,8 +614,9 @@ final class AppState {
 
     private static let persistenceKey = "ChewChewIOS.AppState.snapshot.v1"
 
-    /// v2 — `owned`/`equipped`/`ownedAcornPacks` 추가. 모두 옵셔널이라
-    /// v1 스냅샷을 디코드하면 자동으로 nil → 빈 상태로 초기화된다.
+    /// v2 — `owned`/`equipped`/`ownedAcornPacks` 추가.
+    /// v3 — PRD #11 streak: `freezeInventory`/`lastSuccessDate` 추가. 모두 옵셔널이라
+    /// 옛 스냅샷을 디코드하면 자동으로 nil → 기본값(0/nil)으로 초기화된다.
     private struct PersistedSnapshot: Codable {
         let chewCount: Int
         let streak: Int
@@ -564,6 +627,8 @@ final class AppState {
         var owned: [String]?
         var equipped: Equipped?
         var ownedAcornPacks: [String: Int]?
+        var freezeInventory: Int?
+        var lastSuccessDate: Date?
     }
 
     func persistSnapshot() {
@@ -577,7 +642,9 @@ final class AppState {
             savedAt: now,
             owned: Array(owned),
             equipped: equipped,
-            ownedAcornPacks: ownedAcornPacks
+            ownedAcornPacks: ownedAcornPacks,
+            freezeInventory: freezeInventory,
+            lastSuccessDate: lastSuccessDate
         )
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         UserDefaults.standard.set(data, forKey: Self.persistenceKey)
@@ -608,8 +675,9 @@ final class AppState {
         chewCount = snapshot.chewCount
         streak = snapshot.streak
         points = snapshot.points
-        // 주간 점수는 7개 보장 — 저장본이 손상되면 시드 유지
-        if snapshot.weeklyScores.count == 7 {
+        // 주간 점수는 7개 또는 빈 배열만 허용. 손상된 저장본(예: 다른 길이)은 무시하고
+        // 현재 상태(시드 = 빈 배열) 유지.
+        if snapshot.weeklyScores.isEmpty || snapshot.weeklyScores.count == 7 {
             weeklyScores = snapshot.weeklyScores
         }
         goalAlreadyHit = snapshot.goalAlreadyHit
@@ -623,10 +691,20 @@ final class AppState {
         if let savedPacks = snapshot.ownedAcornPacks {
             ownedAcornPacks = savedPacks
         }
+        // v3 옵셔널 필드 — 옛 스냅샷에선 nil이라 신규 streak 상태(0/nil)로 시작
+        if let savedFreeze = snapshot.freezeInventory {
+            freezeInventory = savedFreeze
+        }
+        if let savedLastSuccess = snapshot.lastSuccessDate {
+            lastSuccessDate = savedLastSuccess
+        }
     }
 
     func clearPersistedSnapshot() {
         UserDefaults.standard.removeObject(forKey: Self.persistenceKey)
+        // RewardLedger도 함께 비움 — 사용자가 명시적 reset 했을 때 출석/세션 적립
+        // idempotency 키도 같이 사라져 다음 첫 진입에서 다시 적립 가능.
+        RewardLedger.resetAll()
         // 같은 체인으로 — 직전 upsert가 끝난 뒤 delete가 나가야 결과가 결정적.
         // profiles 삭제 → FK ON DELETE CASCADE로 user_stats도 자동 정리.
         // 다음 persistSnapshot이 profile을 다시 만들 수 있도록 플래그 리셋.
@@ -674,7 +752,7 @@ final class AppState {
         chewCount = remote.chewCount
         streak = remote.streak
         points = remote.points
-        if remote.weeklyScores.count == 7 {
+        if remote.weeklyScores.isEmpty || remote.weeklyScores.count == 7 {
             weeklyScores = remote.weeklyScores
         }
         goalAlreadyHit = remote.goalAlreadyHit
@@ -750,10 +828,62 @@ final class AppState {
             todaySessions.append(dto)
             // 식사 종료 직후 ReportCardView를 sheet로 띄울 trigger. 사용자가 닫으면 nil.
             lastCompletedSession = dto
+            // PRD #8: 세션 종료 적립 = estimatedTotalChews × 0.05. RewardLedger가
+            // idempotency(같은 sessionId 중복 차단) + 일일 상한 500🌰 enforcement.
+            let granted = RewardLedger.accrue(forSession: dto.id, chewCount: dto.estimatedTotalChews)
+            if granted > 0 {
+                points += granted
+            }
+            // PRD #11 streak — 세션 종료 시 카운트 평가 + 마일스톤 프리즈 적립 + 2일+ 공백
+            // 시 자동 방어. foreground 진입에선 evaluate 안 함(이번 PR 단순화) — 다음
+            // 세션 종료에서 한 번에 정리.
+            let streakEvents = StreakService.evaluate(self)
+            if granted > 0 || !streakEvents.isEmpty {
+                persistSnapshot()
+            }
+            // 우선순위: streak event(milestone/saved/reset) > 세션 종료 도토리.
+            // 같은 시점에 둘 다 발생할 수 있어도 dialog는 1개만 — milestone이 더 임팩트.
+            if let streakGrant = StreakService.noticeGrant(from: streakEvents) {
+                pendingRewardGrant = streakGrant
+            } else if granted > 0 {
+                // SessionResultSheet가 먼저 떠 있는 상태 — ContentView overlay는
+                // sheet 닫힌 후(`lastCompletedSession == nil`)에만 그려져, 다이얼로그가
+                // sheet에 가려지지 않고 순차로 등장한다.
+                pendingRewardGrant = RewardGrant(amount: granted, kind: .sessionComplete)
+            }
         } catch {
             sessionUploadStatus = .failure
             pendingUpload = (output: output, stats: stats)
         }
+    }
+
+    /// DB의 `profiles.displayName`을 가져와 in-memory + UserDefaults 갱신.
+    /// 신규 디바이스(profile 없음)거나 displayName이 nil/빈 문자열이면 그대로 둠.
+    /// 종료 시 `didLoadProfile = true`로 마크 — ContentView가 onboarding sheet 띄울지
+    /// 결정할 때 참조.
+    @MainActor
+    private func fetchAndApplyDisplayName() async {
+        let deviceId = DeviceIdentity.shared
+        let profile = try? await remoteStore.fetchProfile(deviceId: deviceId)
+        if let name = profile?.displayName, !name.isEmpty, name != displayName {
+            displayName = name
+        }
+        // displayName 먼저 set 후 마지막에 didLoadProfile = true. 둘이 같은 main-actor
+        // 동기 블록에서 순차로 갱신되면 ContentView의 onboardingBinding 평가가 한 frame에
+        // 일관된 두 값으로 수행돼, "didLoadProfile만 true + displayName 아직 nil" 중간
+        // 상태에서 sheet이 열리는 race를 피한다.
+        didLoadProfile = true
+    }
+
+    /// Onboarding sheet의 "저장" 버튼에서 호출. trim 후 in-memory + DB upsert.
+    @MainActor
+    func saveDisplayName(_ rawName: String) async {
+        let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        displayName = trimmed
+        profileEnsured = true
+        let deviceId = DeviceIdentity.shared
+        try? await remoteStore.upsertProfile(ProfileDTO(deviceId: deviceId, displayName: trimmed))
     }
 
     /// Tracking 탭 .task에서 호출 — 오늘 0시 이후 세션을 원격에서 가져와 리스트 동기화.
@@ -805,6 +935,12 @@ final class AppState {
     }
 
     /// Alert dismiss 시 호출. 실패 상태에서 dismiss 하면 payload 폐기(= 데이터 손실 수용).
+    /// RewardDialogView가 자동(2.5s) 또는 탭으로 dismiss 시 호출.
+    @MainActor
+    func dismissPendingRewardGrant() {
+        pendingRewardGrant = nil
+    }
+
     @MainActor
     func dismissSessionUploadStatus() {
         if sessionUploadStatus == .failure {

@@ -1,5 +1,11 @@
 import SwiftUI
 
+/// `.sheet(item:)`이 `Date`를 그대로 못 받아 Identifiable wrapper로 감싼다.
+private struct InlineSelectedDay: Identifiable {
+    let date: Date
+    var id: TimeInterval { date.timeIntervalSinceReferenceDate }
+}
+
 struct TrackingView: View {
     @Environment(AppState.self) private var state
 
@@ -7,7 +13,8 @@ struct TrackingView: View {
     @State private var fbTimer: Timer?
     @State private var inlineMonth: Date = .now
     @State private var inlineMonthSessions: [ChewingSessionDTO] = []
-    @State private var showCalendarSheet: Bool = false
+    @State private var inlineSelectedDay: InlineSelectedDay?
+    @State private var inlineSheetPath = NavigationPath()
 
     /// 식사 중 여부 — 식사 세션은 AppState가 관리하고 이 화면은 관찰만.
     private var isEating: Bool { state.isEating }
@@ -36,8 +43,27 @@ struct TrackingView: View {
             }
         }
         .task { await state.fetchTodaySessions() }
-        .sheet(isPresented: $showCalendarSheet) {
-            MealCalendarView()
+        .sheet(item: $inlineSelectedDay, onDismiss: { inlineSheetPath = NavigationPath() }) { day in
+            NavigationStack(path: $inlineSheetPath) {
+                DaySessionsView(
+                    date: day.date,
+                    monthSessions: $inlineMonthSessions,
+                    onDelete: { session in
+                        Task {
+                            await state.deleteSession(session)
+                            inlineMonthSessions.removeAll { $0.id == session.id }
+                        }
+                    },
+                    onTapSession: { session in
+                        inlineSheetPath.append(session.id)
+                    }
+                )
+                .navigationDestination(for: UUID.self) { sessionId in
+                    if let session = inlineMonthSessions.first(where: { $0.id == sessionId }) {
+                        SessionReportDetailView(dto: session)
+                    }
+                }
+            }
         }
         .onChange(of: isEating) { _, isOn in
             if isOn { startFeedbackLoop() } else { stopFeedbackLoop() }
@@ -51,10 +77,10 @@ struct TrackingView: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("실시간")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.appFont(.medium, size: 11))
                     .foregroundStyle(Color.ink400)
                 Text("트래킹")
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.appFont(.bold, size: 24))
                     .foregroundStyle(Color.ink800)
             }
             Spacer()
@@ -67,7 +93,7 @@ struct TrackingView: View {
         HStack(spacing: 14) {
             ZStack(alignment: .topTrailing) {
                 Image(systemName: "airpodspro")
-                    .font(.system(size: 28))
+                    .font(.appFont(.regular, size: 28))
                     .foregroundStyle(Color.sage600)
                     .frame(width: 56, height: 56)
                     .background(
@@ -87,10 +113,10 @@ struct TrackingView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("AirPods IMU")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.appFont(.medium, size: 11))
                     .foregroundStyle(Color.ink400)
                 Text(state.imuWaveformStatusText)
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.appFont(.bold, size: 15))
                     .foregroundStyle(Color.ink800)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
@@ -100,10 +126,10 @@ struct TrackingView: View {
 
             VStack(alignment: .trailing, spacing: 2) {
                 Text("모드")
-                    .font(.system(size: 10))
+                    .font(.appFont(.regular, size: 10))
                     .foregroundStyle(Color.ink400)
                 Text(state.imuWaveformSource.usesRealMotion ? "LIVE" : "MVP")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appFont(.bold, size: 13))
                     .foregroundStyle(state.imuWaveformSource.usesRealMotion ? Color.sage600 : Color.ink400)
             }
         }
@@ -131,7 +157,7 @@ struct TrackingView: View {
             }
             Spacer(minLength: 0)
         }
-        .font(.system(size: 11, weight: .medium))
+        .font(.appFont(.medium, size: 11))
         .foregroundStyle(Color.ink400)
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
@@ -159,15 +185,15 @@ struct TrackingView: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(trackingDateLabel)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.appFont(.medium, size: 11))
                         .foregroundStyle(Color.ink400)
                     Text("오늘의 식사 기록")
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.appFont(.bold, size: 18))
                         .foregroundStyle(Color.ink800)
                 }
                 Spacer()
                 Text("\(state.todaySessions.count)회")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appFont(.bold, size: 12))
                     .foregroundStyle(Color.acorn700)
                     .padding(.horizontal, 10)
                     .padding(.vertical, 4)
@@ -202,7 +228,7 @@ struct TrackingView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("식사 캘린더")
-                    .font(.system(size: 14, weight: .heavy))
+                    .font(.appFont(.heavy, size: 14))
                     .foregroundStyle(Color.ink800)
                 Spacer()
             }
@@ -212,7 +238,9 @@ struct TrackingView: View {
             MealCalendarGrid(
                 displayedMonth: $inlineMonth,
                 monthSessions: $inlineMonthSessions,
-                onTapDay: { _ in showCalendarSheet = true }
+                onTapDay: { date in
+                    inlineSelectedDay = InlineSelectedDay(date: date)
+                }
             )
         }
         .frame(maxWidth: .infinity)
@@ -238,16 +266,16 @@ struct TrackingView: View {
     private var tipCard: some View {
         HStack(alignment: .top, spacing: 12) {
             Text("💡")
-                .font(.system(size: 22))
+                .font(.appFont(.regular, size: 22))
                 .frame(width: 40, height: 40)
                 .background(.white, in: RoundedRectangle(cornerRadius: 12))
                 .neuoShadow(.sm)
             VStack(alignment: .leading, spacing: 2) {
                 Text("오늘의 코치 팁")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appFont(.bold, size: 12))
                     .foregroundStyle(Color.ink800)
                 Text("저녁 식사는 한 입당 30회 씹는 걸 추천해요. 포만감이 빨리 와요!")
-                    .font(.system(size: 11))
+                    .font(.appFont(.regular, size: 11))
                     .foregroundStyle(Color.ink600)
                     .lineSpacing(3)
             }
@@ -268,9 +296,9 @@ struct TrackingView: View {
 
     private func feedbackPopup(_ fb: FeedbackLine) -> some View {
         HStack(spacing: 10) {
-            Text(fb.emoji).font(.system(size: 20))
+            Text(fb.emoji).font(.appFont(.regular, size: 20))
             Text(fb.text)
-                .font(.system(size: 14, weight: .bold))
+                .font(.appFont(.bold, size: 14))
                 .foregroundStyle(.white)
         }
         .padding(.horizontal, 20)

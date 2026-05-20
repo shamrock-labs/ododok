@@ -1,5 +1,14 @@
 import SwiftUI
 
+/// 캘린더/그리드/리스트 모두에서 같은 day boundary 동작 보장. 두 view가 각자 instance를
+/// 생성했을 때 발생할 수 있는 미세한 차이를 차단. TrackingView 인라인 캘린더에서도
+/// 같은 instance로 filter해야 dot/리스트 일관성이 깨지지 않아 internal 노출.
+let mealCalendarCalendar: Calendar = {
+    var c = Calendar(identifier: .gregorian)
+    c.locale = Locale(identifier: "ko_KR")
+    return c
+}()
+
 // MARK: - MealCalendarGrid (인라인 임베드 + 풀스크린 sheet 양쪽에서 재사용)
 
 /// 월간 캘린더 그리드. 자체 fetch + month navigation 보유. 셀 탭 동작은 두 모드:
@@ -14,11 +23,7 @@ struct MealCalendarGrid: View {
     @Binding var monthSessions: [ChewingSessionDTO]
     var onTapDay: ((Date) -> Void)? = nil
 
-    private var calendar: Calendar {
-        var c = Calendar(identifier: .gregorian)
-        c.locale = Locale(identifier: "ko_KR")
-        return c
-    }
+    private var calendar: Calendar { mealCalendarCalendar }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -42,18 +47,18 @@ struct MealCalendarGrid: View {
         HStack {
             Button { goToMonth(-1) } label: {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appFont(.bold, size: 13))
                     .frame(width: 32, height: 32)
                     .background(Color.white.opacity(0.7), in: Circle())
             }
             Spacer()
             Text(monthTitle)
-                .font(.system(size: 15, weight: .heavy))
+                .font(.appFont(.heavy, size: 15))
                 .foregroundStyle(Color.ink800)
             Spacer()
             Button { goToMonth(+1) } label: {
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appFont(.bold, size: 13))
                     .frame(width: 32, height: 32)
                     .background(Color.white.opacity(0.7), in: Circle())
             }
@@ -66,7 +71,7 @@ struct MealCalendarGrid: View {
         return HStack(spacing: 4) {
             ForEach(symbols, id: \.self) { sym in
                 Text(sym)
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.appFont(.bold, size: 10))
                     .foregroundStyle(weekdayLabelColor(sym))
                     .frame(maxWidth: .infinity)
             }
@@ -98,24 +103,17 @@ struct MealCalendarGrid: View {
     }
 
     private func dayCell(date: Date) -> some View {
+        // LazyVGrid 안 NavigationLink / Button + buttonStyle.plain 조합이 일부 환경에서
+        // 탭 자체가 안 먹는 회귀가 있어, 단순 `onTapGesture` + `contentShape(Rectangle())`
+        // 패턴으로 통일. 풀스크린 sheet 모드도 같은 closure 경로를 쓰도록 onTapDay를
+        // 호출자가 반드시 전달.
         let count = sessionsCount(on: date)
-        return Group {
-            if count > 0 {
-                if let onTap = onTapDay {
-                    Button { onTap(date) } label: {
-                        dayCellContent(date: date)
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    NavigationLink(value: date) {
-                        dayCellContent(date: date)
-                    }
-                    .buttonStyle(.plain)
-                }
-            } else {
-                dayCellContent(date: date)
+        return dayCellContent(date: date)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard count > 0 else { return }
+                onTapDay?(date)
             }
-        }
     }
 
     private func dayCellContent(date: Date) -> some View {
@@ -202,19 +200,19 @@ struct MealCalendarView: View {
     @State private var displayedMonth: Date = .now
     @State private var monthSessions: [ChewingSessionDTO] = []
     @State private var showDeleteAllConfirm: Bool = false
+    @State private var path = NavigationPath()
 
-    private var calendar: Calendar {
-        var c = Calendar(identifier: .gregorian)
-        c.locale = Locale(identifier: "ko_KR")
-        return c
-    }
+    private var calendar: Calendar { mealCalendarCalendar }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             ScrollView {
                 MealCalendarGrid(
                     displayedMonth: $displayedMonth,
-                    monthSessions: $monthSessions
+                    monthSessions: $monthSessions,
+                    onTapDay: { date in
+                        path.append(date)
+                    }
                 )
                 .padding(20)
             }
@@ -253,12 +251,15 @@ struct MealCalendarView: View {
             .navigationDestination(for: Date.self) { date in
                 DaySessionsView(
                     date: date,
-                    sessions: monthSessions.filter { calendar.isDate($0.startedAt, inSameDayAs: date) },
+                    monthSessions: $monthSessions,
                     onDelete: { session in
                         Task {
                             await state.deleteSession(session)
                             monthSessions.removeAll { $0.id == session.id }
                         }
+                    },
+                    onTapSession: { session in
+                        path.append(session.id)
                     }
                 )
             }
@@ -275,38 +276,51 @@ struct MealCalendarView: View {
 
 struct DaySessionsView: View {
     let date: Date
-    let sessions: [ChewingSessionDTO]
+    /// 전체 월간 세션을 Binding으로 받아 view body 호출 시점마다 latest로 self-filter.
+    /// closure 안에서 한 번 평가된 sessions를 stale capture하는 race 회피.
+    @Binding var monthSessions: [ChewingSessionDTO]
     let onDelete: (ChewingSessionDTO) -> Void
+    /// row 탭 시 호출. 호출자가 NavigationPath append 또는 다른 전환 처리.
+    let onTapSession: (ChewingSessionDTO) -> Void
+
+    private var sessions: [ChewingSessionDTO] {
+        monthSessions.filter { mealCalendarCalendar.isDate($0.startedAt, inSameDayAs: date) }
+    }
 
     var body: some View {
-        ZStack {
-            LinearGradient.appBackground.ignoresSafeArea()
+        Group {
             if sessions.isEmpty {
-                Text("이 날엔 식사 기록이 없어요.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(Color.ink600)
+                VStack {
+                    Spacer()
+                    Text("이 날엔 식사 기록이 없어요.")
+                        .font(.appFont(.regular, size: 13))
+                        .foregroundStyle(Color.ink600)
+                    Spacer()
+                }
             } else {
                 List {
                     ForEach(sessions, id: \.id) { session in
-                        NavigationLink(value: session.id) {
-                            sessionRow(session)
-                        }
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                onDelete(session)
-                            } label: {
-                                Label("삭제", systemImage: "trash")
+                        sessionRow(session)
+                            .contentShape(Rectangle())
+                            .onTapGesture { onTapSession(session) }
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    onDelete(session)
+                                } label: {
+                                    Label("삭제", systemImage: "trash")
+                                }
                             }
-                        }
                     }
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(LinearGradient.appBackground.ignoresSafeArea())
         .navigationTitle(dateLabel)
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -322,22 +336,22 @@ struct DaySessionsView: View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(formatTime(session.startedAt))
-                    .font(.system(size: 15, weight: .heavy))
+                    .font(.appFont(.heavy, size: 15))
                     .foregroundStyle(Color.ink800)
                     .monospacedDigit()
                 Text(formatDuration(session.durationSec))
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.appFont(.medium, size: 11))
                     .foregroundStyle(Color.ink400)
             }
             .frame(width: 70, alignment: .leading)
             VStack(alignment: .leading, spacing: 4) {
                 if let chews = session.estimatedTotalChews {
                     Text("\(chews.koLocale)회 · 씹은 비율 \(String(format: "%.0f%%", (session.chewingFraction ?? 0) * 100))")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appFont(.bold, size: 13))
                         .foregroundStyle(Color.ink800)
                 } else {
                     Text("분석 없음")
-                        .font(.system(size: 13))
+                        .font(.appFont(.regular, size: 13))
                         .foregroundStyle(Color.ink400)
                 }
             }

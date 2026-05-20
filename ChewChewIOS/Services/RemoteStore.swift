@@ -9,6 +9,9 @@ import Foundation
 /// 삭제는 `deleteUserData` 한 번 (profiles → user_stats FK ON DELETE CASCADE).
 protocol RemoteStore {
     func upsertProfile(_ profile: ProfileDTO) async throws
+    /// 디바이스 식별자에 매칭되는 profile 행 1개 조회. 신규 디바이스면 nil.
+    /// `displayName` 등 사용자 식별 정보 로딩에 사용.
+    func fetchProfile(deviceId: String) async throws -> ProfileDTO?
     func upsertUserStats(_ stats: UserStatsDTO) async throws
     func fetchUserStats(deviceId: String) async throws -> UserStatsDTO?
     func deleteUserData(deviceId: String) async throws
@@ -35,6 +38,7 @@ extension RemoteStore {
 
 struct NoopRemoteStore: RemoteStore {
     func upsertProfile(_ profile: ProfileDTO) async throws {}
+    func fetchProfile(deviceId: String) async throws -> ProfileDTO? { nil }
     func upsertUserStats(_ stats: UserStatsDTO) async throws {}
     func fetchUserStats(deviceId: String) async throws -> UserStatsDTO? { nil }
     func deleteUserData(deviceId: String) async throws {}
@@ -102,6 +106,17 @@ final class InsForgeRemoteStore: RemoteStore {
         _ = try await sendExpectingSuccess(req)
     }
 
+    func fetchProfile(deviceId: String) async throws -> ProfileDTO? {
+        let escaped = deviceId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? deviceId
+        let req = try jsonRequest(
+            method: "GET",
+            path: "/api/database/records/profiles?device_id=eq.\(escaped)&limit=1"
+        )
+        let data = try await sendExpectingSuccess(req)
+        let rows = try decoder.decode([ProfileDTO].self, from: data)
+        return rows.first
+    }
+
     func upsertUserStats(_ stats: UserStatsDTO) async throws {
         var req = try jsonRequest(method: "POST", path: "/api/database/records/user_stats")
         req.setValue("resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
@@ -142,11 +157,17 @@ final class InsForgeRemoteStore: RemoteStore {
         let escapedDevice = deviceId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? deviceId
         let sinceIso = Self.isoFormatter.string(from: since)
         let escapedSince = sinceIso.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? sinceIso
-        var path = "/api/database/records/chewing_session?device_id=eq.\(escapedDevice)&started_at=gte.\(escapedSince)"
+        // 같은 컬럼에 두 조건이 필요한 경우 PostgREST는 query string 같은 key 중복을
+        // 마지막 값으로만 처리하는 클라이언트가 있어 둘 다 보장되지 않을 수 있다.
+        // `and=(a,b)` 명시 grouping을 쓰면 두 조건이 확실히 AND로 묶인다.
+        var path: String
         if let until {
             let untilIso = Self.isoFormatter.string(from: until)
             let escapedUntil = untilIso.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? untilIso
-            path += "&started_at=lt.\(escapedUntil)"
+            let andClause = "and=(started_at.gte.\(escapedSince),started_at.lt.\(escapedUntil))"
+            path = "/api/database/records/chewing_session?device_id=eq.\(escapedDevice)&\(andClause)"
+        } else {
+            path = "/api/database/records/chewing_session?device_id=eq.\(escapedDevice)&started_at=gte.\(escapedSince)"
         }
         path += "&order=started_at.asc"
         let req = try jsonRequest(method: "GET", path: path)

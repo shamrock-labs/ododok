@@ -23,7 +23,7 @@ struct FriendsView: View {
         .overlay(alignment: .bottom) {
             if inviteToastVisible {
                 Text("친구 초대 기능은 MVP 이후 연결됩니다")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appFont(.bold, size: 12))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
@@ -41,10 +41,10 @@ struct FriendsView: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("함께 씹기")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.appFont(.medium, size: 11))
                     .foregroundStyle(Color.ink400)
                 Text("친구")
-                    .font(.system(size: 24, weight: .bold))
+                    .font(.appFont(.bold, size: 24))
                     .foregroundStyle(Color.ink800)
             }
             Spacer()
@@ -66,17 +66,17 @@ struct FriendsView: View {
                     .frame(width: 108, height: 108)
                     .neuoShadow(.sm)
                 Image(systemName: "person.2.fill")
-                    .font(.system(size: 42, weight: .bold))
+                    .font(.appFont(.bold, size: 42))
                     .foregroundStyle(Color.sage600)
             }
 
             VStack(spacing: 6) {
                 Text("친구들과 식사 현황을 나눠요")
-                    .font(.system(size: 21, weight: .heavy))
+                    .font(.appFont(.heavy, size: 21))
                     .foregroundStyle(Color.ink800)
                     .multilineTextAlignment(.center)
                 Text("함께 목표를 채우고, 아직 시작하지 않은 친구를 초대할 수 있어요.")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.appFont(.medium, size: 13))
                     .foregroundStyle(Color.ink600)
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
@@ -87,9 +87,9 @@ struct FriendsView: View {
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: "paperplane.fill")
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.appFont(.bold, size: 15))
                     Text("친구 초대하기")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.appFont(.bold, size: 16))
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
@@ -128,7 +128,7 @@ struct FriendsView: View {
     private var friendList: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("친구 현황")
-                .font(.system(size: 13, weight: .bold))
+                .font(.appFont(.bold, size: 13))
                 .foregroundStyle(Color.ink800)
 
             ForEach(friends) { friend in
@@ -144,24 +144,24 @@ struct FriendsView: View {
     private func friendRow(_ friend: FriendStatus) -> some View {
         HStack(spacing: 12) {
             Image(systemName: friend.icon)
-                .font(.system(size: 14, weight: .bold))
+                .font(.appFont(.bold, size: 14))
                 .foregroundStyle(.white)
                 .frame(width: 36, height: 36)
                 .background(friend.color, in: Circle())
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(friend.name)
-                    .font(.system(size: 13, weight: .bold))
+                    .font(.appFont(.bold, size: 13))
                     .foregroundStyle(Color.ink800)
                 Text(friend.status)
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.appFont(.medium, size: 11))
                     .foregroundStyle(Color.ink400)
             }
 
             Spacer(minLength: 0)
 
             Text(friend.detail)
-                .font(.system(size: 12, weight: .bold))
+                .font(.appFont(.bold, size: 12))
                 .foregroundStyle(friend.color)
         }
     }

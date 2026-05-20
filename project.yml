@@ -30,6 +30,12 @@ targets:
         NSMotionUsageDescription: 식사 중 AirPods 움직임을 분석해 저작 리듬을 시각화합니다.
         UIBackgroundModes:
           - audio
+        UIAppFonts:
+          - Pretendard-Regular.otf
+          - Pretendard-Medium.otf
+          - Pretendard-SemiBold.otf
+          - Pretendard-Bold.otf
+          - Pretendard-Black.otf
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
