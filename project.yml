@@ -29,6 +29,8 @@ targets:
         InsForgeAPIKey: "$(INSFORGE_API_KEY)"
         NSMotionUsageDescription: 식사 중 AirPods 움직임을 분석해 저작 리듬을 시각화합니다.
         NSMicrophoneUsageDescription: AirPods IMU 동작 신뢰성 분석을 위해 마이크 권한이 필요할 수 있어요. 음성 녹음은 하지 않습니다.
+        UIBackgroundModes:
+          - audio
         UIAppFonts:
           - Pretendard-Regular.otf
           - Pretendard-Medium.otf
