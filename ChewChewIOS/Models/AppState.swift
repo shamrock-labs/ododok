@@ -223,10 +223,10 @@ final class AppState {
         // displayName은 game state(`PersistedSnapshot`)과 다른 별도 캐시 키 — cold-start
         // 시 UserDefaults에서 즉시 read해 HomeView가 빈 이름으로 깜빡이지 않도록.
         displayName = UserDefaults.standard.string(forKey: Self.displayNameKey)
+        // 즉시 표시용 fallback — DB 실패 또는 응답 전에 화면 그려도 마지막 캐시값으로.
         loadPersistedSnapshot()
-        // 로컬 즉시 표시 후, 더 최신인 원격 스냅샷이 있으면 머지.
         Task { [weak self] in
-            await self?.syncFromRemoteIfNewer()
+            await self?.syncFromRemoteUserStats()
             await self?.fetchAndApplyDisplayName()
         }
     }
@@ -748,16 +748,29 @@ final class AppState {
         )
     }
 
-    /// 앱 시작 시 한 번 호출. 원격 row가 로컬보다 더 최신이면 in-memory 상태를 머지한다.
-    /// `saved_at` 기준 최신 우선 — 다중 기기 동기화는 익명 디바이스 ID 정책상 보장 안 함.
+    /// 앱 시작 시 한 번 호출. DB(`user_stats`)를 source of truth로 삼아 무조건 덮어쓴다.
+    /// fetch 성공 → DB값으로 in-memory + UserDefaults write-through.
+    /// fetch nil(신규 디바이스) → 현재 상태(시드값 0) 유지.
+    /// 네트워크 실패 → loadPersistedSnapshot이 채운 fallback 유지 (silent).
     @MainActor
-    private func syncFromRemoteIfNewer() async {
-        guard let remote = try? await remoteStore.fetchUserStats(deviceId: DeviceIdentity.shared) else { return }
-        // user_stats가 존재 = profiles도 존재 (FK 보장). 다음 persistSnapshot에서 profile 재호출 생략.
-        profileEnsured = true
-        let localSavedAt = localPersistedSavedAt() ?? .distantPast
-        guard remote.savedAt > localSavedAt else { return }
+    private func syncFromRemoteUserStats() async {
+        let deviceId = DeviceIdentity.shared
+        do {
+            if let remote = try await remoteStore.fetchUserStats(deviceId: deviceId) {
+                // user_stats 존재 = profiles도 존재 (FK 보장). profile 재호출 생략.
+                profileEnsured = true
+                applyRemoteSnapshot(remote)
+                writeSnapshotToUserDefaults(savedAt: remote.savedAt)
+            }
+            // remote == nil → 신규 디바이스: 현재 시드값(0) 유지.
+        } catch {
+            // 네트워크 실패 → loadPersistedSnapshot이 채운 fallback 유지. silent.
+        }
+    }
 
+    /// DB에서 받은 UserStatsDTO를 in-memory 상태에 적용.
+    /// freezeInventory / lastSuccessDate는 DTO에 없어 건드리지 않음 (DTO 확장은 별도 PR).
+    private func applyRemoteSnapshot(_ remote: UserStatsDTO) {
         chewCount = remote.chewCount
         streak = remote.streak
         points = remote.points
@@ -766,36 +779,29 @@ final class AppState {
         }
         goalAlreadyHit = remote.goalAlreadyHit
         owned = Set(remote.owned)
-        equipped = Equipped(
-            hat: remote.equipped.hat,
-            glasses: remote.equipped.glasses,
-            acc: remote.equipped.acc
-        )
+        equipped = Equipped(hat: remote.equipped.hat, glasses: remote.equipped.glasses, acc: remote.equipped.acc)
         ownedAcornPacks = remote.ownedAcornPacks
-        // 머지된 상태를 로컬에도 즉시 반영 — 다음 cold-start 비교가 일관되도록.
-        // 단, 원격 upsert는 자기 자신을 다시 쏘는 셈이라 굳이 안 함.
+    }
+
+    /// 현재 in-memory 상태를 UserDefaults에 write-through. savedAt은 DB row의 값을 그대로 사용.
+    /// freezeInventory / lastSuccessDate는 현재 in-memory 값을 그대로 유지.
+    private func writeSnapshotToUserDefaults(savedAt: Date) {
         let snapshot = PersistedSnapshot(
             chewCount: chewCount,
             streak: streak,
             points: points,
             weeklyScores: weeklyScores,
             goalAlreadyHit: goalAlreadyHit,
-            savedAt: remote.savedAt,
+            savedAt: savedAt,
             owned: Array(owned),
             equipped: equipped,
-            ownedAcornPacks: ownedAcornPacks
+            ownedAcornPacks: ownedAcornPacks,
+            freezeInventory: freezeInventory,
+            lastSuccessDate: lastSuccessDate
         )
         if let data = try? JSONEncoder().encode(snapshot) {
             UserDefaults.standard.set(data, forKey: Self.persistenceKey)
         }
-    }
-
-    private func localPersistedSavedAt() -> Date? {
-        guard
-            let data = UserDefaults.standard.data(forKey: Self.persistenceKey),
-            let snapshot = try? JSONDecoder().decode(PersistedSnapshot.self, from: data)
-        else { return nil }
-        return snapshot.savedAt
     }
 
     /// 식사 종료 후 IMU 세션 봉인 결과 + 분석 통계를 받아 Storage 업로드 → chewing_session INSERT.
