@@ -1,6 +1,5 @@
 import SwiftUI
 import CoreMotion
-import AVFoundation
 
 struct HomeView: View {
     @Environment(AppState.self) private var state
@@ -62,11 +61,7 @@ struct HomeView: View {
         let status = CMHeadphoneMotionManager.authorizationStatus()
         let available = service.isDeviceMotionAvailable
 
-        // isDeviceMotionAvailable은 "이 iPhone이 헤드폰 모션 기능을 지원하는가"일 뿐
-        // 현재 AirPods 연결 여부가 아니다. 실제 연결은 AVAudioSession 현재 출력 라우트에
-        // AirPods 포트가 있는지로 판단해, 미연결 상태에서 demo 파형으로 측정이 시작되는
-        // 회귀를 차단한다.
-        if status == .denied || status == .restricted || !available || !isAirPodsConnected() {
+        if status == .denied || status == .restricted || !available {
             presentAirPodsToast()
             return
         }
@@ -75,14 +70,6 @@ struct HomeView: View {
         // 차단 안 됐을 때만 햅틱 + 시작
         hapticTrigger.toggle()
         state.toggleEating()
-    }
-
-    /// AirPods 연결 여부 — AVAudioSession의 현재 출력 라우트에 portName이 "AirPods"인
-    /// 포트가 있으면 연결로 간주. AirPods Pro / 3·4세대 / Max 모두 portName이 "AirPods …"
-    /// 패턴이라 한 가지 매칭으로 커버된다.
-    private func isAirPodsConnected() -> Bool {
-        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
-        return outputs.contains { $0.portName.localizedCaseInsensitiveContains("AirPods") }
     }
 
     private func presentAirPodsToast() {
