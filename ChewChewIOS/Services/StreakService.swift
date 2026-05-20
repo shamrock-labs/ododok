@@ -82,6 +82,46 @@ enum StreakService {
         events.append(.milestone(count: state.streak, freezeGain: gain))
     }
 
+    /// foreground 진입 시 자동 방어 전용 평가.
+    /// - lastSuccessDate nil이면 변화 없음 (첫 사용자는 세션 종료에서만 시작).
+    /// - gapDays <= 1이면 변화 없음 (당일/연속 진입).
+    /// - gapDays >= 2 + freezeInventory > 0: 프리즈 1개 소진, lastSuccessDate를 어제로 되돌려
+    ///   다음 세션 종료에서 정상 +1이 가능하도록. streak count는 변경 안 함.
+    /// - gapDays >= 2 + freezeInventory == 0: lastSuccessDate를 nil로 set해 다음 세션 종료에서
+    ///   "첫 성공" path(streak=1)를 타도록. count는 이 시점에 건드리지 않음.
+    @MainActor
+    @discardableResult
+    static func evaluateForegroundDefense(_ state: AppState, now: Date = .now) -> [Event] {
+        let cal = Calendar(identifier: .gregorian)
+        var events: [Event] = []
+
+        guard let last = state.lastSuccessDate else {
+            return events
+        }
+
+        let lastDay = cal.startOfDay(for: last)
+        let nowDay = cal.startOfDay(for: now)
+        let gapDays = cal.dateComponents([.day], from: lastDay, to: nowDay).day ?? 0
+
+        guard gapDays >= 2 else {
+            return events
+        }
+
+        if state.freezeInventory > 0 {
+            state.freezeInventory -= 1
+            // streak count는 유지, lastSuccessDate를 어제로 되돌려 다음 세션 종료 시 gapDays=1 path 타도록
+            let yesterday = cal.date(byAdding: .day, value: -1, to: nowDay)!
+            state.lastSuccessDate = yesterday
+            events.append(.savedByFreeze(remainingFreeze: state.freezeInventory))
+        } else {
+            // 프리즈 없음 — lastSuccessDate nil로 set해 다음 세션 종료에서 첫 성공(streak=1) path 타도록
+            state.lastSuccessDate = nil
+            events.append(.reset)
+        }
+
+        return events
+    }
+
     /// 이벤트 목록에서 dialog로 띄울 가장 임팩트 큰 단일 RewardGrant를 골라낸다.
     /// 우선순위: milestone > savedByFreeze > reset > incremented(알림 안 함, nil).
     /// 동일 evaluate 호출에서 incremented + milestone이 같이 발생하면 milestone만 표시.
