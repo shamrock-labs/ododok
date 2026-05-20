@@ -275,6 +275,7 @@ struct HomeView: View {
                 in: RoundedRectangle(cornerRadius: 20)
             )
         }
+        .accessibilityIdentifier("MealToggle")
         .buttonStyle(PressableButtonStyle())
         .softShadow(.pill)
         .animation(.easeInOut(duration: 0.22), value: state.isEating)

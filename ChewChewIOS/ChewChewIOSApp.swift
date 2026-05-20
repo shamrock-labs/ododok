@@ -26,9 +26,25 @@ struct ChewChewIOSApp: App {
     /// - `-autoStartEating`: 앱 진입 즉시 식사 시작.
     /// - `-autoStopAfter <seconds>`: 자동 시작 후 N초 뒤 식사 종료 (→ snapshot persist).
     /// - `-equipShowcase`: 모자/안경/액세서리 1개씩 미리 구매·장착 (꾸미기 검증용).
+    /// - `-resetState`: XCUITest용 — UserDefaults/RewardLedger/AppState 전체 초기화.
+    /// - `-skipOnboarding`: XCUITest용 — displayName="테스터"로 설정해 onboarding sheet 우회.
     /// 운영 코드에는 영향 없음.
     private func handleLaunchArguments() {
         let args = ProcessInfo.processInfo.arguments
+
+        if args.contains("-resetState") {
+            if let bundleID = Bundle.main.bundleIdentifier {
+                UserDefaults.standard.removePersistentDomain(forName: bundleID)
+            }
+            RewardLedger.resetAll()
+            appState.reset()
+        }
+
+        if args.contains("-skipOnboarding") {
+            UserDefaults.standard.set("테스터", forKey: "ChewChewIOS.AppState.displayName")
+            appState.displayName = "테스터"
+            appState.didLoadProfile = true
+        }
 
         if args.contains("-equipShowcase") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
