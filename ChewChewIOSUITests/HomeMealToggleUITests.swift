@@ -15,7 +15,9 @@ final class HomeMealToggleUITests: XCTestCase {
         super.setUp()
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments = ["-resetState", "-skipOnboarding"]
+        // -skipAttendanceDialog로 RewardDialogView 자동 표시 차단 — dialog가 MealToggle
+        // hit testing을 가리는 flaky 패턴 회피 (전체 test suite 실행 시 race).
+        app.launchArguments = ["-resetState", "-skipOnboarding", "-skipAttendanceDialog"]
     }
 
     override func tearDown() {
@@ -25,7 +27,6 @@ final class HomeMealToggleUITests: XCTestCase {
 
     func testStartEating_changesButtonLabel() {
         app.launch()
-        dismissAttendanceDialogIfPresent()
 
         let startButton = app.buttons["식사 시작"]
         XCTAssertTrue(startButton.waitForExistence(timeout: 10), "초기 '식사 시작' 버튼이 나타나야 한다")
@@ -37,7 +38,6 @@ final class HomeMealToggleUITests: XCTestCase {
 
     func testStopEating_returnsToStart() {
         app.launch()
-        dismissAttendanceDialogIfPresent()
 
         let startButton = app.buttons["식사 시작"]
         XCTAssertTrue(startButton.waitForExistence(timeout: 10))
@@ -59,13 +59,16 @@ final class HomeMealToggleUITests: XCTestCase {
     }
 
     /// foreground 첫 진입 시 자동 표시되는 RewardDialogView가 MealToggle 위에 깔려
-    /// hit testing을 가린다. 빠른 dismiss 위해 dialog 텍스트가 보이면 tap. 안 보여도
-    /// 2.5s 자동 dismiss 되니까 무한 대기는 안 함.
+    /// hit testing을 가린다. dialog가 뜨면 tap dismiss + 자동 dismiss 2.5s 폴백을
+    /// 함께 기다린다. 다른 test class와 연속 실행 시 state race로 dialog 표시 시점이
+    /// 더 늦어질 수 있어 timeout을 보수적으로 잡는다.
     private func dismissAttendanceDialogIfPresent() {
         let attendance = app.staticTexts["출석 보상!"]
-        if attendance.waitForExistence(timeout: 2) {
+        if attendance.waitForExistence(timeout: 5) {
             attendance.tap()
-            _ = attendance.waitForNonExistence(timeout: 3)
+            _ = attendance.waitForNonExistence(timeout: 5)
         }
+        // dialog dismiss 직후 SwiftUI overlay가 빠지는 짧은 frame까지 기다림.
+        Thread.sleep(forTimeInterval: 0.5)
     }
 }

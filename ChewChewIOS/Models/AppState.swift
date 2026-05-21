@@ -396,6 +396,12 @@ final class AppState {
         let wasInForeground = isInForeground
         isInForeground = toForeground
         if !wasInForeground && toForeground {
+            // XCUITest 안정성용 hook — `-skipAttendanceDialog` launch arg가 있으면
+            // 출석 보너스를 trigger하지 않는다. 운영 빌드는 영향 없음(인자 미전달).
+            // dialog가 MealToggle hit testing을 가리는 flaky 패턴 차단.
+            if ProcessInfo.processInfo.arguments.contains("-skipAttendanceDialog") {
+                return
+            }
             // 신규 디바이스 첫 실행에선 onboarding 이름 입력이 완료(=displayName set)되기
             // 전까지 출석/스트릭 보상 다이얼로그를 띄우지 않는다. 보상이 이름 입력 sheet
             // 위로 먼저 떠 사용자가 보상→이름 순으로 마주치는 회귀를 차단.
