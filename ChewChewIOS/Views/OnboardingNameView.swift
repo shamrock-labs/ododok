@@ -38,6 +38,7 @@ struct OnboardingNameView: View {
                 .background(Color.white.opacity(0.85), in: RoundedRectangle(cornerRadius: 14))
                 .neuoShadow(.sm)
                 .padding(.horizontal, 40)
+                .accessibilityIdentifier("OnboardingNameField")
 
             Button { submit() } label: {
                 Text("시작하기")
@@ -52,6 +53,7 @@ struct OnboardingNameView: View {
             }
             .disabled(!canSubmit)
             .padding(.horizontal, 40)
+            .accessibilityIdentifier("OnboardingSubmit")
 
             Spacer()
         }
