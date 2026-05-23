@@ -16,7 +16,7 @@ final class CalendarUITests: XCTestCase {
     }
 
     func testTracking_emptyState() {
-        app.launchArguments = ["-resetState", "-skipOnboarding", "-startTab", "track"]
+        app.launchArguments = ["-resetState", "-skipOnboarding", "-startTab", "track", "-useNoopRemote"]
         app.launch()
 
         // "오늘의 식사 기록" header
@@ -30,7 +30,7 @@ final class CalendarUITests: XCTestCase {
     }
 
     func testTracking_calendarHeader() {
-        app.launchArguments = ["-resetState", "-skipOnboarding", "-startTab", "track"]
+        app.launchArguments = ["-resetState", "-skipOnboarding", "-startTab", "track", "-useNoopRemote"]
         app.launch()
 
         // "식사 캘린더" section header

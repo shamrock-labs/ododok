@@ -17,7 +17,7 @@ final class HomeMealToggleUITests: XCTestCase {
         app = XCUIApplication()
         // -skipAttendanceDialog로 RewardDialogView 자동 표시 차단 — dialog가 MealToggle
         // hit testing을 가리는 flaky 패턴 회피 (전체 test suite 실행 시 race).
-        app.launchArguments = ["-resetState", "-skipOnboarding", "-skipAttendanceDialog"]
+        app.launchArguments = ["-resetState", "-skipOnboarding", "-skipAttendanceDialog", "-useNoopRemote"]
     }
 
     override func tearDown() {

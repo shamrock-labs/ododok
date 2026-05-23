@@ -19,7 +19,7 @@ final class RewardDialogUITests: XCTestCase {
         // Fresh state + skip onboarding so the main screen loads immediately.
         // On first foreground with a displayName set, grantDailyAttendanceIfNeeded fires
         // and pendingRewardGrant is set → RewardDialogView appears showing "출석 보상!" and "+2".
-        app.launchArguments = ["-resetState", "-skipOnboarding"]
+        app.launchArguments = ["-resetState", "-skipOnboarding", "-useNoopRemote"]
         app.launch()
 
         // Look for either the reward dialog title or the "+2" acorn amount

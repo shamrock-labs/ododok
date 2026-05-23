@@ -16,13 +16,13 @@ final class OnboardingUITests: XCTestCase {
     }
 
     func testOnboardingShown_onFreshLaunch() {
-        app.launchArguments = ["-resetState"]
+        app.launchArguments = ["-resetState", "-useNoopRemote"]
         app.launch()
         XCTAssert(app.staticTexts["처음 오셨네요!"].waitForExistence(timeout: 10))
     }
 
     func testNameInput_dismissesSheet() {
-        app.launchArguments = ["-resetState"]
+        app.launchArguments = ["-resetState", "-useNoopRemote"]
         app.launch()
 
         // Wait for the onboarding sheet
