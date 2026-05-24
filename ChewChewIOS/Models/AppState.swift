@@ -65,7 +65,6 @@ final class AppState {
     var streak: Int = 0
     var points: Int = 0
     var animKey: Int = 0
-    var weeklyScores: [Int] = []
 
     /// PRD #11 streak 상태 — 프리즈 인벤토리 (0~3) + 마지막 성공 자정 시각.
     /// `streak`(count)과 함께 `StreakService.evaluate(_:)`가 일관 mutate.
@@ -444,7 +443,6 @@ final class AppState {
         streak = 0
         points = 0
         animKey = 0
-        weeklyScores = []
         resetIMUWaveform()
         imuWaveformSource = .idle
         goalAlreadyHit = false
@@ -625,7 +623,6 @@ final class AppState {
         let chewCount: Int
         let streak: Int
         let points: Int
-        let weeklyScores: [Int]
         let goalAlreadyHit: Bool
         let savedAt: Date
         var owned: [String]?
@@ -641,7 +638,6 @@ final class AppState {
             chewCount: chewCount,
             streak: streak,
             points: points,
-            weeklyScores: weeklyScores,
             goalAlreadyHit: goalAlreadyHit,
             savedAt: now,
             owned: Array(owned),
@@ -679,11 +675,6 @@ final class AppState {
         chewCount = snapshot.chewCount
         streak = snapshot.streak
         points = snapshot.points
-        // 주간 점수는 7개 또는 빈 배열만 허용. 손상된 저장본(예: 다른 길이)은 무시하고
-        // 현재 상태(시드 = 빈 배열) 유지.
-        if snapshot.weeklyScores.isEmpty || snapshot.weeklyScores.count == 7 {
-            weeklyScores = snapshot.weeklyScores
-        }
         goalAlreadyHit = snapshot.goalAlreadyHit
         // v2 옵셔널 필드 — v1 스냅샷에선 nil이라 빈 상태가 됨
         if let savedOwned = snapshot.owned {
@@ -730,7 +721,6 @@ final class AppState {
             chewCount: chewCount,
             streak: streak,
             points: points,
-            weeklyScores: weeklyScores,
             goalAlreadyHit: goalAlreadyHit,
             owned: Array(owned),
             equipped: UserStatsDTO.EquippedDTO(
@@ -769,9 +759,6 @@ final class AppState {
         chewCount = remote.chewCount
         streak = remote.streak
         points = remote.points
-        if remote.weeklyScores.isEmpty || remote.weeklyScores.count == 7 {
-            weeklyScores = remote.weeklyScores
-        }
         goalAlreadyHit = remote.goalAlreadyHit
         owned = Set(remote.owned)
         equipped = Equipped(hat: remote.equipped.hat, glasses: remote.equipped.glasses, acc: remote.equipped.acc)
@@ -785,7 +772,6 @@ final class AppState {
             chewCount: chewCount,
             streak: streak,
             points: points,
-            weeklyScores: weeklyScores,
             goalAlreadyHit: goalAlreadyHit,
             savedAt: savedAt,
             owned: Array(owned),

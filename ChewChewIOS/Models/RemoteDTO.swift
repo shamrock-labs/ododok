@@ -16,7 +16,6 @@ struct UserStatsDTO: Codable, Equatable {
     var chewCount: Int
     var streak: Int
     var points: Int
-    var weeklyScores: [Int]
     var goalAlreadyHit: Bool
     var owned: [String]
     var equipped: EquippedDTO
