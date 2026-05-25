@@ -11,6 +11,9 @@ struct HomeView: View {
     // MARK: - 측정 시작 햅틱 trigger
     @State private var hapticTrigger = false
 
+    // MARK: - 끼니 알림 설정 sheet
+    @State private var showMealReminderSettings = false
+
     var body: some View {
         VStack(spacing: 14) {
             topBar
@@ -32,6 +35,9 @@ struct HomeView: View {
         }
         .animation(.easeInOut(duration: 0.25), value: showAirPodsToast)
         .sensoryFeedback(.impact(weight: .medium), trigger: hapticTrigger)
+        .sheet(isPresented: $showMealReminderSettings) {
+            MealReminderSettingsView()
+        }
     }
 
     // MARK: - AirPods 토스트 뷰
@@ -97,7 +103,7 @@ struct HomeView: View {
             Spacer()
             HStack(spacing: 10) {
                 circleButton("bell.fill")
-                circleButton("gearshape.fill")
+                circleButton("gearshape.fill") { showMealReminderSettings = true }
             }
         }
     }
@@ -109,8 +115,8 @@ struct HomeView: View {
         return f.string(from: Date())
     }
 
-    private func circleButton(_ symbol: String) -> some View {
-        Button {} label: {
+    private func circleButton(_ symbol: String, action: @escaping () -> Void = {}) -> some View {
+        Button(action: action) {
             Image(systemName: symbol)
                 .font(.appFont(.medium, size: 18))
                 .foregroundStyle(Color.ink600)

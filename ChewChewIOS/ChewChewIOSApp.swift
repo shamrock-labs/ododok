@@ -25,6 +25,14 @@ struct ChewChewIOSApp: App {
                 .environment(appState)
                 .preferredColorScheme(.light)
                 .onAppear(perform: handleLaunchArguments)
+                .task {
+                    // 권한이 이미 부여돼 있으면 저장된 끼니 알림을 재스케줄.
+                    // 재부팅·재설치·앱 강제종료 후에도 pending request가 그대로 유지되지만,
+                    // identifier 충돌 없이 원자적으로 다시 add — 안전한 idempotent 호출.
+                    let status = await MealNotificationService.authorizationStatus()
+                    guard status == .authorized || status == .provisional else { return }
+                    await MealNotificationService.reschedule(.load())
+                }
         }
         // `initial: true` — 콜드 스타트 시 첫 .active 도달도 콜백으로 받기 위함.
         // 기본 onChange는 변경 시에만 호출돼, 앱 launch 직후 phase가 .active로
