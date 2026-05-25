@@ -112,7 +112,7 @@ final class InsForgeRemoteStore: RemoteStore {
             method: "GET",
             path: "/api/database/records/profiles?device_id=eq.\(escaped)&limit=1"
         )
-        let data = try await sendExpectingSuccess(req)
+        let data = try await sendGETExpectingSuccessWithRetry(req)
         let rows = try decoder.decode([ProfileDTO].self, from: data)
         return rows.first
     }
@@ -130,7 +130,7 @@ final class InsForgeRemoteStore: RemoteStore {
             method: "GET",
             path: "/api/database/records/user_stats?device_id=eq.\(escaped)&limit=1"
         )
-        let data = try await sendExpectingSuccess(req)
+        let data = try await sendGETExpectingSuccessWithRetry(req)
         let rows = try decoder.decode([UserStatsDTO].self, from: data)
         return rows.first
     }
@@ -171,7 +171,7 @@ final class InsForgeRemoteStore: RemoteStore {
         }
         path += "&order=started_at.asc"
         let req = try jsonRequest(method: "GET", path: path)
-        let data = try await sendExpectingSuccess(req)
+        let data = try await sendGETExpectingSuccessWithRetry(req)
         return try decoder.decode([ChewingSessionDTO].self, from: data)
     }
 
@@ -295,6 +295,19 @@ final class InsForgeRemoteStore: RemoteStore {
         var base = config.baseURL.absoluteString
         if base.hasSuffix("/") { base.removeLast() }
         return URL(string: base + pathOrAbsolute)!
+    }
+
+    /// idempotent GET 전용 retry — InsForge 호스트가 IPv6 AAAA record 없어 iOS의 IPv6
+    /// 우선 시도가 NoSuchRecord throw로 끝나는 cold-start race를 회피. 첫 시도 실패 시
+    /// 1초 대기 후 1회 재시도하면 NSURLSession이 A record로 fallback해 보통 성공한다.
+    /// POST/DELETE에는 사용 금지 — 재시도가 중복 부작용을 만들 수 있다.
+    private func sendGETExpectingSuccessWithRetry(_ req: URLRequest) async throws -> Data {
+        do {
+            return try await sendExpectingSuccess(req)
+        } catch {
+            try? await Task.sleep(for: .seconds(1))
+            return try await sendExpectingSuccess(req)
+        }
     }
 
     private func sendExpectingSuccess(_ req: URLRequest) async throws -> Data {
