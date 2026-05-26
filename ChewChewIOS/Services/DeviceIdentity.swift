@@ -7,7 +7,7 @@ import Security
 ///
 /// InsForge `profiles` / `user_stats` / `chewing_session`의 `device_id` 컬럼과 1:1 매칭.
 enum DeviceIdentity {
-    private static let service = "com.sungho.chewchewios"
+    private static let service = "com.sungho.ododok"
     private static let account = "deviceId"
 
     /// 동기 API. 앱 lifecycle 어디에서 호출해도 항상 같은 UUID 문자열을 돌려준다.
