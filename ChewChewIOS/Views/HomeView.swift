@@ -71,6 +71,18 @@ struct HomeView: View {
             presentAirPodsToast()
             return
         }
+
+        // REQ-01: notDetermined이면 즉시 시작하지 않고 권한 요청 → 결과에 따라 분기.
+        if !AppState.shouldStartImmediately(status: status, available: available) {
+            state.requestMotionPermission {
+                // 권한 허용됨 — 햅틱 + 측정 시작
+                hapticTrigger.toggle()
+                state.startEating()
+            } onDenied: {
+                presentAirPodsToast()
+            }
+            return
+        }
         #endif
 
         // 차단 안 됐을 때만 햅틱 + 시작
