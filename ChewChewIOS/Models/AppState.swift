@@ -250,8 +250,26 @@ final class AppState {
         // in-app 화폐 기능이라 ML 추론 결과를 카운터에 반영하지 않음.
         startFakeChewLoop()
 
-        // 잠금 화면/홈 화면으로 빠져도 AirPods IMU 콜백이 끊기지 않도록 무음 오디오 keep-alive 활성.
+        // 잠금 화면/홈 화면으로 빠져도 AirPods IMU 콜백이 끊기지 않도록 ambient 오디오 keep-alive 활성.
         // 시뮬레이터에선 내부적으로 노옵.
+        backgroundKeepAlive.onInterrupt = { [weak self] shouldResume in
+            guard let self else { return }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if shouldResume {
+                    // 전화 종료 후 자동 재개 — 갭 기록 후 IMU 루프 재시작.
+                    #if os(iOS) && !targetEnvironment(simulator)
+                    if let began = self.backgroundKeepAlive.interruptionBeganAt {
+                        self.imuSessionRecorder?.recordInterruptionGap(began: began, ended: Date())
+                    }
+                    #endif
+                    _ = self.startHeadphoneMotionLoop()
+                } else {
+                    // 전화 수신 시작 — IMU 루프 중단.
+                    self.stopHeadphoneMotionLoop()
+                }
+            }
+        }
         backgroundKeepAlive.start()
 
         if !startHeadphoneMotionLoop() {
@@ -267,8 +285,9 @@ final class AppState {
         stopFakeChewLoop()
         stopDemoIMUWaveformLoop()
         // 식사가 끝나면 더 이상 백그라운드 wake가 필요 없으므로 즉시 stop —
-        // 무음이라도 오디오 세션이 살아있는 동안엔 다른 앱(타이머/시스템 사운드 등)
+        // ambient 오디오 세션이 살아있는 동안엔 다른 앱(타이머/시스템 사운드 등)
         // 미디어 라우팅에 영향이 가니, 세션 끝과 동시에 해제하는 게 안전.
+        backgroundKeepAlive.onInterrupt = nil
         backgroundKeepAlive.stop()
         resetIMUWaveform()
         imuWaveformSource = .idle
