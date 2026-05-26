@@ -2,21 +2,13 @@ import Foundation
 import UserNotifications
 
 /// 끼니 알림 스케줄링 래퍼.
-/// 세 슬롯(meal.breakfast / meal.lunch / meal.dinner)을 매번 전부 remove한 뒤
+/// 5개 슬롯(breakfast/lunch/dinner/extra1/extra2)을 매번 전부 remove한 뒤
 /// enabled인 것만 daily 반복 trigger로 다시 add — 원자적 교체.
 enum MealNotificationService {
     enum Meal: String, CaseIterable {
-        case breakfast, lunch, dinner
+        case breakfast, lunch, dinner, extra1, extra2
 
         var identifier: String { "meal.\(rawValue)" }
-
-        var bodyText: String {
-            switch self {
-            case .breakfast: return "아침 시간이에요"
-            case .lunch:     return "점심 시간이에요"
-            case .dinner:    return "저녁 시간이에요"
-            }
-        }
     }
 
     private static let titleText = "주인님 밥주세요"
@@ -47,7 +39,7 @@ enum MealNotificationService {
         }
     }
 
-    /// 3개 identifier 모두 pending 제거 후, enabled인 슬롯만 daily 반복으로 add.
+    /// 5개 identifier 모두 pending 제거 후, enabled인 슬롯만 daily 반복으로 add.
     /// 권한 없음/거부 상태면 add 없이 remove만.
     static func reschedule(_ settings: MealReminderSettings) async {
         let allIds = Meal.allCases.map(\.identifier)
@@ -62,13 +54,16 @@ enum MealNotificationService {
             (.breakfast, settings.breakfast),
             (.lunch,     settings.lunch),
             (.dinner,    settings.dinner),
+            (.extra1,    settings.extra1),
+            (.extra2,    settings.extra2),
         ]
 
         for (meal, slot) in slots where slot.enabled {
             let content = UNMutableNotificationContent()
             content.title = titleText
-            content.body  = meal.bodyText
+            content.body  = CaptionPool.random(from: CaptionPool.mealReminder)
             content.sound = .default
+            content.userInfo = ["deepLink": deepLinkStart]
 
             var components = DateComponents()
             components.hour = slot.hour
@@ -83,4 +78,6 @@ enum MealNotificationService {
             try? await center.add(request)
         }
     }
+
+    static let deepLinkStart = "chewchew://start"
 }

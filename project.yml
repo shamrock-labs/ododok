@@ -37,6 +37,9 @@ targets:
           - Pretendard-SemiBold.otf
           - Pretendard-Bold.otf
           - Pretendard-Black.otf
+        CFBundleURLTypes:
+          - CFBundleURLSchemes:
+              - chewchew
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait

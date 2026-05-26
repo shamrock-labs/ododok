@@ -134,6 +134,10 @@ final class AppState {
     /// 마지막으로 실제 IMU 샘플이 들어온 시각. 백그라운드 수집 검증용.
     var lastIMUSampleAt: Date?
 
+    /// 알림 딥링크(`chewchew://start`) 수신 시 true. 3초 후 자동 false.
+    /// HomeView의 MealToggle 강조 스타일 트리거.
+    var startButtonHighlighted: Bool = false
+
     /// 앱 foreground 여부. scenePhase 관찰자가 갱신.
     /// 초기값 false — 앱 launch 시점엔 아직 .active phase가 아니므로, scenePhase가
     /// `.active`로 처음 도달할 때 `sceneDidChange(toForeground:true)`의 전이
@@ -298,6 +302,17 @@ final class AppState {
 
     func toggleEating() {
         isEating ? stopEating() : startEating()
+    }
+
+    /// 딥링크(`chewchew://start`) 수신 시 호출. 시작 버튼을 3초간 강조.
+    /// delay 파라미터는 단위테스트에서 0으로 주입 가능.
+    @MainActor
+    func requestStartHighlight(duration: TimeInterval = 3) {
+        startButtonHighlighted = true
+        Task {
+            try? await Task.sleep(for: .seconds(duration))
+            startButtonHighlighted = false
+        }
     }
 
     // MARK: - Chew (한 입 = 한 번의 저작 신호)
