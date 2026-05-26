@@ -14,6 +14,9 @@ struct HomeView: View {
     // MARK: - 끼니 알림 설정 sheet
     @State private var showMealReminderSettings = false
 
+    // MARK: - 설정 sheet (REQ-05)
+    @State private var showSettings = false
+
     var body: some View {
         VStack(spacing: 14) {
             topBar
@@ -37,6 +40,9 @@ struct HomeView: View {
         .sensoryFeedback(.impact(weight: .medium), trigger: hapticTrigger)
         .sheet(isPresented: $showMealReminderSettings) {
             MealReminderSettingsView()
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
         }
     }
 
@@ -102,8 +108,8 @@ struct HomeView: View {
             }
             Spacer()
             HStack(spacing: 10) {
-                circleButton("bell.fill")
-                circleButton("gearshape.fill") { showMealReminderSettings = true }
+                circleButton("bell.fill") { showMealReminderSettings = true }
+                circleButton("gearshape.fill") { showSettings = true }
             }
         }
     }
