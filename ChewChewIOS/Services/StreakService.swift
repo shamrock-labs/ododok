@@ -16,6 +16,34 @@ enum StreakService {
     static let maxFreezeInventory = 3
     static let milestones: Set<Int> = [7, 30, 100]
     static let milestoneFreezeReward = 1
+    static let timezoneTolerance: TimeInterval = 6 * 3600  // 6시간
+
+    /// 두 Date 사이의 로컬 일자 차분을 계산. `last`와 `now`가 자정 기준 ±tolerance 이내로
+    /// 어긋난 경우(시간대 전환 등) 같은 날로 판정해 0을 반환.
+    /// - Parameters:
+    ///   - last: 직전 성공 시각
+    ///   - now: 현재 시각
+    ///   - tolerance: 경계 허용 윈도우 (기본 6시간)
+    /// - Returns: 일자 차분 (같은 날이면 0, 다음 날이면 1, …)
+    static func effectiveGapDays(
+        last: Date,
+        now: Date,
+        tolerance: TimeInterval = timezoneTolerance
+    ) -> Int {
+        let cal = Calendar(identifier: .gregorian)
+        let lastDay = cal.startOfDay(for: last)
+        let nowDay  = cal.startOfDay(for: now)
+        let rawGap  = cal.dateComponents([.day], from: lastDay, to: nowDay).day ?? 0
+
+        // rawGap이 1일 때 실제 시간 차가 tolerance 이내이면 같은 날 취급 → 0 반환
+        if rawGap == 1 {
+            let elapsed = now.timeIntervalSince(last)
+            if elapsed < tolerance {
+                return 0
+            }
+        }
+        return rawGap
+    }
 
     enum Event: Equatable {
         case incremented(newCount: Int)
@@ -30,7 +58,6 @@ enum StreakService {
     @MainActor
     @discardableResult
     static func evaluate(_ state: AppState, now: Date = .now) -> [Event] {
-        let cal = Calendar(identifier: .gregorian)
         var events: [Event] = []
 
         guard let last = state.lastSuccessDate else {
@@ -41,9 +68,7 @@ enum StreakService {
             return events
         }
 
-        let lastDay = cal.startOfDay(for: last)
-        let nowDay = cal.startOfDay(for: now)
-        let gapDays = cal.dateComponents([.day], from: lastDay, to: nowDay).day ?? 0
+        let gapDays = StreakService.effectiveGapDays(last: last, now: now)
 
         if gapDays <= 0 {
             return events
@@ -99,9 +124,7 @@ enum StreakService {
             return events
         }
 
-        let lastDay = cal.startOfDay(for: last)
-        let nowDay = cal.startOfDay(for: now)
-        let gapDays = cal.dateComponents([.day], from: lastDay, to: nowDay).day ?? 0
+        let gapDays = StreakService.effectiveGapDays(last: last, now: now)
 
         guard gapDays >= 2 else {
             return events
@@ -110,6 +133,7 @@ enum StreakService {
         if state.freezeInventory > 0 {
             state.freezeInventory -= 1
             // streak count는 유지, lastSuccessDate를 어제로 되돌려 다음 세션 종료 시 gapDays=1 path 타도록
+            let nowDay = cal.startOfDay(for: now)
             let yesterday = cal.date(byAdding: .day, value: -1, to: nowDay)!
             state.lastSuccessDate = yesterday
             events.append(.savedByFreeze(remainingFreeze: state.freezeInventory))
@@ -123,7 +147,7 @@ enum StreakService {
     }
 
     /// 이벤트 목록에서 dialog로 띄울 가장 임팩트 큰 단일 RewardGrant를 골라낸다.
-    /// 우선순위: milestone > savedByFreeze > reset > incremented(알림 안 함, nil).
+    /// 우선순위: milestone > savedByFreeze > reset > incremented(1일째) > 그 외 incremented(알림 안 함, nil).
     /// 동일 evaluate 호출에서 incremented + milestone이 같이 발생하면 milestone만 표시.
     static func noticeGrant(from events: [Event]) -> RewardGrant? {
         for event in events {
@@ -143,6 +167,11 @@ enum StreakService {
         for event in events {
             if case .reset = event {
                 return RewardGrant(amount: 0, kind: .streakReset)
+            }
+        }
+        for event in events {
+            if case .incremented(let count) = event, count == 1 {
+                return RewardGrant(amount: 0, kind: .streakFirstDay)
             }
         }
         return nil
