@@ -435,6 +435,35 @@ final class AppState {
         appendIMUWaveformSample(energy)
     }
 
+    // MARK: - Erase all user data (REQ-05)
+
+    /// 설정 '내 데이터 삭제' 확인 시 호출.
+    /// 원격: profiles DELETE → FK CASCADE(user_stats/chewing_session/bout).
+    /// 로컬: 모든 게임 상태를 초기화하고 스냅샷도 비움.
+    @MainActor
+    func eraseAllUserData() async {
+        // 로컬 인메모리 상태 리셋 (reset()과 동일 범위)
+        stopEating()
+        chewCount = 0
+        streak = 0
+        points = 0
+        animKey = 0
+        freezeInventory = 0
+        lastSuccessDate = nil
+        resetIMUWaveform()
+        imuWaveformSource = .idle
+        goalAlreadyHit = false
+        owned = []
+        equipped = Equipped()
+        ownedAcornPacks = [:]
+        todaySessions = []
+        lastCompletedSession = nil
+        displayName = nil
+        didLoadProfile = false
+        // 로컬 스냅샷 + 원격 데이터 삭제 (clearPersistedSnapshot이 remoteStore.deleteUserData 포함)
+        clearPersistedSnapshot()
+    }
+
     // MARK: - Reset
 
     func reset() {
