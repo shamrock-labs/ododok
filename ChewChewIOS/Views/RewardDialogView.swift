@@ -80,6 +80,7 @@ struct RewardGrant: Equatable {
         case streakMilestone(streakCount: Int)   // 7/30/100일 도달, 프리즈 +n(amount)
         case streakSaved                         // 프리즈 1 자동 소진, amount=잔여
         case streakReset                         // 끊김 리셋
+        case streakFirstDay                      // 첫 성공(스트릭 1일째) 토스트
 
         var title: String {
             switch self {
@@ -88,6 +89,7 @@ struct RewardGrant: Equatable {
             case .streakMilestone(let count): "🔥 \(count)일 달성!"
             case .streakSaved:     "🛡️ 프리즈로 스트릭 유지"
             case .streakReset:     "스트릭이 끊겼어요"
+            case .streakFirstDay:  "🔥 1일째!"
             }
         }
 
@@ -98,6 +100,7 @@ struct RewardGrant: Equatable {
             case .streakMilestone: "프리즈를 받았어요"
             case .streakSaved:     "프리즈 1개로 스트릭을 지켰어요"
             case .streakReset:     "다시 시작해 볼까요?"
+            case .streakFirstDay:  "스트릭을 시작했어요!"
             }
         }
 
