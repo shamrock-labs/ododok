@@ -1,0 +1,50 @@
+import SwiftUI
+
+/// 온보딩 튜토리얼 카드 한 장의 데이터. `chewing-imu-collector`의 RecordingGuideView
+/// 패턴을 오도독 스킨으로 옮긴 것 — SF Symbol 아이콘 + accent 색 + 제목/본문.
+struct OnboardingStep: Identifiable {
+    let id: Int
+    let icon: String
+    let title: String
+    let message: String
+    let accent: Color
+
+    /// 사용법 5단계. 표시 순서대로.
+    static let all: [OnboardingStep] = [
+        OnboardingStep(
+            id: 0,
+            icon: "airpodspro",
+            title: "AirPods를 연결해 주세요",
+            message: "AirPods Pro · 3·4세대 · Max 안의 IMU 센서가\n턱 움직임을 읽어요. 다른 이어폰은 측정되지 않아요.",
+            accent: .acorn600
+        ),
+        OnboardingStep(
+            id: 1,
+            icon: "fork.knife",
+            title: "식사 시작 버튼을 누르세요",
+            message: "홈에서 '식사 시작'을 누르고 평소처럼 드세요.\n다 먹으면 '식사 종료' — 그동안의 씹기가 기록돼요.",
+            accent: .sage600
+        ),
+        OnboardingStep(
+            id: 2,
+            icon: "mouth.fill",
+            title: "꼭꼭 씹을수록 다람쥐가 자라요",
+            message: "천천히 오래 씹으면 볼이 빵빵해지고\n도토리🌰가 쌓여요. 하루 목표는 600회예요.",
+            accent: .butter600
+        ),
+        OnboardingStep(
+            id: 3,
+            icon: "bag.fill",
+            title: "도토리로 다람쥐를 꾸며요",
+            message: "모은 도토리로 상점에서 모자·안경·액세서리를\n사서 다람쥐에게 씌워보세요.",
+            accent: .blush500
+        ),
+        OnboardingStep(
+            id: 4,
+            icon: "flame.fill",
+            title: "매일 들러 연속 출석을 쌓아요",
+            message: "7·30·100일엔 프리즈🛡️ 보너스가 있어요.\n끼니 알림을 켜두면 잊지 않고 챙길 수 있어요.",
+            accent: .acorn500
+        ),
+    ]
+}

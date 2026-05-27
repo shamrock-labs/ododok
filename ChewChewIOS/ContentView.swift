@@ -89,7 +89,7 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: onboardingBinding) {
-            OnboardingNameView(onComplete: {})
+            OnboardingFlowView()
         }
         // RewardDialogView는 overlay라 SessionResultSheet에 가려진다. sheet가 떠 있는 동안엔
         // 그리지 않고 대기 — sheet 닫히는 순간 자연스럽게 등장하고 그때부터 2.5s 자동 dismiss
@@ -140,13 +140,14 @@ struct ContentView: View {
         }
     }
 
-    /// 첫 실행 onboarding sheet binding — DB fetch 한 번 끝났고 displayName이 nil일 때만
-    /// 표시. `didLoadProfile` 가드로 reinstall cold-start의 sheet 깜빡임 방지.
-    /// OnboardingNameView의 `interactiveDismissDisabled`로 사용자 강제 dismiss 차단.
-    /// 저장 시 displayName이 갱신되면 binding이 false가 되어 자동 dismiss.
+    /// 첫 실행 onboarding sheet binding — DB fetch 한 번 끝났고(`didLoadProfile`) 온보딩을
+    /// 아직 안 마쳤을 때만 표시. `didLoadProfile` 가드로 reinstall cold-start의 sheet 깜빡임 방지.
+    /// 이름 입력 + 사용법 튜토리얼은 `OnboardingFlowView`가 한 sheet 안에서 잇고,
+    /// `interactiveDismissDisabled`로 강제 dismiss를 막는다. 튜토리얼 완료/건너뛰기로
+    /// `hasCompletedOnboarding`이 true가 되면 binding이 false가 되어 자동 dismiss.
     private var onboardingBinding: Binding<Bool> {
         Binding(
-            get: { state.didLoadProfile && state.displayName == nil },
+            get: { state.didLoadProfile && !state.hasCompletedOnboarding },
             set: { _ in }
         )
     }

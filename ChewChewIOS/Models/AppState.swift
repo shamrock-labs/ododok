@@ -89,7 +89,19 @@ final class AppState {
     /// 처음 fetch가 끝나면 true로 마크 — 그 시점에 displayName nil이면 진짜 신규 디바이스.
     var didLoadProfile: Bool = false
 
+    /// 온보딩(이름 입력 + 사용법 튜토리얼)을 끝까지 마쳤는지. false인 동안 ContentView가
+    /// onboarding sheet를 띄운다. 튜토리얼 마지막 "시작하기"/"건너뛰기"의 `completeOnboarding()`
+    /// 에서 true로. 출석/스트릭 보상은 이 값이 true가 되기 전엔 트리거하지 않아, 보상이 온보딩
+    /// 위로 떠버리는 회귀를 막는다. didSet으로 UserDefaults에 영속(단, init 내 대입은 didSet이
+    /// 발동하지 않으므로 마이그레이션 시 명시적으로 write).
+    var hasCompletedOnboarding: Bool = false {
+        didSet {
+            UserDefaults.standard.set(hasCompletedOnboarding, forKey: Self.onboardingCompleteKey)
+        }
+    }
+
     private static let displayNameKey = "ChewChewIOS.AppState.displayName"
+    private static let onboardingCompleteKey = "ChewChewIOS.AppState.hasCompletedOnboarding"
 
     // MARK: - Wardrobe (다람쥐 꾸미기)
 
@@ -226,6 +238,14 @@ final class AppState {
         // displayName은 game state(`PersistedSnapshot`)과 다른 별도 캐시 키 — cold-start
         // 시 UserDefaults에서 즉시 read해 HomeView가 빈 이름으로 깜빡이지 않도록.
         displayName = UserDefaults.standard.string(forKey: Self.displayNameKey)
+        // 온보딩 완료 플래그 로드. 신규 키라, 이미 이름이 있는 기존 사용자(앱 업데이트로 이 키가
+        // 아직 없는 상태)는 사용법 튜토리얼을 본 적 없어도 다시 띄우지 않도록 true로 마이그레이션.
+        // init 내 대입은 didSet을 발동시키지 않으므로 UserDefaults write는 명시적으로 한다.
+        hasCompletedOnboarding = UserDefaults.standard.bool(forKey: Self.onboardingCompleteKey)
+        if !hasCompletedOnboarding && displayName != nil {
+            hasCompletedOnboarding = true
+            UserDefaults.standard.set(true, forKey: Self.onboardingCompleteKey)
+        }
         // 즉시 표시용 fallback — DB 실패 또는 응답 전에 화면 그려도 마지막 캐시값으로.
         loadPersistedSnapshot()
         Task { [weak self] in
@@ -416,11 +436,11 @@ final class AppState {
             if ProcessInfo.processInfo.arguments.contains("-skipAttendanceDialog") {
                 return
             }
-            // 신규 디바이스 첫 실행에선 onboarding 이름 입력이 완료(=displayName set)되기
-            // 전까지 출석/스트릭 보상 다이얼로그를 띄우지 않는다. 보상이 이름 입력 sheet
-            // 위로 먼저 떠 사용자가 보상→이름 순으로 마주치는 회귀를 차단.
-            // saveDisplayName이 이름 저장 직후 동일 경로를 호출해 이어준다.
-            if displayName != nil {
+            // 신규 디바이스 첫 실행에선 온보딩(이름 입력 + 사용법 튜토리얼)이 끝나기 전까지
+            // 출석/스트릭 보상 다이얼로그를 띄우지 않는다. 보상이 온보딩 sheet 위로 먼저 떠
+            // 사용자가 보상→온보딩 순으로 마주치는 회귀를 차단. completeOnboarding()이
+            // 튜토리얼 종료 직후 동일 경로를 호출해 이어준다.
+            if hasCompletedOnboarding {
                 grantDailyAttendanceIfNeeded()
             }
         }
@@ -496,6 +516,7 @@ final class AppState {
         todaySessions = []
         lastCompletedSession = nil
         displayName = nil
+        hasCompletedOnboarding = false
         freezeInventory = 0
         lastSuccessDate = nil
         // 저장된 스냅샷도 비워서 다음 실행에서 시드값이 살아남도록
@@ -933,17 +954,24 @@ final class AppState {
     private func fetchAndApplyDisplayName() async {
         let deviceId = DeviceIdentity.shared
         let profile = try? await remoteStore.fetchProfile(deviceId: deviceId)
-        if let name = profile?.displayName, !name.isEmpty, name != displayName {
-            displayName = name
+        if let name = profile?.displayName, !name.isEmpty {
+            if name != displayName {
+                displayName = name
+            }
+            // DB에 이름이 있다 = 이전에 온보딩을 마친 기존 사용자. 재설치로 로컬 플래그가
+            // 비었어도 사용법 튜토리얼을 다시 띄우지 않도록 완료로 마크한다.
+            if !hasCompletedOnboarding {
+                hasCompletedOnboarding = true
+            }
         }
         // displayName 먼저 set 후 마지막에 didLoadProfile = true. 둘이 같은 main-actor
         // 동기 블록에서 순차로 갱신되면 ContentView의 onboardingBinding 평가가 한 frame에
         // 일관된 두 값으로 수행돼, "didLoadProfile만 true + displayName 아직 nil" 중간
         // 상태에서 sheet이 열리는 race를 피한다.
         didLoadProfile = true
-        // 다른 기기에서 등록한 이름을 신규 설치에서 처음 받아온 경우: foreground 진입 시점엔
-        // displayName이 nil이라 attendance를 건너뛰었으므로, 여기서 이어서 트리거한다.
-        if isInForeground && displayName != nil {
+        // 재설치한 기존 사용자(위에서 hasCompletedOnboarding을 막 true로 올린 경우): foreground
+        // 진입 시점엔 아직 false라 attendance를 건너뛰었으므로, 여기서 이어서 트리거한다.
+        if isInForeground && hasCompletedOnboarding {
             grantDailyAttendanceIfNeeded()
         }
     }
@@ -955,12 +983,20 @@ final class AppState {
         guard !trimmed.isEmpty else { return }
         displayName = trimmed
         profileEnsured = true
-        // 이름 입력 sheet이 dismiss되어 메인 화면이 보이는 시점에 비로소 도토리 출석 보상을
-        // 표시한다. sceneDidChange는 displayName==nil 동안엔 attendance를 건너뛰므로, 신규
-        // 디바이스의 첫 보상 trigger 책임은 이 경로가 진다.
-        grantDailyAttendanceIfNeeded()
+        // 출석 보상은 여기서 트리거하지 않는다 — 이름 저장 뒤엔 사용법 튜토리얼이 이어지므로,
+        // 보상은 튜토리얼이 끝나는 completeOnboarding()에서 띄운다(보상이 튜토리얼 위로
+        // 떠버리는 회귀 방지). 이름 저장 시점엔 DB upsert만 수행.
         let deviceId = DeviceIdentity.shared
         try? await remoteStore.upsertProfile(ProfileDTO(deviceId: deviceId, displayName: trimmed))
+    }
+
+    /// 사용법 튜토리얼의 마지막 "시작하기"(또는 우상단 "건너뛰기")에서 호출. 온보딩 완료를
+    /// 마크해 sheet을 닫고, 메인 화면이 보이는 이 시점에 비로소 도토리 출석 보상을 트리거한다.
+    @MainActor
+    func completeOnboarding() {
+        guard !hasCompletedOnboarding else { return }
+        hasCompletedOnboarding = true
+        grantDailyAttendanceIfNeeded()
     }
 
     /// 일일 출석 보상 + 스트릭 foreground 자동 방어를 한 번에 평가한다. RewardLedger와
