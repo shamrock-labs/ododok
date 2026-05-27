@@ -450,6 +450,35 @@ final class AppState {
         appendIMUWaveformSample(energy)
     }
 
+    // MARK: - Erase all user data (REQ-05)
+
+    /// 설정 '내 데이터 삭제' 확인 시 호출.
+    /// 원격: profiles DELETE → FK CASCADE(user_stats/chewing_session/bout).
+    /// 로컬: 모든 게임 상태를 초기화하고 스냅샷도 비움.
+    @MainActor
+    func eraseAllUserData() async {
+        // 로컬 인메모리 상태 리셋 (reset()과 동일 범위)
+        stopEating()
+        chewCount = 0
+        streak = 0
+        points = 0
+        animKey = 0
+        freezeInventory = 0
+        lastSuccessDate = nil
+        resetIMUWaveform()
+        imuWaveformSource = .idle
+        goalAlreadyHit = false
+        owned = []
+        equipped = Equipped()
+        ownedAcornPacks = [:]
+        todaySessions = []
+        lastCompletedSession = nil
+        displayName = nil
+        didLoadProfile = false
+        // 로컬 스냅샷 + 원격 데이터 삭제 (clearPersistedSnapshot이 remoteStore.deleteUserData 포함)
+        clearPersistedSnapshot()
+    }
+
     // MARK: - Reset
 
     func reset() {
@@ -503,6 +532,28 @@ final class AppState {
         fakeChewTimer = nil
     }
 
+    // MARK: - Motion permission guard (REQ-01)
+
+    /// `.notDetermined`이면 즉시 측정을 시작하지 않고 권한 요청 경로로 보낸다.
+    /// CoreMotion은 명시적 request API 없이 `startDeviceMotionUpdates` 호출 시 시스템이
+    /// 프롬프트를 띄운다. 권한 부여 → `onGranted()`, 거부(에러 콜백) → `onDenied()`.
+    func requestMotionPermission(onGranted: @escaping () -> Void, onDenied: @escaping () -> Void) {
+        headphoneMotionService.start { [weak self] _ in
+            // 첫 샘플이 도착했다 = 권한이 허용됨. 업데이트를 즉시 멈추고 호출자에게 위임.
+            self?.headphoneMotionService.stop()
+            DispatchQueue.main.async { onGranted() }
+        } onError: { _ in
+            // 에러 = 권한 거부 또는 디바이스 없음.
+            DispatchQueue.main.async { onDenied() }
+        }
+    }
+
+    /// REQ-01 가드 결정 순수 함수.
+    /// `.authorized && available`일 때만 true — `.notDetermined`는 false(권한 요청 경로로).
+    static func shouldStartImmediately(status: CMAuthorizationStatus, available: Bool) -> Bool {
+        status == .authorized && available
+    }
+
     private func startHeadphoneMotionLoop() -> Bool {
         #if targetEnvironment(simulator)
         imuWaveformSource = .simulator
@@ -515,7 +566,13 @@ final class AppState {
         case .restricted:
             imuWaveformSource = .restricted
             return false
-        case .notDetermined, .authorized:
+        case .notDetermined:
+            // notDetermined는 startHeadphoneMotionLoop 경로에 도달하지 않는다.
+            // HomeView.handleMealToggle()이 shouldStartImmediately=false로 먼저 걸러
+            // requestMotionPermission 경로로 보내기 때문. 안전망으로만 존재.
+            imuWaveformSource = .idle
+            return false
+        case .authorized:
             break
         @unknown default:
             break

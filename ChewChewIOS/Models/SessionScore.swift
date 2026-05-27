@@ -42,10 +42,12 @@ struct SessionScore: Equatable {
         let mins = max(0.001, dto.durationSec / 60)
         let chewsPerMin = Double(chews) / mins
 
-        let speed      = bell(value: chewsPerMin,         sweet: 28,  tolerance: 8)
-        let rhythm     = Int((min(fraction / 0.7, 1.0) * 100).rounded())
-        let continuity = Int((min(Double(chews) / 300.0, 1.0) * 100).rounded())
-        let length     = bell(value: dto.durationSec,     sweet: 720, tolerance: 240)
+        // 가중치/임계값 튜닝 (#32) — 한국식 식사 흐름(7~10분, 150~250회, 대화 텀)에 맞춰
+        // tolerance/cap을 완화. 일반 사용자가 자연스럽게 식사해도 70~85점이 잡히도록.
+        let speed      = bell(value: chewsPerMin,         sweet: 28,  tolerance: 15)
+        let rhythm     = Int((min(fraction / 0.5, 1.0) * 100).rounded())
+        let continuity = Int((min(Double(chews) / 200.0, 1.0) * 100).rounded())
+        let length     = bell(value: dto.durationSec,     sweet: 720, tolerance: 600)
 
         let total = Int((Double(speed + rhythm + continuity + length) / 4.0).rounded())
         return SessionScore(

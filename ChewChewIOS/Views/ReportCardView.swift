@@ -16,6 +16,8 @@ struct ReportCardModel: Equatable {
     let satisfaction: Int
     /// 한 줄 캡션. nil이면 기본 멘트 fallback.
     let caption: String?
+    /// 다람이 일러스트. 점수 등급에서 매핑.
+    let mood: Mood
     /// 식사 종료 시각 — 헤더 날짜 라벨에 사용.
     let endedAt: Date
 
@@ -32,11 +34,20 @@ struct ReportCardModel: Equatable {
     }
 }
 
+/// 점수 카운트업 계산. progress 0→0, 1→target. 범위 [0, target] 로 clamp.
+/// View와 분리된 순수 함수 — 단위테스트 가능.
+func scoreCountUpValue(progress: Double, target: Int) -> Int {
+    let clamped = max(0.0, min(1.0, progress))
+    return Int((Double(target) * clamped).rounded())
+}
+
 /// 식사 후 분석 리포트 카드. 식사 종료 직후 sheet/overlay 표시(commit ②)와
 /// 캘린더에서 과거 세션 재현(commit ④) 양쪽에서 동일하게 사용된다. 1080×1920 PNG
 /// 공유(commit ③)도 같은 View를 ImageRenderer로 렌더.
 struct ReportCardView: View {
     let model: ReportCardModel
+
+    @State private var scoreProgress: Double = 0
 
     var body: some View {
         VStack(spacing: 18) {
@@ -56,6 +67,11 @@ struct ReportCardView: View {
             in: RoundedRectangle(cornerRadius: 28)
         )
         .neuoShadow(.md)
+        .onAppear {
+            withAnimation(.easeOut(duration: 1.2)) {
+                scoreProgress = 1.0
+            }
+        }
     }
 
     private var header: some View {
@@ -69,14 +85,17 @@ struct ReportCardView: View {
                     .foregroundStyle(Color.ink800)
             }
             Spacer()
-            Text("🌰").font(.appFont(.regular, size: 28))
+            Image(model.mood.imageName)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 52, height: 52)
         }
     }
 
     private var scoreSection: some View {
         VStack(spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text("\(model.score)")
+                Text("\(scoreCountUpValue(progress: scoreProgress, target: model.score))")
                     .font(.appFont(.heavy, size: 72))
                     .foregroundStyle(gradeColor)
                     .monospacedDigit()
@@ -190,6 +209,7 @@ struct ReportCardView: View {
             chewsPerMinute: 29.7,
             satisfaction: 4,
             caption: "오늘은 천천히 잘 씹었어요. 한 입에 30회 목표 달성!",
+            mood: .champ,
             endedAt: Date()
         ))
         .padding(20)
@@ -207,6 +227,7 @@ struct ReportCardView: View {
             chewsPerMinute: 27.4,
             satisfaction: 3,
             caption: nil,
+            mood: .puffy,
             endedAt: Date()
         ))
         .padding(20)
@@ -224,6 +245,7 @@ struct ReportCardView: View {
             chewsPerMinute: 29.0,
             satisfaction: 2,
             caption: "조금 빨리 먹은 것 같아요. 다음 식사엔 한 입 30회를 의식해 봐요.",
+            mood: .sleepy,
             endedAt: Date()
         ))
         .padding(20)
@@ -236,9 +258,10 @@ struct ReportCardView: View {
 // 노출. 점수 산출은 `SessionScore.compute(_:)`에 위임.
 
 extension ReportCardModel {
-    /// `ChewingSessionDTO` → 카드 모델. 분석 5필드가 채워진 세션에서만 nil 아닌 값을
-    /// 반환. nil이면 호출자가 빈 상태 카드를 표시 (PRD #3 "데이터가 부족해요").
+    /// `ChewingSessionDTO` → 카드 모델. `durationSec < 60`이거나 분석 5필드가
+    /// 채워지지 않은 세션에서 nil 반환 → 호출자가 빈 상태 카드를 표시 (PRD #3 "데이터가 부족해요").
     static func from(_ dto: ChewingSessionDTO) -> ReportCardModel? {
+        guard dto.durationSec >= 60 else { return nil }
         guard let score = SessionScore.compute(dto) else { return nil }
         let mins = max(0.001, dto.durationSec / 60)
         let chews = dto.estimatedTotalChews ?? 0
@@ -246,14 +269,18 @@ extension ReportCardModel {
         // 만족 표정 0~5 — PRD가 산출식을 명시하지 않아 잠정적으로 점수에 단조 매핑.
         // 후속 PR에서 사용자 피드백 입력으로 분리될 여지.
         let satisfaction = max(0, min(5, Int((Double(score.total) / 20.0).rounded())))
+        let grade = Grade(scoreGrade: score.grade)
+        let mood = Mood(grade: grade)
+        let caption = CaptionPool.report(for: grade)
         return ReportCardModel(
             score: score.total,
-            grade: Grade(scoreGrade: score.grade),
+            grade: grade,
             chewCount: chews,
             totalDurationSec: dto.durationSec,
             chewsPerMinute: chewsPerMin,
             satisfaction: satisfaction,
-            caption: nil,
+            caption: caption,
+            mood: mood,
             endedAt: dto.endedAt
         )
     }
@@ -265,6 +292,17 @@ private extension ReportCardModel.Grade {
         case .good: self = .good
         case .soso: self = .soso
         case .bad:  self = .bad
+        }
+    }
+}
+
+private extension Mood {
+    /// 점수 등급 → 다람이 일러스트 매핑.
+    init(grade: ReportCardModel.Grade) {
+        switch grade {
+        case .good: self = Bool.random() ? .champ : .happy
+        case .soso: self = .puffy
+        case .bad:  self = .sleepy
         }
     }
 }

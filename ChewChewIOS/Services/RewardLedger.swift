@@ -17,12 +17,15 @@ import Foundation
 /// main actor 메서드)는 어쨌든 main에서 부른다. `resetAll()`이 nonisolated 컨텍스트
 /// (`clearPersistedSnapshot`)에서도 호출되어 actor 충돌이 나는 걸 피한다.
 enum RewardLedger {
-    static let dailyAttendanceBonus: Int = 2
-    static let chewMultiplier: Double = 0.05
-    static let dailyCapacity: Int = 500
+    // 정책 튜닝 (#32) — 한 끼 평균 250회 사용자가 ~38🌰 적립 + 매일 100~150🌰 모이는
+    // 페이스로 의상(50~300🌰) 구매 동기가 자연스럽게 생기게 완화.
+    static let dailyAttendanceBonus: Int = 10
+    static let dailyCapacity: Int = 300
 
     private static let processedKeysKey = "ChewChewIOS.RewardLedger.processedKeys"
     private static let dailyAccrualKey = "ChewChewIOS.RewardLedger.dailyAccrual"
+    /// 캡 초과로 0🌰 처리된 키 목록 (일별). 저장 형식: [day: [key, ...]]
+    private static let cappedKeysKey = "ChewChewIOS.RewardLedger.cappedKeys"
 
     /// foreground 진입 시 호출. 같은 날엔 처음 한 번만 적립.
     /// 반환값은 실제로 적립된 도토리 수(0이면 이미 받았거나 상한 도달).
@@ -37,14 +40,20 @@ enum RewardLedger {
     @discardableResult
     static func accrue(forSession sessionId: UUID, chewCount: Int?, now: Date = .now) -> Int {
         guard let chewCount, chewCount > 0 else { return 0 }
-        let amount = max(1, Int((Double(chewCount) * chewMultiplier).rounded()))
+        let amount = max(1, Int((Double(chewCount) * Constants.pointsPerChew).rounded()))
         return accrue(key: "session:\(sessionId.uuidString.lowercased())", amount: amount, day: isoDay(now))
+    }
+
+    /// 특정 날(yyyy-MM-dd)에 캡 초과로 0🌰 처리된 이벤트 수를 반환.
+    static func cappedEventCount(for day: String) -> Int {
+        cappedKeys[day]?.count ?? 0
     }
 
     /// 테스트/리셋용 — `AppState.reset()` 또는 `clearPersistedSnapshot()`에서 호출 가능.
     static func resetAll() {
         UserDefaults.standard.removeObject(forKey: processedKeysKey)
         UserDefaults.standard.removeObject(forKey: dailyAccrualKey)
+        UserDefaults.standard.removeObject(forKey: cappedKeysKey)
     }
 
     // MARK: - Internals
@@ -66,6 +75,15 @@ enum RewardLedger {
         if granted > 0 {
             daily[day] = alreadyToday + granted
             dailyAccrual = daily
+        } else {
+            // 잔여 0 — capped 흔적 기록 (amount > 0인 경우만: 0짜리 요청은 capped 아님)
+            if amount > 0 {
+                var capped = cappedKeys
+                var dayKeys = capped[day] ?? []
+                dayKeys.append(key)
+                capped[day] = dayKeys
+                cappedKeys = capped
+            }
         }
         return granted
     }
@@ -78,6 +96,11 @@ enum RewardLedger {
     private static var dailyAccrual: [String: Int] {
         get { UserDefaults.standard.dictionary(forKey: dailyAccrualKey) as? [String: Int] ?? [:] }
         set { UserDefaults.standard.set(newValue, forKey: dailyAccrualKey) }
+    }
+
+    private static var cappedKeys: [String: [String]] {
+        get { UserDefaults.standard.dictionary(forKey: cappedKeysKey) as? [String: [String]] ?? [:] }
+        set { UserDefaults.standard.set(newValue, forKey: cappedKeysKey) }
     }
 
     /// 로컬 시간대 기준 `yyyy-MM-dd` — 자정 기준 일 구분.
