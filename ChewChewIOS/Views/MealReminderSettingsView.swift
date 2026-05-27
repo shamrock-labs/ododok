@@ -18,6 +18,8 @@ struct MealReminderSettingsView: View {
                     mealCard(title: "🌅 아침", slot: $settings.breakfast)
                     mealCard(title: "🍱 점심", slot: $settings.lunch)
                     mealCard(title: "🌙 저녁", slot: $settings.dinner)
+                    mealCard(title: "☕ 추가 1", slot: $settings.extra1)
+                    mealCard(title: "🍎 추가 2", slot: $settings.extra2)
                     footerHint
                     Spacer(minLength: 24)
                 }

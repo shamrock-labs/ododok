@@ -298,11 +298,19 @@ struct HomeView: View {
                 ),
                 in: RoundedRectangle(cornerRadius: 20)
             )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .strokeBorder(Color.white.opacity(state.startButtonHighlighted ? 0.9 : 0), lineWidth: 3)
+            )
         }
         .accessibilityIdentifier("MealToggle")
+        .accessibilityLabel(state.isEating ? "식사 종료" : "식사 시작")
         .buttonStyle(PressableButtonStyle())
         .softShadow(.pill)
+        .scaleEffect(state.startButtonHighlighted ? 1.04 : 1.0)
+        .shadow(color: Color.acorn400.opacity(state.startButtonHighlighted ? 0.55 : 0), radius: 14, x: 0, y: 4)
         .animation(.easeInOut(duration: 0.22), value: state.isEating)
+        .animation(.spring(response: 0.35, dampingFraction: 0.6), value: state.startButtonHighlighted)
     }
 }
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 @main
 struct ChewChewIOSApp: App {
@@ -6,6 +7,8 @@ struct ChewChewIOSApp: App {
         remoteStore: ChewChewIOSApp.makeRemoteStore()
     )
     @Environment(\.scenePhase) private var scenePhase
+
+    @UIApplicationDelegateAdaptor private var notifDelegate: NotificationDelegate
 
     /// 테스트(유닛/UI) 실행 중에는 실제 InsForge 백엔드 대신 `NoopRemoteStore`를 주입한다.
     /// `AppState.init`이 곧바로 원격 fetch/upsert를 트리거하므로, 이 분기가 없으면 테스트
@@ -24,7 +27,14 @@ struct ChewChewIOSApp: App {
             ContentView()
                 .environment(appState)
                 .preferredColorScheme(.light)
-                .onAppear(perform: handleLaunchArguments)
+                .onAppear {
+                    handleLaunchArguments()
+                    // 알림 탭 딥링크 수신을 위해 delegate에 appState 연결.
+                    notifDelegate.appState = appState
+                }
+                .onOpenURL { url in
+                    handleOpenURL(url)
+                }
                 .task {
                     // 권한이 이미 부여돼 있으면 저장된 끼니 알림을 재스케줄.
                     // 재부팅·재설치·앱 강제종료 후에도 pending request가 그대로 유지되지만,
@@ -42,6 +52,13 @@ struct ChewChewIOSApp: App {
         }
     }
 
+    /// `chewchew://start` URL 수신 처리. onOpenURL 및 NotificationDelegate에서 공통 호출.
+    @MainActor
+    func handleOpenURL(_ url: URL) {
+        guard url.scheme == "chewchew", url.host == "start" else { return }
+        appState.requestStartHighlight()
+    }
+
     /// 시뮬레이터 진단용 launch argument.
     /// - `-autoStartEating`: 앱 진입 즉시 식사 시작.
     /// - `-autoStopAfter <seconds>`: 자동 시작 후 N초 뒤 식사 종료 (→ snapshot persist).
@@ -49,6 +66,7 @@ struct ChewChewIOSApp: App {
     /// - `-resetState`: XCUITest용 — UserDefaults/RewardLedger/AppState 전체 초기화.
     /// - `-skipOnboarding`: XCUITest용 — displayName="테스터"로 설정해 onboarding sheet 우회.
     /// - `-useNoopRemote`: XCUITest용 — 실 백엔드 대신 NoopRemoteStore 주입(`makeRemoteStore`에서 처리).
+    /// - `-highlightStart`: XCUITest용 — 앱 진입 즉시 startButtonHighlighted=true (강조 UI 검증).
     /// 운영 코드에는 영향 없음.
     private func handleLaunchArguments() {
         let args = ProcessInfo.processInfo.arguments
@@ -65,6 +83,10 @@ struct ChewChewIOSApp: App {
             UserDefaults.standard.set("테스터", forKey: "ChewChewIOS.AppState.displayName")
             appState.displayName = "테스터"
             appState.didLoadProfile = true
+        }
+
+        if args.contains("-highlightStart") {
+            appState.startButtonHighlighted = true
         }
 
         if args.contains("-equipShowcase") {
