@@ -25,7 +25,7 @@ targets:
     info:
       path: ChewChewIOS/Info.plist
       properties:
-        CFBundleDisplayName: ChewChew
+        CFBundleDisplayName: Ododok
         InsForgeAPIKey: "$(INSFORGE_API_KEY)"
         NSMotionUsageDescription: 식사 중 AirPods 움직임을 분석해 저작 리듬을 시각화합니다.
         NSMicrophoneUsageDescription: AirPods IMU 동작 신뢰성 분석을 위해 마이크 권한이 필요할 수 있어요. 음성 녹음은 하지 않습니다.
@@ -43,7 +43,7 @@ targets:
         UIStatusBarStyle: UIStatusBarStyleDefault
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.sungho.chewchewios
+        PRODUCT_BUNDLE_IDENTIFIER: com.sungho.ododok
         TARGETED_DEVICE_FAMILY: "1"
         ENABLE_PREVIEWS: YES
         IPHONEOS_DEPLOYMENT_TARGET: "17.0"
