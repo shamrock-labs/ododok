@@ -17,9 +17,11 @@ import Foundation
 /// main actor 메서드)는 어쨌든 main에서 부른다. `resetAll()`이 nonisolated 컨텍스트
 /// (`clearPersistedSnapshot`)에서도 호출되어 actor 충돌이 나는 걸 피한다.
 enum RewardLedger {
-    static let dailyAttendanceBonus: Int = 2
-    static let chewMultiplier: Double = 0.05
-    static let dailyCapacity: Int = 500
+    // 정책 튜닝 (#32) — 한 끼 평균 250회 사용자가 ~38🌰 적립 + 매일 100~150🌰 모이는
+    // 페이스로 의상(50~300🌰) 구매 동기가 자연스럽게 생기게 완화.
+    static let dailyAttendanceBonus: Int = 10
+    static let chewMultiplier: Double = 0.15
+    static let dailyCapacity: Int = 300
 
     private static let processedKeysKey = "ChewChewIOS.RewardLedger.processedKeys"
     private static let dailyAccrualKey = "ChewChewIOS.RewardLedger.dailyAccrual"
