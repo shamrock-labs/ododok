@@ -89,10 +89,9 @@ struct ReportCardView: View {
             in: RoundedRectangle(cornerRadius: 28)
         )
         .neuoShadow(.md)
-        .sheet(isPresented: $showScoreFormula) {
-            ScoreFormulaSheet(model: model)
-                .presentationDetents([.height(440)])
-                .presentationDragIndicator(.visible)
+        .popover(isPresented: $showScoreFormula, arrowEdge: .top) {
+            ScoreFormulaPopover(model: model)
+                .presentationCompactAdaptation(.popover)
         }
         .onAppear {
             withAnimation(.easeOut(duration: 1.2)) {
@@ -496,66 +495,61 @@ struct EmptyReportCardView: View {
     }
 }
 
-// MARK: - 점수 산식 시트 (info 버튼 → 작은 모달)
+// MARK: - 점수 산식 팝오버 (info 버튼 → 작은 말풍선)
 
-/// 점수가 어떻게 산출됐는지 4요소 산식을 짧게 풀어 보여주는 작은 시트.
-/// 카드 그리드 상단의 info 버튼에서 호출. presentationDetents로 화면을 적게 가린다.
-private struct ScoreFormulaSheet: View {
+/// 점수가 어떻게 산출됐는지 4요소 산식을 짧게 풀어 보여주는 작은 팝오버.
+/// 카드 그리드 상단의 info 버튼에서 호출. iPhone에서도 sheet로 fallback 안 되게
+/// presentationCompactAdaptation(.popover)을 강제해 트리거 버튼 옆 말풍선으로 뜬다.
+private struct ScoreFormulaPopover: View {
     let model: ReportCardModel
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("점수가 어떻게 나왔어요?")
-                        .font(.appFont(.heavy, size: 18))
-                        .foregroundStyle(Color.ink800)
-                    Text("4가지 요소를 같은 비중으로 평균낸 값이에요.")
-                        .font(.appFont(.regular, size: 13))
-                        .foregroundStyle(Color.ink400)
-                }
-
-                Divider()
-
-                formulaRow(label: "속도",       detail: "28회/분",       subScore: model.speedScore)
-                formulaRow(label: "리듬",       detail: "씹기 비율 50%+", subScore: model.rhythmScore)
-                formulaRow(label: "연속성",     detail: "200회+",         subScore: model.continuityScore)
-                formulaRow(label: "식사 시간",  detail: "12분 부근",      subScore: model.lengthScore)
-
-                Divider()
-
-                HStack {
-                    Text("총점")
-                        .font(.appFont(.bold, size: 14))
-                        .foregroundStyle(Color.ink800)
-                    Spacer()
-                    Text("\(model.score)점")
-                        .font(.appFont(.heavy, size: 20))
-                        .foregroundStyle(Color.acorn700)
-                        .monospacedDigit()
-                }
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("점수가 어떻게 나왔어요?")
+                    .font(.appFont(.bold, size: 14))
+                    .foregroundStyle(Color.ink800)
+                Text("4요소를 같은 비중으로 평균낸 값")
+                    .font(.appFont(.regular, size: 11))
+                    .foregroundStyle(Color.ink400)
             }
-            .padding(.horizontal, 22)
-            .padding(.top, 20)
-            .padding(.bottom, 24)
+
+            Divider()
+
+            formulaRow(label: "속도",      detail: "28회/분",       subScore: model.speedScore)
+            formulaRow(label: "리듬",      detail: "씹기 비율 50%+", subScore: model.rhythmScore)
+            formulaRow(label: "연속성",    detail: "200회+",         subScore: model.continuityScore)
+            formulaRow(label: "식사 시간", detail: "12분 부근",      subScore: model.lengthScore)
+
+            Divider()
+
+            HStack {
+                Text("총점")
+                    .font(.appFont(.bold, size: 12))
+                    .foregroundStyle(Color.ink800)
+                Spacer(minLength: 0)
+                Text("\(model.score)점")
+                    .font(.appFont(.heavy, size: 15))
+                    .foregroundStyle(Color.acorn700)
+                    .monospacedDigit()
+            }
         }
-        .background(Color.cream.ignoresSafeArea())
+        .padding(16)
+        .frame(width: 260)
     }
 
     private func formulaRow(label: String, detail: String, subScore: Int) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(label)
-                    .font(.appFont(.bold, size: 14))
-                    .foregroundStyle(Color.ink800)
-                Text(detail)
-                    .font(.appFont(.regular, size: 12))
-                    .foregroundStyle(Color.ink400)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(label)
+                .font(.appFont(.bold, size: 12))
+                .foregroundStyle(Color.ink800)
+                .frame(width: 56, alignment: .leading)
+            Text(detail)
+                .font(.appFont(.regular, size: 11))
+                .foregroundStyle(Color.ink400)
             Spacer(minLength: 0)
             Text("\(subScore)")
-                .font(.appFont(.heavy, size: 18))
+                .font(.appFont(.heavy, size: 14))
                 .foregroundStyle(Color.ink800)
                 .monospacedDigit()
         }
