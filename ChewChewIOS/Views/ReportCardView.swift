@@ -77,7 +77,6 @@ struct ReportCardView: View {
             chewRestSection
             captionSection
             if onDeepReport != nil { deepReportCTA }
-            footer
         }
         .padding(24)
         .frame(maxWidth: .infinity)
@@ -140,7 +139,6 @@ struct ReportCardView: View {
 
     private var scoreBreakdownGrid: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionTitle("점수 근거")
             LazyVGrid(
                 columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
                 spacing: 12
@@ -158,7 +156,7 @@ struct ReportCardView: View {
                 factorCell(
                     label: "연속성",
                     value: model.chewCount.koLocale, unit: "회",
-                    subScore: model.continuityScore, reference: "200회 이상"
+                    subScore: model.continuityScore, reference: "꾸준히 씹을수록 ↑"
                 )
                 factorCell(
                     label: "식사 시간",
@@ -173,16 +171,9 @@ struct ReportCardView: View {
     private func factorCell(label: String, value: String, unit: String?, subScore: Int, reference: String) -> some View {
         let color = factorColor(subScore)
         return VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 4) {
-                Text(label)
-                    .font(.appFont(.medium, size: 11))
-                    .foregroundStyle(Color.ink400)
-                Spacer(minLength: 0)
-                Text("\(subScore)")
-                    .font(.appFont(.bold, size: 11))
-                    .foregroundStyle(color)
-                    .monospacedDigit()
-            }
+            Text(label)
+                .font(.appFont(.medium, size: 11))
+                .foregroundStyle(Color.ink400)
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text(value)
                     .font(.appFont(.heavy, size: 20))
@@ -282,15 +273,6 @@ struct ReportCardView: View {
             )
         }
         .buttonStyle(.plain)
-    }
-
-    private var footer: some View {
-        HStack {
-            Spacer()
-            Text("다람이 · chewchew.app")
-                .font(.appFont(.medium, size: 10))
-                .foregroundStyle(Color.ink400)
-        }
     }
 
     private func sectionTitle(_ text: String) -> some View {

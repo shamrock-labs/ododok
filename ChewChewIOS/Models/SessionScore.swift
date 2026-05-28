@@ -44,9 +44,11 @@ struct SessionScore: Equatable {
 
         // 가중치/임계값 튜닝 (#32) — 한국식 식사 흐름(7~10분, 150~250회, 대화 텀)에 맞춰
         // tolerance/cap을 완화. 일반 사용자가 자연스럽게 식사해도 70~85점이 잡히도록.
+        // 연속성은 sqrt 곡선으로 초반을 가속해 가벼운 끼니도 박하지 않게 한다.
+        // (50회=50점, 100회≈71점, 150회≈87점, 200회+=100점).
         let speed      = bell(value: chewsPerMin,         sweet: 28,  tolerance: 15)
         let rhythm     = Int((min(fraction / 0.5, 1.0) * 100).rounded())
-        let continuity = Int((min(Double(chews) / 200.0, 1.0) * 100).rounded())
+        let continuity = Int((sqrt(min(Double(chews) / 200.0, 1.0)) * 100).rounded())
         let length     = bell(value: dto.durationSec,     sweet: 720, tolerance: 600)
 
         let total = Int((Double(speed + rhythm + continuity + length) / 4.0).rounded())
