@@ -49,19 +49,10 @@ private struct ShopPlaceholderView: View {
 
     private var comingSoonCard: some View {
         VStack(spacing: 18) {
-            ZStack {
-                Circle()
-                    .fill(Color.butter200.opacity(0.45))
-                    .frame(width: 150, height: 150)
-                Circle()
-                    .fill(Color.white.opacity(0.7))
-                    .frame(width: 108, height: 108)
-                    .neuoShadow(.sm)
-                Text("상점은\n준비 중")
-                    .font(.appFont(.heavy, size: 20))
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(Color.acorn700)
-            }
+            Image("DaramDotori")
+                .resizable()
+                .scaledToFit()
+                .frame(height: 150)
 
             VStack(spacing: 6) {
                 Text("상점을 준비하고 있어요")
@@ -78,14 +69,7 @@ private struct ShopPlaceholderView: View {
         .padding(.horizontal, 22)
         .padding(.vertical, 34)
         .frame(maxWidth: .infinity)
-        .background(
-            LinearGradient(
-                colors: [.white, .cream, Color.acorn50],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 28)
-        )
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 28))
         .neuoShadow(.md)
     }
 
