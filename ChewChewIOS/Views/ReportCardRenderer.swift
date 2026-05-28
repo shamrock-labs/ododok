@@ -15,13 +15,13 @@ struct ReportCardSharePayload: Transferable, Sendable {
 
 /// `ReportCardView`를 PNG `Data`로 렌더링. SwiftUI `ImageRenderer`는 `@MainActor`라
 /// 호출자도 main 컨텍스트여야 함. 카드 자체에는 `padding`/배경이 없어서 export 시
-/// `LinearGradient.appBackground` 위에 카드를 한 번 더 얹어 일관된 frame을 만든다.
+/// `Color.cream` 위에 카드를 한 번 더 얹어 일관된 frame을 만든다.
 @MainActor
 enum ReportCardRenderer {
     /// 1080×1920(9:16) scale 3.0 PNG. 실패 시 nil.
     static func render(_ model: ReportCardModel) -> Data? {
         let content = ZStack {
-            LinearGradient.appBackground
+            Color.cream
             ReportCardView(model: model)
                 .padding(.horizontal, 20)
         }

@@ -48,7 +48,7 @@ struct RewardDialogView: View {
         .padding(.vertical, 28)
         .padding(.horizontal, 32)
         .frame(maxWidth: 280)
-        .background(Color.cream, in: RoundedRectangle(cornerRadius: 28))
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 28))
         .neuoShadow(.md)
         .contentShape(Rectangle())
         .onTapGesture { onDismiss() }

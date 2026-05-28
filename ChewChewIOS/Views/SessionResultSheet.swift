@@ -29,7 +29,7 @@ struct SessionResultSheet: View {
                 }
                 .padding(20)
             }
-            .background(LinearGradient.appBackground.ignoresSafeArea())
+            .background(Color.cream.ignoresSafeArea())
             .navigationTitle(dto == nil ? "분석 중" : "식사 리포트")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

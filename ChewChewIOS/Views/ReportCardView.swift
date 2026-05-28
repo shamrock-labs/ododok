@@ -66,7 +66,7 @@ struct ReportCardView: View {
     let model: ReportCardModel
     var onDeepReport: (() -> Void)? = nil
 
-    @State private var scoreProgress: Double = 0
+    @State private var scoreProgress: Double = 1.0
     @State private var showScoreFormula = false
 
     var body: some View {
@@ -84,13 +84,9 @@ struct ReportCardView: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity)
-        .background(Color.cream, in: RoundedRectangle(cornerRadius: 28))
-        .neuoShadow(.md)
-        .onAppear {
-            withAnimation(.easeOut(duration: 1.2)) {
-                scoreProgress = 1.0
-            }
-        }
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 28))
+        .softShadow(.base)
+
     }
 
     private var header: some View {
@@ -215,7 +211,7 @@ struct ReportCardView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(Color.white.opacity(0.78), in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.acorn50, in: RoundedRectangle(cornerRadius: 14))
     }
 
     // MARK: - 씹기 · 쉬기 구간 바
@@ -264,7 +260,7 @@ struct ReportCardView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity)
-        .background(Color.white.opacity(0.55), in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.acorn50, in: RoundedRectangle(cornerRadius: 14))
     }
 
     private var deepReportCTA: some View {
@@ -484,7 +480,7 @@ struct EmptyReportCardView: View {
         .padding(.vertical, 48)
         .padding(.horizontal, 24)
         .background(Color.white, in: RoundedRectangle(cornerRadius: 28))
-        .neuoShadow(.md)
+        .softShadow(.base)
     }
 }
 
@@ -505,7 +501,7 @@ private struct ScoreFormulaInline: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity)
-        .background(Color.white.opacity(0.6), in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.acorn50, in: RoundedRectangle(cornerRadius: 14))
         .overlay(
             RoundedRectangle(cornerRadius: 14).stroke(Color.acorn100, lineWidth: 1)
         )

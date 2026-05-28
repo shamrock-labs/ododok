@@ -96,13 +96,7 @@ struct TrackingView: View {
                     .font(.appFont(.regular, size: 28))
                     .foregroundStyle(Color.sage600)
                     .frame(width: 56, height: 56)
-                    .background(
-                        LinearGradient(
-                            colors: [Color.sage100, Color.sage50],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
-                        ),
-                        in: RoundedRectangle(cornerRadius: 16)
-                    )
+                    .background(Color.sage100, in: RoundedRectangle(cornerRadius: 16))
 
                 Circle()
                     .fill(Color.sage500)
@@ -244,13 +238,7 @@ struct TrackingView: View {
             )
         }
         .frame(maxWidth: .infinity)
-        .background(
-            LinearGradient(
-                colors: [Color.acorn50, .cream, Color.sage50],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 24)
-        )
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 24))
         .neuoShadow(.sm)
     }
 
@@ -283,13 +271,7 @@ struct TrackingView: View {
             Spacer(minLength: 0)
         }
         .padding(16)
-        .background(
-            LinearGradient(
-                colors: [Color.sage50, Color.butter50],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 18)
-        )
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 18))
         .neuoShadow(.sm)
     }
 
