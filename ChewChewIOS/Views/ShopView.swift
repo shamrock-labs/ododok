@@ -24,8 +24,7 @@ private struct ShopPlaceholderView: View {
             header
             Spacer(minLength: 24)
             comingSoonCard
-            Spacer(minLength: 24)
-            roadmapCard
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 24)
         .padding(.top, 24)
@@ -35,14 +34,9 @@ private struct ShopPlaceholderView: View {
 
     private var header: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("출시 예정")
-                    .font(.appFont(.medium, size: 11))
-                    .foregroundStyle(Color.ink400)
-                Text("상점")
-                    .font(.appFont(.bold, size: 24))
-                    .foregroundStyle(Color.ink800)
-            }
+            Text("상점")
+                .font(.appFont(.heavy, size: 22))
+                .foregroundStyle(Color.ink800)
             Spacer()
         }
     }
@@ -59,8 +53,8 @@ private struct ShopPlaceholderView: View {
                     .font(.appFont(.heavy, size: 21))
                     .foregroundStyle(Color.ink800)
                     .multilineTextAlignment(.center)
-                Text("도토리로 다람쥐를 꾸미는 기능을 준비 중이에요.\n우선은 저작 트래킹과 목표 달성에 집중해주세요.")
-                    .font(.appFont(.medium, size: 13))
+                Text("도토리로 다람쥐를 꾸미는 기능을 준비 중이에요.\n그 전엔 저작 트래킹에 집중해요.")
+                    .font(.appFont(.semibold, size: 14))
                     .foregroundStyle(Color.ink600)
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
@@ -73,37 +67,6 @@ private struct ShopPlaceholderView: View {
         .neuoShadow(.md)
     }
 
-    private var roadmapCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                Image(systemName: "bag")
-                    .font(.appFont(.bold, size: 18))
-                    .foregroundStyle(Color.butter600)
-                    .frame(width: 38, height: 38)
-                    .background(Color.butter100, in: RoundedRectangle(cornerRadius: 12))
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("준비 중인 아이템")
-                        .font(.appFont(.bold, size: 12))
-                        .foregroundStyle(Color.ink800)
-                    Text("모자 · 안경 · 액세서리 · 도토리 팩")
-                        .font(.appFont(.medium, size: 11))
-                        .foregroundStyle(Color.ink400)
-                }
-
-                Spacer(minLength: 0)
-            }
-
-            Text("저작 트래킹이 안정화되면 상점이 열릴 예정이에요.")
-                .font(.appFont(.regular, size: 12))
-                .foregroundStyle(Color.ink600)
-                .lineSpacing(3)
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white, in: RoundedRectangle(cornerRadius: 18))
-        .neuoShadow(.sm)
-    }
 }
 
 // MARK: - Grid view (출시 시 활성화)
@@ -169,7 +132,7 @@ private struct ShopGridView: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("다람쥐 꾸미기")
-                    .font(.appFont(.medium, size: 11))
+                    .font(.appFont(.semibold, size: 13))
                     .foregroundStyle(Color.ink400)
                 Text("상점")
                     .font(.appFont(.bold, size: 24))
@@ -292,7 +255,7 @@ private struct ShopGridView: View {
                     .foregroundStyle(Color.ink800)
                     .lineLimit(1)
                 Text(typeLabel(item.type))
-                    .font(.appFont(.medium, size: 10))
+                    .font(.appFont(.semibold, size: 12))
                     .foregroundStyle(Color.ink400)
             }
 
@@ -441,7 +404,7 @@ private struct ShopGridView: View {
                     }
                 }
                 Text(pack.effect)
-                    .font(.appFont(.medium, size: 11))
+                    .font(.appFont(.semibold, size: 13))
                     .foregroundStyle(Color.ink400)
             }
 

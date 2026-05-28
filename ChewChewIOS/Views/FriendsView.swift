@@ -7,7 +7,7 @@ struct FriendsView: View {
         VStack(spacing: 18) {
             header
             inviteCard
-                .frame(maxHeight: .infinity)
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 24)
         .padding(.top, 24)
@@ -32,14 +32,9 @@ struct FriendsView: View {
 
     private var header: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("함께 씹기")
-                    .font(.appFont(.medium, size: 11))
-                    .foregroundStyle(Color.ink400)
-                Text("친구")
-                    .font(.appFont(.bold, size: 24))
-                    .foregroundStyle(Color.ink800)
-            }
+            Text("친구")
+                .font(.appFont(.heavy, size: 22))
+                .foregroundStyle(Color.ink800)
             Spacer()
         }
     }
@@ -60,8 +55,8 @@ struct FriendsView: View {
                     .font(.appFont(.heavy, size: 21))
                     .foregroundStyle(Color.ink800)
                     .multilineTextAlignment(.center)
-                Text("함께 목표를 채우고, 아직 시작하지 않은 친구를 초대할 수 있어요.")
-                    .font(.appFont(.medium, size: 13))
+                Text("함께 목표를 채우고, 아직 시작하지 않은 친구를 초대해요.")
+                    .font(.appFont(.semibold, size: 14))
                     .foregroundStyle(Color.ink600)
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
@@ -89,7 +84,6 @@ struct FriendsView: View {
         .padding(.horizontal, 22)
         .padding(.vertical, 28)
         .frame(maxWidth: .infinity)
-        .frame(minHeight: 360)
         .background(Color.white, in: RoundedRectangle(cornerRadius: 28))
         .neuoShadow(.md)
     }

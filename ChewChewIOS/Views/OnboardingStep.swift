@@ -30,14 +30,14 @@ struct OnboardingStep: Identifiable {
             icon: "mouth.fill",
             asset: "DaramPuffy",
             title: "꼭꼭 씹을수록 다람쥐가 자라요",
-            message: "천천히 오래 씹으면 볼이 빵빵해지고\n도토리🌰가 쌓여요. 하루 목표는 600회예요."
+            message: "천천히 오래 씹으면 볼이 빵빵해지고\n도토리🌰가 쌓여요. 하루 목표는 400회예요."
         ),
         OnboardingStep(
             id: 3,
             icon: "bag.fill",
             asset: "DaramDotori",
             title: "도토리로 다람쥐를 꾸며요",
-            message: "모은 도토리로 상점에서 모자·안경·액세서리를\n사서 다람쥐에게 씌워보세요."
+            message: "모은 도토리로 상점에서 모자·안경·액세서리를\n사서 다람쥐에게 씌워요."
         ),
         OnboardingStep(
             id: 4,

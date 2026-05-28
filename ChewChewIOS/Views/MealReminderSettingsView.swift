@@ -54,8 +54,8 @@ struct MealReminderSettingsView: View {
             Text("알림 권한이 꺼져 있어요")
                 .font(.appFont(.bold, size: 14))
                 .foregroundStyle(Color.ink800)
-            Text("iOS 설정 → Ododok → 알림에서 켜주세요.")
-                .font(.appFont(.regular, size: 12))
+            Text("iOS 설정 → Ododok → 알림 켜기.")
+                .font(.appFont(.semibold, size: 14))
                 .foregroundStyle(Color.ink600)
                 .multilineTextAlignment(.center)
         }
@@ -65,9 +65,9 @@ struct MealReminderSettingsView: View {
     }
 
     private var footerHint: some View {
-        Text("설정한 시각에 매일 \"주인님 밥주세요\" 알림이 와요.\n토글을 끄면 그 끼니는 알림을 안 보내요.")
-            .font(.appFont(.regular, size: 12))
-            .foregroundStyle(Color.ink400)
+        Text("설정한 시각에 \"주인님 밥주세요\" 알림이 와요.\n끄면 해당 끼니는 알림이 안 와요.")
+            .font(.appFont(.semibold, size: 14))
+            .foregroundStyle(Color.ink600)
             .multilineTextAlignment(.center)
             .padding(.top, 8)
     }
@@ -87,7 +87,7 @@ struct MealReminderSettingsView: View {
             if slot.wrappedValue.enabled {
                 HStack {
                     Text("알림 시각")
-                        .font(.appFont(.medium, size: 14))
+                        .font(.appFont(.semibold, size: 15))
                         .foregroundStyle(Color.ink600)
                     Spacer()
                     DatePicker(

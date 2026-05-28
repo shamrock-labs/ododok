@@ -73,9 +73,9 @@ struct SessionResultSheet: View {
                 Text("씹기 분석 중이에요")
                     .font(.appFont(.bold, size: 16))
                     .foregroundStyle(Color.ink800)
-                Text("잠시만 기다려 주세요")
-                    .font(.appFont(.regular, size: 13))
-                    .foregroundStyle(Color.ink400)
+                Text("잠시만요")
+                    .font(.appFont(.semibold, size: 15))
+                    .foregroundStyle(Color.ink600)
             }
             Spacer(minLength: 48)
         }
