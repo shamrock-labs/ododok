@@ -36,6 +36,8 @@ struct ChewChewIOSApp: App {
                     handleOpenURL(url)
                 }
                 .task {
+                    // 홈 진행도/마스코트 mood가 첫 진입부터 정확히 보이도록 오늘 세션을 미리 적재.
+                    await appState.fetchTodaySessions()
                     // 권한이 이미 부여돼 있으면 저장된 끼니 알림을 재스케줄.
                     // 재부팅·재설치·앱 강제종료 후에도 pending request가 그대로 유지되지만,
                     // identifier 충돌 없이 원자적으로 다시 add — 안전한 idempotent 호출.

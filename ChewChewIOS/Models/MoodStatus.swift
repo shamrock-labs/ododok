@@ -20,12 +20,12 @@ struct MoodStatus {
 
     static func from(count: Int) -> MoodStatus {
         let goal = Constants.dailyGoal
-        if count <= 0   { return .init(mood: .sleepy, title: "아직 식사 전이에요", subtitle: "한 입 시작해볼까요?") }
-        if count < 100  { return .init(mood: .happy,  title: "냠냠, 잘 시작했어요", subtitle: "천천히, 꼭꼭 씹어요") }
-        if count < 250  { return .init(mood: .happy,  title: "리듬이 좋아요",      subtitle: "이대로만 가요") }
-        if count < 450  { return .init(mood: .puffy,  title: "볼이 빵빵해요",      subtitle: "절반 넘었어요") }
-        if count < goal { return .init(mood: .puffy,  title: "거의 다 왔어요",     subtitle: "조금만 더!") }
-        return .init(mood: .champ, title: "목표 달성!", subtitle: "오늘 정말 잘했어요")
+        if count <= 0   { return .init(mood: .sleepy, title: "아직 식사 전이에요", subtitle: "오늘은 뭐 먹지") }
+        if count < 100  { return .init(mood: .happy,  title: "냠냠, 잘 시작했어요", subtitle: "오물오물") }
+        if count < 250  { return .init(mood: .happy,  title: "리듬이 좋아요",      subtitle: "이 페이스로 계속") }
+        if count < 450  { return .init(mood: .puffy,  title: "볼이 빵빵해요",      subtitle: "절반쯤 왔어요") }
+        if count < goal { return .init(mood: .puffy,  title: "거의 다 왔어요",     subtitle: "거의 다 왔다") }
+        return .init(mood: .champ, title: "목표 달성!", subtitle: "오늘 참 잘 먹었어요")
     }
 }
 

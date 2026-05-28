@@ -20,7 +20,7 @@ struct ContentView: View {
         var label: String {
             switch self {
             case .home:  "홈"
-            case .track: "트래킹"
+            case .track: "기록"
             case .friends: "친구"
             case .shop:  "상점"
             }
@@ -28,10 +28,10 @@ struct ContentView: View {
 
         var systemImage: String {
             switch self {
-            case .home:  "house.fill"
-            case .track: "waveform.path.ecg"
-            case .friends: "person.2.fill"
-            case .shop:  "bag.fill"
+            case .home:  "house"
+            case .track: "waveform"
+            case .friends: "person.2"
+            case .shop:  "bag"
             }
         }
     }
@@ -80,21 +80,22 @@ struct ContentView: View {
         .appDialog(
             isPresented: failureAlertBinding,
             title: "저장 실패",
-            message: "이번 식사의 IMU 데이터를 서버에 올리지 못했어요.\n다시 시도하지 않으면 이 세션 데이터는 사라집니다.",
+            message: "이번 식사를 서버에 올리지 못했어요.\n지금 재시도하지 않으면 사라져요.",
             primary: .init("다시 시도") { state.retryLastSessionUpload() },
             secondary: .init("취소", role: .cancel) { state.dismissSessionUploadStatus() }
         )
         .appDialog(
             isPresented: airPodsPromptBinding,
             title: "AirPods를 연결해 주세요",
-            message: "씹기 분석을 위해 AirPods Pro · AirPods 3/4세대 · AirPods Max 중 하나를 연결하고 착용한 뒤 다시 시도해 주세요.",
+            message: "AirPods Pro · 3·4세대 중 하나를 연결하고 착용해 주세요.",
             primary: .init("확인") {}
         )
         .appDialog(
-            isPresented: emptySessionBinding,
-            title: "기록되지 않았어요",
-            message: "이번 식사의 IMU 신호를 받지 못해 분석을 만들지 못했어요. AirPods 연결 상태를 확인해 주세요.",
-            primary: .init("확인") {}
+            isPresented: shortSessionBinding,
+            title: "측정이 너무 짧아요",
+            message: "1분 미만은 분석할 수 없어요. 더 씹을까요?",
+            primary: .init("더 측정") {},
+            secondary: .init("그만두기", role: .destructive) { state.discardCurrentSession() }
         )
         .sheet(isPresented: resultSheetBinding) {
             SessionResultSheet(
@@ -125,10 +126,10 @@ struct ContentView: View {
         }
     }
 
-    private var emptySessionBinding: Binding<Bool> {
+    private var shortSessionBinding: Binding<Bool> {
         Binding(
-            get: { state.showEmptySessionNotice },
-            set: { newValue in if !newValue { state.showEmptySessionNotice = false } }
+            get: { state.showShortSessionConfirm },
+            set: { newValue in if !newValue { state.showShortSessionConfirm = false } }
         )
     }
 

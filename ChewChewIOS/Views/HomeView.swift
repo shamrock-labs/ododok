@@ -5,10 +5,6 @@ import AVFoundation
 struct HomeView: View {
     @Environment(AppState.self) private var state
 
-    // MARK: - AirPods 미연결 토스트
-    @State private var showAirPodsToast = false
-    @State private var toastTask: Task<Void, Never>?
-
     // MARK: - 측정 시작 햅틱 trigger
     @State private var hapticTrigger = false
 
@@ -35,14 +31,6 @@ struct HomeView: View {
             nowTick = newDate
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .overlay(alignment: .top) {
-            if showAirPodsToast {
-                airPodsToast
-                    .padding(.top, 16)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
-        }
-        .animation(.easeInOut(duration: 0.25), value: showAirPodsToast)
         .sensoryFeedback(.impact(weight: .medium), trigger: hapticTrigger)
         .sheet(isPresented: $showMealReminderSettings) {
             MealReminderSettingsView()
@@ -52,23 +40,16 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - AirPods 토스트 뷰
-
-    private var airPodsToast: some View {
-        Text("AirPods Pro · AirPods 3/4세대 · AirPods Max 중 하나를 연결해주세요")
-            .font(.appFont(.medium, size: 13))
-            .foregroundStyle(.white)
-            .multilineTextAlignment(.center)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 11)
-            .background(Color.ink800.opacity(0.92), in: Capsule())
-            .padding(.horizontal, 32)
-    }
-
     // MARK: - 식사 시작 가드
 
     private func handleMealToggle() {
         if state.isEating {
+            // 60초 미만이면 분석 불가 — 사용자에게 "더 측정할까요?" 확인 후 처리.
+            let duration = Date().timeIntervalSince(state.eatingStartedAt ?? Date())
+            if duration < 60 {
+                state.showShortSessionConfirm = true
+                return
+            }
             state.toggleEating()
             return
         }
@@ -120,24 +101,14 @@ struct HomeView: View {
         }
     }
 
-    private func presentAirPodsToast() {
-        toastTask?.cancel()
-        showAirPodsToast = true
-        toastTask = Task {
-            try? await Task.sleep(for: .seconds(1.8))
-            guard !Task.isCancelled else { return }
-            await MainActor.run { showAirPodsToast = false }
-        }
-    }
-
     // MARK: Top bar
 
     private var topBar: some View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(todayLabel)
-                    .font(.appFont(.medium, size: 13))
-                    .foregroundStyle(Color.ink400)
+                    .font(.appFont(.semibold, size: 14))
+                    .foregroundStyle(Color.ink600)
                 Text("안녕, \(state.displayName ?? "친구")님")
                     .font(.appFont(.bold, size: 26))
                     .foregroundStyle(Color.ink800)
@@ -175,12 +146,10 @@ struct HomeView: View {
         HStack(spacing: 14) {
             statCard(
                 label: state.freezeInventory > 0 ? "연속 출석 · 🛡️\(state.freezeInventory)" : "연속 출석",
-                value: "\(state.streak)일째 🔥",
+                value: "\(state.streak)일째",
                 iconBG: Color.blush100
             ) {
-                Image(systemName: "flame.fill")
-                    .foregroundStyle(Color.blush500)
-                    .font(.appFont(.regular, size: 26))
+                Text("🔥").font(.appFont(.regular, size: 26))
             }
 
             statCard(
@@ -207,8 +176,8 @@ struct HomeView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
-                    .font(.appFont(.medium, size: 11))
-                    .foregroundStyle(Color.ink400)
+                    .font(.appFont(.semibold, size: 13))
+                    .foregroundStyle(Color.ink600)
                     .lineLimit(1)
                 Text(value)
                     .font(.appFont(.bold, size: 17))
@@ -257,19 +226,15 @@ struct HomeView: View {
             }
             .frame(height: 246)
 
-            VStack(spacing: 2) {
+            VStack(spacing: 4) {
                 Text(state.status.title)
                     .font(.appFont(.bold, size: 19))
                     .foregroundStyle(Color.ink800)
-                Text(state.status.subtitle)
-                    .font(.appFont(.regular, size: 13))
-                    .foregroundStyle(Color.ink400)
                 if !state.isEating {
                     Text("오늘 \(state.todayRealChewCount.koLocale) / \(Constants.dailyGoal.koLocale)회")
-                        .font(.appFont(.medium, size: 11))
-                        .foregroundStyle(Color.ink400)
+                        .font(.appFont(.semibold, size: 13))
+                        .foregroundStyle(Color.ink600)
                         .monospacedDigit()
-                        .padding(.top, 2)
                 }
             }
 
@@ -294,7 +259,7 @@ struct HomeView: View {
                         .font(.appFont(.bold, size: 13))
                         .foregroundStyle(Color.ink800)
                     Text(state.imuWaveformStatusText)
-                        .font(.appFont(.medium, size: 11))
+                        .font(.appFont(.semibold, size: 13))
                         .foregroundStyle(state.isIMUWaveformLive ? Color.sage600 : Color.ink400)
                 }
 
