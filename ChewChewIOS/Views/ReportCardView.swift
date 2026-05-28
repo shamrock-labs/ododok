@@ -93,17 +93,13 @@ struct ReportCardView: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(headerDateLabel)
-                    .font(.appFont(.medium, size: 11))
-                    .foregroundStyle(Color.ink400)
+                    .font(.appFont(.semibold, size: 13))
+                    .foregroundStyle(Color.ink600)
                 Text("식사 리포트")
                     .font(.appFont(.heavy, size: 22))
                     .foregroundStyle(Color.ink800)
             }
             Spacer()
-            Image(model.mood.imageName)
-                .resizable()
-                .scaledToFit()
-                .frame(width: 52, height: 52)
         }
     }
 
@@ -116,14 +112,11 @@ struct ReportCardView: View {
                     .monospacedDigit()
                 Text("점")
                     .font(.appFont(.bold, size: 22))
-                    .foregroundStyle(Color.ink400)
+                    .foregroundStyle(Color.ink600)
             }
             Text(model.grade.label)
-                .font(.appFont(.bold, size: 13))
+                .font(.appFont(.bold, size: 14))
                 .foregroundStyle(gradeColor)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 6)
-                .background(gradeColor.opacity(0.18), in: Capsule())
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 4)
@@ -154,22 +147,22 @@ struct ReportCardView: View {
                 factorCell(
                     label: "속도",
                     value: String(format: "%.0f", model.chewsPerMinute), unit: "회/분",
-                    subScore: model.speedScore, reference: "권장 28회/분"
+                    subScore: model.speedScore, reference: "기준 28회/분"
                 )
                 factorCell(
                     label: "리듬",
                     value: "\(Int((model.chewingFraction * 100).rounded()))", unit: "%",
-                    subScore: model.rhythmScore, reference: "권장 씹기 비율 50%+"
+                    subScore: model.rhythmScore, reference: "씹기 50% 이상"
                 )
                 factorCell(
                     label: "연속성",
                     value: model.chewCount.koLocale, unit: "회",
-                    subScore: model.continuityScore, reference: "권장 200회+"
+                    subScore: model.continuityScore, reference: "200회 이상"
                 )
                 factorCell(
                     label: "식사 시간",
                     value: formatDurationShort(model.totalDurationSec), unit: nil,
-                    subScore: model.lengthScore, reference: "권장 12분 안팎"
+                    subScore: model.lengthScore, reference: "12분 안팎"
                 )
             }
         }
@@ -180,8 +173,8 @@ struct ReportCardView: View {
         let color = factorColor(subScore)
         return VStack(alignment: .leading, spacing: 6) {
             Text(label)
-                .font(.appFont(.medium, size: 11))
-                .foregroundStyle(Color.ink400)
+                .font(.appFont(.semibold, size: 13))
+                .foregroundStyle(Color.ink600)
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text(value)
                     .font(.appFont(.heavy, size: 20))
@@ -204,14 +197,13 @@ struct ReportCardView: View {
             }
             .frame(height: 5)
             Text(reference)
-                .font(.appFont(.medium, size: 9))
-                .foregroundStyle(Color.ink400.opacity(0.7))
+                .font(.appFont(.semibold, size: 13))
+                .foregroundStyle(Color.ink600.opacity(0.8))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(Color.acorn50, in: RoundedRectangle(cornerRadius: 14))
+        .padding(.vertical, 4)
     }
 
     // MARK: - 씹기 · 쉬기 구간 바
@@ -242,7 +234,7 @@ struct ReportCardView: View {
         HStack(spacing: 5) {
             Circle().fill(color).frame(width: 8, height: 8)
             Text(label)
-                .font(.appFont(.medium, size: 11))
+                .font(.appFont(.semibold, size: 13))
                 .foregroundStyle(Color.ink600)
         }
     }
@@ -252,15 +244,15 @@ struct ReportCardView: View {
             Image(systemName: "quote.opening")
                 .font(.appFont(.bold, size: 13))
                 .foregroundStyle(Color.acorn300)
-            Text(model.caption ?? "오늘도 잘 챙겨 먹었어요.")
-                .font(.appFont(.regular, size: 13))
+            Text(model.caption ?? "오늘 한 끼 잘 먹었어요.")
+                .font(.appFont(.semibold, size: 15))
                 .foregroundStyle(Color.ink600)
                 .lineSpacing(3)
             Spacer(minLength: 0)
         }
         .padding(14)
         .frame(maxWidth: .infinity)
-        .background(Color.acorn50, in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.acorn50.opacity(0.5), in: RoundedRectangle(cornerRadius: 14))
     }
 
     private var deepReportCTA: some View {
@@ -462,7 +454,7 @@ private extension Mood {
 struct EmptyReportCardView: View {
     var emoji: String = "🐿️"
     var title: String = "분석을 만들지 못했어요"
-    var subtitle: String = "식사 시간이 너무 짧거나, AirPods IMU 신호를 받지 못해\n이번 식사의 분석을 만들지 못했어요."
+    var subtitle: String = "식사 시간이 너무 짧거나 AirPods 신호를 받지 못했어요."
 
     var body: some View {
         VStack(spacing: 14) {
@@ -471,7 +463,7 @@ struct EmptyReportCardView: View {
                 .font(.appFont(.heavy, size: 18))
                 .foregroundStyle(Color.ink800)
             Text(subtitle)
-                .font(.appFont(.regular, size: 13))
+                .font(.appFont(.semibold, size: 15))
                 .foregroundStyle(Color.ink600)
                 .multilineTextAlignment(.center)
                 .lineSpacing(3)
@@ -514,8 +506,8 @@ private struct ScoreFormulaInline: View {
                 .foregroundStyle(Color.ink800)
                 .frame(width: 56, alignment: .leading)
             Text(detail)
-                .font(.appFont(.regular, size: 11))
-                .foregroundStyle(Color.ink400)
+                .font(.appFont(.semibold, size: 13))
+                .foregroundStyle(Color.ink600)
             Spacer(minLength: 0)
             Text("\(subScore)")
                 .font(.appFont(.heavy, size: 13))
