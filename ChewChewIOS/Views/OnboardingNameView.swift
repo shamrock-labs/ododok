@@ -14,7 +14,7 @@ struct OnboardingNameView: View {
         VStack(spacing: 24) {
             Spacer()
 
-            Image(Mood.happy.imageName)
+            Image("DaramHi")
                 .resizable()
                 .scaledToFit()
                 .frame(width: 140, height: 140)
@@ -58,7 +58,7 @@ struct OnboardingNameView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(LinearGradient.appBackground.ignoresSafeArea())
+        .background(Color.cream.ignoresSafeArea())
         .interactiveDismissDisabled()
         .onAppear { isFocused = true }
     }

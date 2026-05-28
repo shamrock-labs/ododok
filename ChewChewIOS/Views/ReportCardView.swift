@@ -23,8 +23,7 @@ struct ReportCardModel: Equatable {
     let lengthScore: Int
     /// 한 줄 캡션. nil이면 기본 멘트 fallback.
     let caption: String?
-    /// 다람이 일러스트(점수 등급에서 매핑). v1.0 헤더는 이모지를 쓰고, 프리미엄 심층
-    /// 리포트(REQ-17)에서 이 캐릭터 표정으로 교체한다.
+    /// 다람이 일러스트(점수 등급에서 매핑). 헤더 표정으로 사용.
     let mood: Mood
     /// 식사 종료 시각 — 헤더 날짜 라벨에 사용.
     let endedAt: Date
@@ -67,7 +66,7 @@ struct ReportCardView: View {
     let model: ReportCardModel
     var onDeepReport: (() -> Void)? = nil
 
-    @State private var scoreProgress: Double = 0
+    @State private var scoreProgress: Double = 1.0
     @State private var showScoreFormula = false
 
     var body: some View {
@@ -85,36 +84,22 @@ struct ReportCardView: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity)
-        .background(
-            LinearGradient(
-                colors: [Color.acorn50, .cream, Color.sage50],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 28)
-        )
-        .neuoShadow(.md)
-        .onAppear {
-            withAnimation(.easeOut(duration: 1.2)) {
-                scoreProgress = 1.0
-            }
-        }
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 28))
+        .softShadow(.base)
+
     }
 
     private var header: some View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(headerDateLabel)
-                    .font(.appFont(.medium, size: 11))
-                    .foregroundStyle(Color.ink400)
+                    .font(.appFont(.semibold, size: 13))
+                    .foregroundStyle(Color.ink600)
                 Text("식사 리포트")
                     .font(.appFont(.heavy, size: 22))
                     .foregroundStyle(Color.ink800)
             }
             Spacer()
-            // v1.0: 점수 구간별 표정 이모지. 프리미엄(REQ-17)에서 다람이 캐릭터로 교체.
-            Text(model.grade.emoji)
-                .font(.system(size: 40))
-                .frame(width: 52, height: 52)
         }
     }
 
@@ -127,14 +112,11 @@ struct ReportCardView: View {
                     .monospacedDigit()
                 Text("점")
                     .font(.appFont(.bold, size: 22))
-                    .foregroundStyle(Color.ink400)
+                    .foregroundStyle(Color.ink600)
             }
             Text(model.grade.label)
-                .font(.appFont(.bold, size: 13))
+                .font(.appFont(.bold, size: 14))
                 .foregroundStyle(gradeColor)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 6)
-                .background(gradeColor.opacity(0.18), in: Capsule())
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 4)
@@ -165,22 +147,22 @@ struct ReportCardView: View {
                 factorCell(
                     label: "속도",
                     value: String(format: "%.0f", model.chewsPerMinute), unit: "회/분",
-                    subScore: model.speedScore, reference: "권장 28회/분"
+                    subScore: model.speedScore, reference: "기준 28회/분"
                 )
                 factorCell(
                     label: "리듬",
                     value: "\(Int((model.chewingFraction * 100).rounded()))", unit: "%",
-                    subScore: model.rhythmScore, reference: "쉼 없이 꾸준할수록 ↑"
+                    subScore: model.rhythmScore, reference: "씹기 50% 이상"
                 )
                 factorCell(
                     label: "연속성",
                     value: model.chewCount.koLocale, unit: "회",
-                    subScore: model.continuityScore, reference: "꾸준히 씹을수록 ↑"
+                    subScore: model.continuityScore, reference: "200회 이상"
                 )
                 factorCell(
                     label: "식사 시간",
                     value: formatDurationShort(model.totalDurationSec), unit: nil,
-                    subScore: model.lengthScore, reference: "권장 12분 안팎"
+                    subScore: model.lengthScore, reference: "12분 안팎"
                 )
             }
         }
@@ -191,8 +173,8 @@ struct ReportCardView: View {
         let color = factorColor(subScore)
         return VStack(alignment: .leading, spacing: 6) {
             Text(label)
-                .font(.appFont(.medium, size: 11))
-                .foregroundStyle(Color.ink400)
+                .font(.appFont(.semibold, size: 13))
+                .foregroundStyle(Color.ink600)
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text(value)
                     .font(.appFont(.heavy, size: 20))
@@ -215,14 +197,13 @@ struct ReportCardView: View {
             }
             .frame(height: 5)
             Text(reference)
-                .font(.appFont(.medium, size: 9))
-                .foregroundStyle(Color.ink400)
+                .font(.appFont(.semibold, size: 13))
+                .foregroundStyle(Color.ink600.opacity(0.8))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(Color.white.opacity(0.78), in: RoundedRectangle(cornerRadius: 14))
+        .padding(.vertical, 4)
     }
 
     // MARK: - 씹기 · 쉬기 구간 바
@@ -253,23 +234,25 @@ struct ReportCardView: View {
         HStack(spacing: 5) {
             Circle().fill(color).frame(width: 8, height: 8)
             Text(label)
-                .font(.appFont(.medium, size: 11))
+                .font(.appFont(.semibold, size: 13))
                 .foregroundStyle(Color.ink600)
         }
     }
 
     private var captionSection: some View {
         HStack(alignment: .top, spacing: 10) {
-            Text("💬").font(.appFont(.regular, size: 16))
-            Text(model.caption ?? "오늘도 잘 챙겨 먹었어요.")
-                .font(.appFont(.regular, size: 13))
+            Image(systemName: "quote.opening")
+                .font(.appFont(.bold, size: 13))
+                .foregroundStyle(Color.acorn300)
+            Text(model.caption ?? "오늘 한 끼 잘 먹었어요.")
+                .font(.appFont(.semibold, size: 15))
                 .foregroundStyle(Color.ink600)
                 .lineSpacing(3)
             Spacer(minLength: 0)
         }
         .padding(14)
         .frame(maxWidth: .infinity)
-        .background(Color.white.opacity(0.55), in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.acorn50.opacity(0.5), in: RoundedRectangle(cornerRadius: 14))
     }
 
     private var deepReportCTA: some View {
@@ -414,7 +397,7 @@ struct ReportCardView: View {
 
 extension ReportCardModel {
     /// `ChewingSessionDTO` → 카드 모델. `durationSec < 60`이거나 분석 5필드가
-    /// 채워지지 않은 세션에서 nil 반환 → 호출자가 빈 상태 카드를 표시 (PRD #3 "데이터가 부족해요").
+    /// 채워지지 않은 세션에서 nil 반환 → 호출자가 빈 상태 카드를 표시 (PRD #3 빈 분석 카드 "분석을 만들지 못했어요").
     static func from(_ dto: ChewingSessionDTO) -> ReportCardModel? {
         guard dto.durationSec >= 60 else { return nil }
         guard let score = SessionScore.compute(dto) else { return nil }
@@ -470,32 +453,26 @@ private extension Mood {
 /// "오늘 식사 0건" 같은 다른 빈 상태에도 같은 디자인으로 재사용 가능.
 struct EmptyReportCardView: View {
     var emoji: String = "🐿️"
-    var title: String = "데이터가 부족해요"
-    var subtitle: String = "식사 시간이 너무 짧거나, AirPods IMU 신호를 받지 못해\n이번 식사의 분석을 만들지 못했어요."
+    var title: String = "분석을 만들지 못했어요"
+    var subtitle: String = "식사 시간이 너무 짧거나 AirPods 신호를 받지 못했어요."
 
     var body: some View {
         VStack(spacing: 14) {
-            Text(emoji).font(.appFont(.regular, size: 48))
+            Text(emoji).font(.appFont(.regular, size: 40))
             Text(title)
                 .font(.appFont(.heavy, size: 18))
                 .foregroundStyle(Color.ink800)
             Text(subtitle)
-                .font(.appFont(.regular, size: 13))
+                .font(.appFont(.semibold, size: 15))
                 .foregroundStyle(Color.ink600)
                 .multilineTextAlignment(.center)
                 .lineSpacing(3)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 60)
+        .padding(.vertical, 48)
         .padding(.horizontal, 24)
-        .background(
-            LinearGradient(
-                colors: [Color.acorn50, .cream, Color.sage50],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 28)
-        )
-        .neuoShadow(.md)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 28))
+        .softShadow(.base)
     }
 }
 
@@ -516,9 +493,9 @@ private struct ScoreFormulaInline: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity)
-        .background(Color.white.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
+        .background(Color.acorn50, in: RoundedRectangle(cornerRadius: 14))
         .overlay(
-            RoundedRectangle(cornerRadius: 12).stroke(Color.acorn100, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 14).stroke(Color.acorn100, lineWidth: 1)
         )
     }
 
@@ -529,8 +506,8 @@ private struct ScoreFormulaInline: View {
                 .foregroundStyle(Color.ink800)
                 .frame(width: 56, alignment: .leading)
             Text(detail)
-                .font(.appFont(.regular, size: 11))
-                .foregroundStyle(Color.ink400)
+                .font(.appFont(.semibold, size: 13))
+                .foregroundStyle(Color.ink600)
             Spacer(minLength: 0)
             Text("\(subScore)")
                 .font(.appFont(.heavy, size: 13))

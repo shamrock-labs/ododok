@@ -7,11 +7,19 @@ struct SquirrelView: View {
     let acc: ShopItem?
     let animKey: Int
     let isEating: Bool
+    /// 야간 시간대(22:00~06:00)이면 잠자는 다람이로 교체.
+    var isNight: Bool = false
 
     @State private var bounce = false
     @State private var eatingMotion = false
     /// 식사 중이 아닐 때 다람쥐가 살짝 좌우로 흔들리는 idle 모션.
     @State private var idleSway = false
+
+    private var currentImageName: String {
+        if isEating { return "DaramEating" }
+        if isNight  { return "DaramSleeping" }
+        return mood.imageName
+    }
 
     var body: some View {
         ZStack {
@@ -23,7 +31,7 @@ struct SquirrelView: View {
                 .animation(.easeOut(duration: 1.2), value: bounce)
                 .animation(.easeInOut(duration: 0.72).repeatForever(autoreverses: true), value: eatingMotion)
 
-            Image(mood.imageName)
+            Image(currentImageName)
                 .resizable()
                 .scaledToFit()
                 .frame(width: 115, height: 115)

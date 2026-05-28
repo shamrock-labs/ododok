@@ -24,52 +24,37 @@ private struct ShopPlaceholderView: View {
             header
             Spacer(minLength: 24)
             comingSoonCard
-            Spacer(minLength: 24)
-            roadmapCard
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, 24)
-        .padding(.top, 12)
+        .padding(.top, 24)
         .padding(.bottom, 28)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     private var header: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("출시 예정")
-                    .font(.appFont(.medium, size: 11))
-                    .foregroundStyle(Color.ink400)
-                Text("상점")
-                    .font(.appFont(.bold, size: 24))
-                    .foregroundStyle(Color.ink800)
-            }
+            Text("상점")
+                .font(.appFont(.heavy, size: 22))
+                .foregroundStyle(Color.ink800)
             Spacer()
         }
     }
 
     private var comingSoonCard: some View {
         VStack(spacing: 18) {
-            ZStack {
-                Circle()
-                    .fill(Color.butter200.opacity(0.45))
-                    .frame(width: 150, height: 150)
-                Circle()
-                    .fill(Color.white.opacity(0.7))
-                    .frame(width: 108, height: 108)
-                    .neuoShadow(.sm)
-                Text("상점은\n준비 중")
-                    .font(.appFont(.heavy, size: 20))
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(Color.acorn700)
-            }
+            Image("DaramDotori")
+                .resizable()
+                .scaledToFit()
+                .frame(height: 150)
 
             VStack(spacing: 6) {
-                Text("상점은 곧 열려요")
+                Text("상점을 준비하고 있어요")
                     .font(.appFont(.heavy, size: 21))
                     .foregroundStyle(Color.ink800)
                     .multilineTextAlignment(.center)
-                Text("도토리로 다람쥐를 꾸미는 기능을 준비 중이에요.\n우선은 저작 트래킹과 목표 달성에 집중해주세요.")
-                    .font(.appFont(.medium, size: 13))
+                Text("도토리로 다람쥐를 꾸미는 기능을 준비 중이에요.\n그 전엔 저작 트래킹에 집중해요.")
+                    .font(.appFont(.semibold, size: 14))
                     .foregroundStyle(Color.ink600)
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
@@ -78,48 +63,10 @@ private struct ShopPlaceholderView: View {
         .padding(.horizontal, 22)
         .padding(.vertical, 34)
         .frame(maxWidth: .infinity)
-        .background(
-            LinearGradient(
-                colors: [.white, .cream, Color.acorn50],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 28)
-        )
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 28))
         .neuoShadow(.md)
     }
 
-    private var roadmapCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                Image(systemName: "sparkles")
-                    .font(.appFont(.bold, size: 18))
-                    .foregroundStyle(Color.butter600)
-                    .frame(width: 38, height: 38)
-                    .background(Color.butter100, in: RoundedRectangle(cornerRadius: 12))
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("다음 라운드")
-                        .font(.appFont(.bold, size: 12))
-                        .foregroundStyle(Color.ink800)
-                    Text("모자 · 안경 · 액세서리 · 도토리 팩")
-                        .font(.appFont(.medium, size: 11))
-                        .foregroundStyle(Color.ink400)
-                }
-
-                Spacer(minLength: 0)
-            }
-
-            Text("저작 트래킹이 안정화되면 상점이 열릴 예정이에요.")
-                .font(.appFont(.regular, size: 12))
-                .foregroundStyle(Color.ink600)
-                .lineSpacing(3)
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.white, in: RoundedRectangle(cornerRadius: 18))
-        .neuoShadow(.sm)
-    }
 }
 
 // MARK: - Grid view (출시 시 활성화)
@@ -185,7 +132,7 @@ private struct ShopGridView: View {
         HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("다람쥐 꾸미기")
-                    .font(.appFont(.medium, size: 11))
+                    .font(.appFont(.semibold, size: 13))
                     .foregroundStyle(Color.ink400)
                 Text("상점")
                     .font(.appFont(.bold, size: 24))
@@ -269,7 +216,7 @@ private struct ShopGridView: View {
         return VStack(spacing: 10) {
             HStack {
                 if item.rarity == .rare {
-                    Text("RARE")
+                    Text("희귀")
                         .font(.appFont(.heavy, size: 9))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 6)
@@ -308,7 +255,7 @@ private struct ShopGridView: View {
                     .foregroundStyle(Color.ink800)
                     .lineLimit(1)
                 Text(typeLabel(item.type))
-                    .font(.appFont(.medium, size: 10))
+                    .font(.appFont(.semibold, size: 12))
                     .foregroundStyle(Color.ink400)
             }
 
@@ -354,7 +301,7 @@ private struct ShopGridView: View {
         } else if owned {
             Button {
                 state.equip(item)
-                showToast(ToastMessage(text: "\(item.name) 장착!", kind: .success))
+                showToast(ToastMessage(text: "\(item.name) 장착", kind: .success))
             } label: {
                 pillLabel("장착하기", style: .acorn)
             }
@@ -457,7 +404,7 @@ private struct ShopGridView: View {
                     }
                 }
                 Text(pack.effect)
-                    .font(.appFont(.medium, size: 11))
+                    .font(.appFont(.semibold, size: 13))
                     .foregroundStyle(Color.ink400)
             }
 
@@ -466,7 +413,7 @@ private struct ShopGridView: View {
             Button {
                 switch state.buyAcornPack(pack) {
                 case .success:
-                    showToast(ToastMessage(text: "\(pack.name) 획득!", kind: .success))
+                    showToast(ToastMessage(text: "\(pack.name) 획득 🌰", kind: .success))
                 case .notEnoughPoints:
                     showToast(ToastMessage(text: "도토리가 부족해요", kind: .warn))
                 case .alreadyOwned:
@@ -555,5 +502,5 @@ private struct ShopGridView: View {
 #Preview("Placeholder (기본)") {
     ShopView()
         .environment(AppState())
-        .background(LinearGradient.appBackground)
+        .background(Color.cream)
 }

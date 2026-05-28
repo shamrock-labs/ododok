@@ -20,7 +20,7 @@ struct ContentView: View {
         var label: String {
             switch self {
             case .home:  "홈"
-            case .track: "트래킹"
+            case .track: "기록"
             case .friends: "친구"
             case .shop:  "상점"
             }
@@ -28,10 +28,10 @@ struct ContentView: View {
 
         var systemImage: String {
             switch self {
-            case .home:  "house.fill"
-            case .track: "waveform.path.ecg"
-            case .friends: "person.2.fill"
-            case .shop:  "bag.fill"
+            case .home:  "house"
+            case .track: "waveform"
+            case .friends: "person.2"
+            case .shop:  "bag"
             }
         }
     }
@@ -74,15 +74,29 @@ struct ContentView: View {
                 }
                 .tag(Tab.shop)
         }
-        .background(LinearGradient.appBackground.ignoresSafeArea())
+        .background(Color.cream.ignoresSafeArea())
         .tint(Color.acorn600)
-        // 성공 케이스는 SessionResultSheet 카드로 표시(PRD #3) — alert는 실패 시에만.
-        .alert("저장 실패", isPresented: failureAlertBinding) {
-            Button("다시 시도") { state.retryLastSessionUpload() }
-            Button("취소", role: .cancel) { state.dismissSessionUploadStatus() }
-        } message: {
-            Text("이번 식사의 IMU 데이터를 서버에 올리지 못했어요.\n다시 시도하지 않으면 이 세션 데이터는 사라집니다.")
-        }
+        // 성공 케이스는 SessionResultSheet 카드로 표시(PRD #3) — 실패 다이얼로그는 AppDialog로 통일.
+        .appDialog(
+            isPresented: failureAlertBinding,
+            title: "저장 실패",
+            message: "이번 식사를 서버에 올리지 못했어요.\n지금 재시도하지 않으면 사라져요.",
+            primary: .init("다시 시도") { state.retryLastSessionUpload() },
+            secondary: .init("취소", role: .cancel) { state.dismissSessionUploadStatus() }
+        )
+        .appDialog(
+            isPresented: airPodsPromptBinding,
+            title: "AirPods를 연결해 주세요",
+            message: "AirPods Pro · 3·4세대 중 하나를 연결하고 착용해 주세요.",
+            primary: .init("확인") {}
+        )
+        .appDialog(
+            isPresented: shortSessionBinding,
+            title: "측정이 너무 짧아요",
+            message: "1분 미만은 분석할 수 없어요. 더 씹을까요?",
+            primary: .init("더 측정") {},
+            secondary: .init("그만두기", role: .destructive) { state.discardCurrentSession() }
+        )
         .sheet(isPresented: resultSheetBinding) {
             SessionResultSheet(
                 dto: state.lastCompletedSession,
@@ -110,6 +124,20 @@ struct ContentView: View {
                 .animation(.spring(response: 0.35, dampingFraction: 0.85), value: state.pendingRewardGrant)
             }
         }
+    }
+
+    private var shortSessionBinding: Binding<Bool> {
+        Binding(
+            get: { state.showShortSessionConfirm },
+            set: { newValue in if !newValue { state.showShortSessionConfirm = false } }
+        )
+    }
+
+    private var airPodsPromptBinding: Binding<Bool> {
+        Binding(
+            get: { state.showAirPodsConnectionPrompt },
+            set: { newValue in if !newValue { state.showAirPodsConnectionPrompt = false } }
+        )
     }
 
     private var failureAlertBinding: Binding<Bool> {
@@ -165,7 +193,14 @@ struct ContentView: View {
                 content()
                     .frame(minHeight: proxy.size.height, alignment: .top)
             }
-            .background(LinearGradient.appBackground.ignoresSafeArea())
+            .background(Color.cream.ignoresSafeArea())
+            // 스크롤 시 콘텐츠가 status bar 영역까지 비쳐 보이는 것을 막기 위해
+            // 상단에 cream 색 반투명 inset을 두어 자연스러운 헤더 buffer를 만든다.
+            .safeAreaInset(edge: .top, spacing: 0) {
+                Color.cream
+                    .frame(height: 12)
+                    .background(Color.cream.ignoresSafeArea(edges: .top))
+            }
         }
     }
 }

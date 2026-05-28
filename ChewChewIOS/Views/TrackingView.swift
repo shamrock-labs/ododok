@@ -1,11 +1,5 @@
 import SwiftUI
 
-/// `.sheet(item:)`이 `Date`를 그대로 못 받아 Identifiable wrapper로 감싼다.
-private struct InlineSelectedDay: Identifiable {
-    let date: Date
-    var id: TimeInterval { date.timeIntervalSinceReferenceDate }
-}
-
 struct TrackingView: View {
     @Environment(AppState.self) private var state
 
@@ -13,8 +7,8 @@ struct TrackingView: View {
     @State private var fbTimer: Timer?
     @State private var inlineMonth: Date = .now
     @State private var inlineMonthSessions: [ChewingSessionDTO] = []
-    @State private var inlineSelectedDay: InlineSelectedDay?
-    @State private var inlineSheetPath = NavigationPath()
+    /// 인라인 리스트에서 row를 탭하면 sheet으로 띄울 세션. nil이면 sheet 닫힘.
+    @State private var inlineDetailSession: ChewingSessionDTO?
 
     /// 식사 중 여부 — 식사 세션은 AppState가 관리하고 이 화면은 관찰만.
     private var isEating: Bool { state.isEating }
@@ -32,7 +26,7 @@ struct TrackingView: View {
             tipCard
         }
         .padding(.horizontal, 24)
-        .padding(.top, 12)
+        .padding(.top, 24)
         .padding(.bottom, 28)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .overlay(alignment: .bottom) {
@@ -43,26 +37,9 @@ struct TrackingView: View {
             }
         }
         .task { await state.fetchTodaySessions() }
-        .sheet(item: $inlineSelectedDay, onDismiss: { inlineSheetPath = NavigationPath() }) { day in
-            NavigationStack(path: $inlineSheetPath) {
-                DaySessionsView(
-                    date: day.date,
-                    monthSessions: $inlineMonthSessions,
-                    onDelete: { session in
-                        Task {
-                            await state.deleteSession(session)
-                            inlineMonthSessions.removeAll { $0.id == session.id }
-                        }
-                    },
-                    onTapSession: { session in
-                        inlineSheetPath.append(session.id)
-                    }
-                )
-                .navigationDestination(for: UUID.self) { sessionId in
-                    if let session = inlineMonthSessions.first(where: { $0.id == sessionId }) {
-                        SessionReportDetailView(dto: session)
-                    }
-                }
+        .sheet(item: $inlineDetailSession) { session in
+            NavigationStack {
+                SessionReportDetailView(dto: session)
             }
         }
         .onChange(of: isEating) { _, isOn in
@@ -75,14 +52,9 @@ struct TrackingView: View {
 
     private var header: some View {
         HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("실시간")
-                    .font(.appFont(.medium, size: 11))
-                    .foregroundStyle(Color.ink400)
-                Text("트래킹")
-                    .font(.appFont(.bold, size: 24))
-                    .foregroundStyle(Color.ink800)
-            }
+            Text("트래킹")
+                .font(.appFont(.heavy, size: 22))
+                .foregroundStyle(Color.ink800)
             Spacer()
         }
     }
@@ -96,13 +68,7 @@ struct TrackingView: View {
                     .font(.appFont(.regular, size: 28))
                     .foregroundStyle(Color.sage600)
                     .frame(width: 56, height: 56)
-                    .background(
-                        LinearGradient(
-                            colors: [Color.sage100, Color.sage50],
-                            startPoint: .topLeading, endPoint: .bottomTrailing
-                        ),
-                        in: RoundedRectangle(cornerRadius: 16)
-                    )
+                    .background(Color.sage100, in: RoundedRectangle(cornerRadius: 16))
 
                 Circle()
                     .fill(Color.sage500)
@@ -113,8 +79,8 @@ struct TrackingView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("AirPods IMU")
-                    .font(.appFont(.medium, size: 11))
-                    .foregroundStyle(Color.ink400)
+                    .font(.appFont(.semibold, size: 13))
+                    .foregroundStyle(Color.ink600)
                 Text(state.imuWaveformStatusText)
                     .font(.appFont(.bold, size: 15))
                     .foregroundStyle(Color.ink800)
@@ -126,8 +92,8 @@ struct TrackingView: View {
 
             VStack(alignment: .trailing, spacing: 2) {
                 Text("모드")
-                    .font(.appFont(.regular, size: 10))
-                    .foregroundStyle(Color.ink400)
+                    .font(.appFont(.semibold, size: 13))
+                    .foregroundStyle(Color.ink600)
                 Text(state.imuWaveformSource.usesRealMotion ? "LIVE" : "MVP")
                     .font(.appFont(.bold, size: 13))
                     .foregroundStyle(state.imuWaveformSource.usesRealMotion ? Color.sage600 : Color.ink400)
@@ -157,8 +123,8 @@ struct TrackingView: View {
             }
             Spacer(minLength: 0)
         }
-        .font(.appFont(.medium, size: 11))
-        .foregroundStyle(Color.ink400)
+        .font(.appFont(.semibold, size: 13))
+        .foregroundStyle(Color.ink600)
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -185,9 +151,9 @@ struct TrackingView: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(trackingDateLabel)
-                        .font(.appFont(.medium, size: 11))
-                        .foregroundStyle(Color.ink400)
-                    Text("오늘의 식사 기록")
+                        .font(.appFont(.semibold, size: 13))
+                        .foregroundStyle(Color.ink600)
+                    Text("오늘 식사")
                         .font(.appFont(.bold, size: 18))
                         .foregroundStyle(Color.ink800)
                 }
@@ -216,8 +182,8 @@ struct TrackingView: View {
         } else {
             EmptyReportCardView(
                 emoji: "🍽️",
-                title: "아직 오늘 식사 기록이 없어요",
-                subtitle: "홈에서 식사를 시작하면 여기에 표시돼요"
+                title: "오늘은 아직 식사 전이에요",
+                subtitle: "홈에서 식사를 시작하면 여기에 기록돼요"
             )
         }
     }
@@ -226,31 +192,16 @@ struct TrackingView: View {
 
     private var calendarSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Text("식사 캘린더")
-                    .font(.appFont(.heavy, size: 14))
-                    .foregroundStyle(Color.ink800)
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 14)
-
             MealCalendarGrid(
                 displayedMonth: $inlineMonth,
                 monthSessions: $inlineMonthSessions,
-                onTapDay: { date in
-                    inlineSelectedDay = InlineSelectedDay(date: date)
+                onTapSession: { session in
+                    inlineDetailSession = session
                 }
             )
         }
         .frame(maxWidth: .infinity)
-        .background(
-            LinearGradient(
-                colors: [Color.acorn50, .cream, Color.sage50],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 24)
-        )
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 24))
         .neuoShadow(.sm)
     }
 
@@ -265,30 +216,25 @@ struct TrackingView: View {
 
     private var tipCard: some View {
         HStack(alignment: .top, spacing: 12) {
-            Text("💡")
-                .font(.appFont(.regular, size: 22))
+            Image(systemName: "lightbulb")
+                .font(.appFont(.medium, size: 18))
+                .foregroundStyle(Color.butter600)
                 .frame(width: 40, height: 40)
                 .background(.white, in: RoundedRectangle(cornerRadius: 12))
                 .neuoShadow(.sm)
             VStack(alignment: .leading, spacing: 2) {
-                Text("오늘의 코치 팁")
+                Text("씹기 팁")
                     .font(.appFont(.bold, size: 12))
                     .foregroundStyle(Color.ink800)
-                Text("저녁 식사는 한 입당 30회 씹는 걸 추천해요. 포만감이 빨리 와요!")
-                    .font(.appFont(.regular, size: 11))
+                Text("한 입에 30번씩 씹으면 포만감이 오래가요.")
+                    .font(.appFont(.semibold, size: 13))
                     .foregroundStyle(Color.ink600)
                     .lineSpacing(3)
             }
             Spacer(minLength: 0)
         }
         .padding(16)
-        .background(
-            LinearGradient(
-                colors: [Color.sage50, Color.butter50],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 18)
-        )
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 18))
         .neuoShadow(.sm)
     }
 

@@ -212,6 +212,14 @@ final class AppState {
     /// ContentView가 .sheet binding으로 관찰. PRD #3 — 종료 후 2초 이내 카드 표시.
     var lastCompletedSession: ChewingSessionDTO?
 
+    /// 식사 시작 후 60초 미만에서 종료를 시도할 때 사용자에게 "더 측정할까요"를
+    /// 묻는 확인 다이얼로그 플래그. 사용자가 "그만두기"를 선택하면 세션을 discard.
+    var showShortSessionConfirm: Bool = false
+
+    /// 시작 시점에 AirPods/모션 권한이 없거나 라우트가 비어 시작을 차단했을 때 띄우는 플래그.
+    /// 종료 시 너무 짧은 세션 확인(showShortSessionConfirm)과 메시지를 분리한다.
+    var showAirPodsConnectionPrompt: Bool = false
+
     /// 도토리 적립 시 ContentView가 overlay로 보여줄 RewardDialogView trigger.
     /// RewardLedger가 +n🌰 반환했을 때 set, 사용자가 다이얼로그 dismiss 시 nil.
     /// 출석 보너스(`.attendance`) + 세션 종료 적립(`.sessionComplete`) 두 종 trigger.
@@ -310,13 +318,37 @@ final class AppState {
             imuSessionRecorder = nil
             let endedAt = Date()
             let output = recorder.finalize(endedAt: endedAt)
-            // 빈 세션(시뮬레이터 등에서 IMU 샘플 0개)은 사용자에게 알릴 가치 없어 스킵.
+            // 분석이 불가능한 세션(IMU 샘플 0개)은 DB·도토리·리포트 어디에도
+            // 흔적을 남기지 않는다 — 사용자 입장에서 "아무 일도 안 일어난" 상태.
             guard output.sampleCount > 0 else { return }
             sessionUploadStatus = .uploading
             Task { [weak self] in
                 let stats = await builder?.build(modelVersion: AppState.modelVersion)
                 await self?.performSessionUpload(output, stats: stats)
             }
+        }
+    }
+
+    /// 너무 짧게 끝낸 세션을 사용자가 "그만두기" 선택했을 때 호출.
+    /// 측정 상태만 정리하고 DB·도토리·리포트엔 어떤 흔적도 남기지 않는다.
+    func discardCurrentSession() {
+        guard isEating else { return }
+        isEating = false
+        eatingStartedAt = nil
+        stopHeadphoneMotionLoop()
+        stopFakeChewLoop()
+        stopDemoIMUWaveformLoop()
+        backgroundKeepAlive.stop()
+        resetIMUWaveform()
+        imuWaveformSource = .idle
+        chewTimestamps.removeAll()
+        chewRatePerMinute = 0
+        persistSnapshot()
+        statsBuilder = nil
+        predictor = nil
+        if let recorder = imuSessionRecorder {
+            imuSessionRecorder = nil
+            _ = recorder.finalize(endedAt: Date())
         }
     }
 
@@ -525,10 +557,22 @@ final class AppState {
 
     // MARK: - Derived
 
-    var status: MoodStatus { MoodStatus.from(count: chewCount) }
+    var status: MoodStatus { MoodStatus.from(count: todayRealChewCount) }
 
     var progress: Double {
         min(1.0, max(0.0, Double(chewCount) / Double(Constants.dailyGoal)))
+    }
+
+    /// 오늘 세션들의 실제 씹기 횟수 합. 식사 중에는 갱신되지 않고 세션이 끝나
+    /// `todaySessions`에 추가될 때만 변한다. `chewCount`는 fake 도토리 카운터라
+    /// 화면에 노출되는 "실제 씹기" 수치는 반드시 이 값을 쓴다.
+    var todayRealChewCount: Int {
+        todaySessions.reduce(0) { $0 + ($1.estimatedTotalChews ?? 0) }
+    }
+
+    /// 실제 씹기 횟수 기반 일일 목표 진행도(0~1). 홈 다람이 둘레 링이 사용.
+    var todayProgress: Double {
+        min(1.0, max(0.0, Double(todayRealChewCount) / Double(Constants.dailyGoal)))
     }
 
     var imuWaveformStatusText: String {
@@ -919,7 +963,12 @@ final class AppState {
             lastCompletedSession = dto
             // PRD #8: 세션 종료 적립 = estimatedTotalChews × 0.05. RewardLedger가
             // idempotency(같은 sessionId 중복 차단) + 일일 상한 500🌰 enforcement.
-            let granted = RewardLedger.accrue(forSession: dto.id, chewCount: dto.estimatedTotalChews)
+            // 리포트가 생성될 수 없는 세션(durationSec < 60 또는 분석 5필드 nil)은
+            // 사용자에게 결과를 못 보여주는 만큼 도토리도 주지 않는다.
+            let canRender = ReportCardModel.from(dto) != nil
+            let granted = canRender
+                ? RewardLedger.accrue(forSession: dto.id, chewCount: dto.estimatedTotalChews)
+                : 0
             if granted > 0 {
                 points += granted
             }
@@ -1028,7 +1077,8 @@ final class AppState {
         guard let rows = try? await remoteStore.fetchChewingSessions(deviceId: deviceId, since: startOfDay) else {
             return
         }
-        todaySessions = rows
+        // 리포트가 가능한 세션만 노출. DB엔 남아 있어도 앱에선 없는 것처럼 처리.
+        todaySessions = rows.filter { ReportCardModel.from($0) != nil }
     }
 
     /// 단일 세션 삭제 — 캘린더 DaySessionsView에서 swipe로 호출. todaySessions에서도

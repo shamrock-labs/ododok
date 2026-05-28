@@ -1,12 +1,9 @@
 import SwiftUI
 import CoreMotion
+import AVFoundation
 
 struct HomeView: View {
     @Environment(AppState.self) private var state
-
-    // MARK: - AirPods 미연결 토스트
-    @State private var showAirPodsToast = false
-    @State private var toastTask: Task<Void, Never>?
 
     // MARK: - 측정 시작 햅틱 trigger
     @State private var hapticTrigger = false
@@ -16,6 +13,8 @@ struct HomeView: View {
 
     // MARK: - 설정 sheet (REQ-05)
     @State private var showSettings = false
+    /// 야간 시간대 판정에 쓰는 현재 시각 — 60초마다 갱신해 22:00·06:00 경계에서 stale을 방지.
+    @State private var nowTick = Date()
 
     var body: some View {
         VStack(spacing: 14) {
@@ -26,17 +25,12 @@ struct HomeView: View {
             mealToggleButton
         }
         .padding(.horizontal, 24)
-        .padding(.top, 12)
+        .padding(.top, 24)
         .padding(.bottom, 18)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .overlay(alignment: .top) {
-            if showAirPodsToast {
-                airPodsToast
-                    .padding(.top, 16)
-                    .transition(.move(edge: .top).combined(with: .opacity))
-            }
+        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { newDate in
+            nowTick = newDate
         }
-        .animation(.easeInOut(duration: 0.25), value: showAirPodsToast)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .sensoryFeedback(.impact(weight: .medium), trigger: hapticTrigger)
         .sheet(isPresented: $showMealReminderSettings) {
             MealReminderSettingsView()
@@ -46,23 +40,16 @@ struct HomeView: View {
         }
     }
 
-    // MARK: - AirPods 토스트 뷰
-
-    private var airPodsToast: some View {
-        Text("AirPods Pro · AirPods 3/4세대 · AirPods Max 중 하나를 연결해주세요")
-            .font(.appFont(.medium, size: 13))
-            .foregroundStyle(.white)
-            .multilineTextAlignment(.center)
-            .padding(.horizontal, 18)
-            .padding(.vertical, 11)
-            .background(Color.ink800.opacity(0.92), in: Capsule())
-            .padding(.horizontal, 32)
-    }
-
     // MARK: - 식사 시작 가드
 
     private func handleMealToggle() {
         if state.isEating {
+            // 60초 미만이면 분석 불가 — 사용자에게 "더 측정할까요?" 확인 후 처리.
+            let duration = Date().timeIntervalSince(state.eatingStartedAt ?? Date())
+            if duration < 60 {
+                state.showShortSessionConfirm = true
+                return
+            }
             state.toggleEating()
             return
         }
@@ -73,8 +60,11 @@ struct HomeView: View {
         let status = CMHeadphoneMotionManager.authorizationStatus()
         let available = service.isDeviceMotionAvailable
 
-        if status == .denied || status == .restricted || !available {
-            presentAirPodsToast()
+        // 모션 권한·기기 호환·실제 오디오 라우트(에어팟/헤드폰 등) 셋 다 확인.
+        // isDeviceMotionAvailable이 기기 호환만 보고 연결을 확신하지 못하는 케이스를
+        // 라우트 체크로 보완 — 시작 자체를 막아 silent 빈 세션을 차단한다.
+        if status == .denied || status == .restricted || !available || !hasHeadphoneAudioRoute {
+            state.showAirPodsConnectionPrompt = true
             return
         }
 
@@ -85,7 +75,7 @@ struct HomeView: View {
                 hapticTrigger.toggle()
                 state.startEating()
             } onDenied: {
-                presentAirPodsToast()
+                state.showAirPodsConnectionPrompt = true
             }
             return
         }
@@ -96,13 +86,18 @@ struct HomeView: View {
         state.toggleEating()
     }
 
-    private func presentAirPodsToast() {
-        toastTask?.cancel()
-        showAirPodsToast = true
-        toastTask = Task {
-            try? await Task.sleep(for: .seconds(1.8))
-            guard !Task.isCancelled else { return }
-            await MainActor.run { showAirPodsToast = false }
+    /// 현재 오디오 출력 라우트에 AirPods/Bluetooth/유선 헤드폰이 포함되어 있는지.
+    /// CMHeadphoneMotionManager.isDeviceMotionAvailable이 미연결 상태에서도 true를
+    /// 반환하는 케이스를 보완한다.
+    private var hasHeadphoneAudioRoute: Bool {
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+        return outputs.contains { output in
+            switch output.portType {
+            case .bluetoothA2DP, .bluetoothLE, .bluetoothHFP, .headphones, .headsetMic:
+                return true
+            default:
+                return false
+            }
         }
     }
 
@@ -112,8 +107,8 @@ struct HomeView: View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 4) {
                 Text(todayLabel)
-                    .font(.appFont(.medium, size: 13))
-                    .foregroundStyle(Color.ink400)
+                    .font(.appFont(.semibold, size: 14))
+                    .foregroundStyle(Color.ink600)
                 Text("안녕, \(state.displayName ?? "친구")님")
                     .font(.appFont(.bold, size: 26))
                     .foregroundStyle(Color.ink800)
@@ -151,12 +146,10 @@ struct HomeView: View {
         HStack(spacing: 14) {
             statCard(
                 label: state.freezeInventory > 0 ? "연속 출석 · 🛡️\(state.freezeInventory)" : "연속 출석",
-                value: "\(state.streak)일째 🔥",
+                value: "\(state.streak)일째",
                 iconBG: Color.blush100
             ) {
-                Image(systemName: "flame.fill")
-                    .foregroundStyle(Color.blush500)
-                    .font(.appFont(.regular, size: 26))
+                Text("🔥").font(.appFont(.regular, size: 26))
             }
 
             statCard(
@@ -183,8 +176,8 @@ struct HomeView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
-                    .font(.appFont(.medium, size: 11))
-                    .foregroundStyle(Color.ink400)
+                    .font(.appFont(.semibold, size: 13))
+                    .foregroundStyle(Color.ink600)
                     .lineLimit(1)
                 Text(value)
                     .font(.appFont(.bold, size: 17))
@@ -206,24 +199,43 @@ struct HomeView: View {
         VStack(spacing: 10) {
             Spacer(minLength: 0)
 
-            SquirrelView(
-                mood: state.isEating ? state.status.mood : .happy,
-                hat: state.equippedHatItem,
-                glasses: state.equippedGlassesItem,
-                acc: state.equippedAccItem,
-                animKey: state.animKey,
-                isEating: state.isEating
-            )
-            .scaleEffect(1.5)
+            ZStack {
+                if !state.isEating {
+                    Circle()
+                        .stroke(Color.ink100, lineWidth: 5)
+                        .frame(width: 220, height: 220)
+                    Circle()
+                        .trim(from: 0, to: state.todayProgress)
+                        .stroke(
+                            Color.acorn500,
+                            style: StrokeStyle(lineWidth: 5, lineCap: .round)
+                        )
+                        .frame(width: 220, height: 220)
+                        .rotationEffect(.degrees(-90))
+                }
+                SquirrelView(
+                    mood: state.isEating ? state.status.mood : .happy,
+                    hat: state.equippedHatItem,
+                    glasses: state.equippedGlassesItem,
+                    acc: state.equippedAccItem,
+                    animKey: state.animKey,
+                    isEating: state.isEating,
+                    isNight: isNightTime
+                )
+                .scaleEffect(1.5)
+            }
             .frame(height: 246)
 
-            VStack(spacing: 2) {
+            VStack(spacing: 4) {
                 Text(state.status.title)
                     .font(.appFont(.bold, size: 19))
                     .foregroundStyle(Color.ink800)
-                Text(state.status.subtitle)
-                    .font(.appFont(.regular, size: 13))
-                    .foregroundStyle(Color.ink400)
+                if !state.isEating {
+                    Text("오늘 \(state.todayRealChewCount.koLocale) / \(Constants.dailyGoal.koLocale)회")
+                        .font(.appFont(.semibold, size: 13))
+                        .foregroundStyle(Color.ink600)
+                        .monospacedDigit()
+                }
             }
 
             imuWaveformCard
@@ -235,14 +247,7 @@ struct HomeView: View {
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity)
         .frame(minHeight: 390)
-        .background(
-            LinearGradient(
-                colors: [.white, .cream, Color.acorn50],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 26)
-        )
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 26))
         .neuoShadow(.md)
     }
 
@@ -254,7 +259,7 @@ struct HomeView: View {
                         .font(.appFont(.bold, size: 13))
                         .foregroundStyle(Color.ink800)
                     Text(state.imuWaveformStatusText)
-                        .font(.appFont(.medium, size: 11))
+                        .font(.appFont(.semibold, size: 13))
                         .foregroundStyle(state.isIMUWaveformLive ? Color.sage600 : Color.ink400)
                 }
 
@@ -319,5 +324,13 @@ struct PressableButtonStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+private extension HomeView {
+    /// 야간 시간대(22:00~06:00). 다람쥐를 잠자는 일러스트로 교체하는 데 사용.
+    var isNightTime: Bool {
+        let hour = Calendar.current.component(.hour, from: nowTick)
+        return hour >= 22 || hour < 6
     }
 }

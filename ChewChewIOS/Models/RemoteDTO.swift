@@ -35,7 +35,7 @@ struct UserStatsDTO: Codable, Equatable {
 /// 분석 5필드(`chewingSeconds`/`restSeconds`/`chewingFraction`/`estimatedTotalChews`/`modelVersion`)는
 /// 온디바이스 ChewingPredictor 추론이 동작한 세션에서만 채워진다. 시뮬레이터/AirPods 미연결 등
 /// 추론이 돌지 않은 세션은 모두 nil — DB 컬럼도 nullable.
-struct ChewingSessionDTO: Codable, Equatable {
+struct ChewingSessionDTO: Codable, Equatable, Identifiable {
     var id: UUID
     var deviceId: String
     var startedAt: Date

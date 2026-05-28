@@ -29,7 +29,7 @@ struct SessionResultSheet: View {
                 }
                 .padding(20)
             }
-            .background(LinearGradient.appBackground.ignoresSafeArea())
+            .background(Color.cream.ignoresSafeArea())
             .navigationTitle(dto == nil ? "분석 중" : "식사 리포트")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -65,7 +65,7 @@ struct SessionResultSheet: View {
     /// 공간이라 정보 밀도는 의도적으로 낮춤.
     private var analyzingView: some View {
         VStack(spacing: 18) {
-            Spacer(minLength: 60)
+            Spacer(minLength: 48)
             ProgressView()
                 .controlSize(.large)
                 .tint(Color.acorn500)
@@ -73,13 +73,13 @@ struct SessionResultSheet: View {
                 Text("씹기 분석 중이에요")
                     .font(.appFont(.bold, size: 16))
                     .foregroundStyle(Color.ink800)
-                Text("잠시만 기다려 주세요")
-                    .font(.appFont(.regular, size: 13))
-                    .foregroundStyle(Color.ink400)
+                Text("잠시만요")
+                    .font(.appFont(.semibold, size: 15))
+                    .foregroundStyle(Color.ink600)
             }
-            Spacer(minLength: 60)
+            Spacer(minLength: 48)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
+        .padding(.vertical, 32)
     }
 }
