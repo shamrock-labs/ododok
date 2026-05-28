@@ -21,7 +21,12 @@ struct MealCalendarGrid: View {
 
     @Binding var displayedMonth: Date
     @Binding var monthSessions: [ChewingSessionDTO]
-    var onTapDay: ((Date) -> Void)? = nil
+    var onTapSession: ((ChewingSessionDTO) -> Void)? = nil
+
+    /// 가장 오래된 세션이 있는 달 — 좌측 chevron 비활성 기준. 첫 로딩 시 1회 계산.
+    @State private var oldestSessionMonth: Date?
+    /// 인라인으로 펼친 날짜 — 한 번 더 탭하면 접힌다.
+    @State private var selectedDate: Date?
 
     private var calendar: Calendar { mealCalendarCalendar }
 
@@ -36,11 +41,32 @@ struct MealCalendarGrid: View {
                 .padding(.horizontal, 12)
                 .padding(.top, 6)
                 .padding(.bottom, 12)
+            if let date = selectedDate {
+                DayInlineSection(
+                    date: date,
+                    sessions: sessions(on: date),
+                    onTapSession: onTapSession
+                )
+                .padding(.horizontal, 16)
+                .padding(.bottom, 18)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
         }
-        .task { await reload() }
+        .animation(.spring(response: 0.32, dampingFraction: 0.85), value: selectedDate)
+        .task {
+            await loadOldestSessionMonthIfNeeded()
+            await reload()
+        }
         .onChange(of: displayedMonth) { _, _ in
-            Task { await reload() }
+            Task {
+                selectedDate = nil
+                await reload()
+            }
         }
+    }
+
+    private func sessions(on date: Date) -> [ChewingSessionDTO] {
+        monthSessions.filter { calendar.isDate($0.startedAt, inSameDayAs: date) }
     }
 
     private var monthHeader: some View {
@@ -51,6 +77,8 @@ struct MealCalendarGrid: View {
                     .frame(width: 32, height: 32)
                     .background(Color.white.opacity(0.7), in: Circle())
             }
+            .disabled(isAtOldestMonth)
+            .opacity(isAtOldestMonth ? 0.35 : 1.0)
             Spacer()
             Text(monthTitle)
                 .font(.appFont(.heavy, size: 15))
@@ -103,37 +131,46 @@ struct MealCalendarGrid: View {
     }
 
     private func dayCell(date: Date) -> some View {
-        // LazyVGrid 안 NavigationLink / Button + buttonStyle.plain 조합이 일부 환경에서
-        // 탭 자체가 안 먹는 회귀가 있어, 단순 `onTapGesture` + `contentShape(Rectangle())`
-        // 패턴으로 통일. 풀스크린 sheet 모드도 같은 closure 경로를 쓰도록 onTapDay를
-        // 호출자가 반드시 전달.
+        // LazyVGrid 안 NavigationLink/Button 회귀를 피해 onTapGesture + contentShape 패턴.
+        // 같은 날 다시 탭하면 접고, 다른 날 탭하면 그 날로 교체한다.
         let count = sessionsCount(on: date)
         return dayCellContent(date: date)
             .contentShape(Rectangle())
             .onTapGesture {
                 guard count > 0 else { return }
-                onTapDay?(date)
+                if let current = selectedDate, calendar.isDate(current, inSameDayAs: date) {
+                    selectedDate = nil
+                } else {
+                    selectedDate = date
+                }
             }
     }
 
     private func dayCellContent(date: Date) -> some View {
         let count = sessionsCount(on: date)
         let isToday = calendar.isDateInToday(date)
+        let isSelected = selectedDate.map { calendar.isDate($0, inSameDayAs: date) } ?? false
         return VStack(spacing: 3) {
             Text("\(calendar.component(.day, from: date))")
-                .font(.system(size: 12, weight: isToday ? .heavy : .semibold))
-                .foregroundStyle(weekdayColor(date: date))
+                .font(.system(size: 12, weight: isToday || isSelected ? .heavy : .semibold))
+                .foregroundStyle(isSelected ? Color.white : weekdayColor(date: date))
                 .monospacedDigit()
             Circle()
-                .fill(count > 0 ? Color.acorn500 : Color.clear)
+                .fill(count > 0 ? (isSelected ? Color.white : Color.acorn500) : Color.clear)
                 .frame(width: 4, height: 4)
         }
         .frame(maxWidth: .infinity)
         .frame(height: 40)
         .background(
-            isToday ? Color.acorn100.opacity(0.7) : Color.white.opacity(0.45),
+            cellBackground(isToday: isToday, isSelected: isSelected),
             in: RoundedRectangle(cornerRadius: 10)
         )
+    }
+
+    private func cellBackground(isToday: Bool, isSelected: Bool) -> Color {
+        if isSelected { return Color.acorn600 }
+        if isToday    { return Color.acorn100.opacity(0.7) }
+        return Color.white.opacity(0.45)
     }
 
     private func weekdayColor(date: Date) -> Color {
@@ -173,7 +210,26 @@ struct MealCalendarGrid: View {
 
     private func goToMonth(_ delta: Int) {
         guard let next = calendar.date(byAdding: .month, value: delta, to: displayedMonth) else { return }
+        if delta < 0, let oldest = oldestSessionMonth, next < oldest { return }
         displayedMonth = next
+    }
+
+    /// 현재 표시 달이 가장 오래된 기록 달과 같은지. nil(미로딩)이면 false.
+    private var isAtOldestMonth: Bool {
+        guard let oldest = oldestSessionMonth else { return false }
+        return calendar.isDate(displayedMonth, equalTo: oldest, toGranularity: .month)
+    }
+
+    /// 가장 오래된 세션이 있는 달을 1회 fetch해 캐시. 빠른 응답을 위해 month 단위로만 truncate.
+    private func loadOldestSessionMonthIfNeeded() async {
+        guard oldestSessionMonth == nil else { return }
+        let deviceId = DeviceIdentity.shared
+        guard let rows = try? await state.remoteStore.fetchChewingSessions(
+            deviceId: deviceId,
+            since: .distantPast
+        ) else { return }
+        guard let earliest = rows.map(\.startedAt).min() else { return }
+        oldestSessionMonth = calendar.dateInterval(of: .month, for: earliest)?.start
     }
 
     @MainActor
@@ -188,7 +244,7 @@ struct MealCalendarGrid: View {
             since: monthInterval.start,
             until: monthInterval.end
         )) ?? []
-        monthSessions = rows
+        monthSessions = rows.filter { ReportCardModel.from($0) != nil }
     }
 }
 
@@ -210,8 +266,8 @@ struct MealCalendarView: View {
                 MealCalendarGrid(
                     displayedMonth: $displayedMonth,
                     monthSessions: $monthSessions,
-                    onTapDay: { date in
-                        path.append(date)
+                    onTapSession: { session in
+                        path.append(session.id)
                     }
                 )
                 .padding(20)
@@ -236,7 +292,7 @@ struct MealCalendarView: View {
             .appDialog(
                 isPresented: $showDeleteAllConfirm,
                 title: "모든 식사 기록을 삭제할까요?",
-                message: "이 기기의 모든 식사 세션이 사라집니다.\n도토리/꾸미기 등 게임 상태는 보존돼요.\n되돌릴 수 없어요.",
+                message: "이 기기의 모든 식사가 사라져요.\n도토리·꾸미기는 그대로예요.",
                 primary: .init("전체 삭제", role: .destructive) {
                     Task {
                         await state.deleteAllChewingSessions()
@@ -245,21 +301,6 @@ struct MealCalendarView: View {
                 },
                 secondary: .init("취소", role: .cancel) { }
             )
-            .navigationDestination(for: Date.self) { date in
-                DaySessionsView(
-                    date: date,
-                    monthSessions: $monthSessions,
-                    onDelete: { session in
-                        Task {
-                            await state.deleteSession(session)
-                            monthSessions.removeAll { $0.id == session.id }
-                        }
-                    },
-                    onTapSession: { session in
-                        path.append(session.id)
-                    }
-                )
-            }
             .navigationDestination(for: UUID.self) { sessionId in
                 if let session = monthSessions.first(where: { $0.id == sessionId }) {
                     SessionReportDetailView(dto: session)
@@ -290,7 +331,7 @@ struct DaySessionsView: View {
                 VStack {
                     Spacer()
                     Text("이 날은 식사 기록이 없어요.")
-                        .font(.appFont(.regular, size: 13))
+                        .font(.appFont(.semibold, size: 15))
                         .foregroundStyle(Color.ink600)
                     Spacer()
                 }
@@ -301,8 +342,8 @@ struct DaySessionsView: View {
                             .contentShape(Rectangle())
                             .onTapGesture { onTapSession(session) }
                             .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
-                            .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
+                            .listRowSeparator(.visible)
+                            .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                 Button(role: .destructive) {
                                     onDelete(session)
@@ -331,32 +372,18 @@ struct DaySessionsView: View {
 
     private func sessionRow(_ session: ChewingSessionDTO) -> some View {
         HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(formatTime(session.startedAt))
-                    .font(.appFont(.heavy, size: 15))
-                    .foregroundStyle(Color.ink800)
-                    .monospacedDigit()
-                Text(formatDuration(session.durationSec))
-                    .font(.appFont(.medium, size: 11))
-                    .foregroundStyle(Color.ink400)
-            }
-            .frame(width: 70, alignment: .leading)
-            VStack(alignment: .leading, spacing: 4) {
-                if let chews = session.estimatedTotalChews {
-                    Text("\(chews.koLocale)회 · 씹은 비율 \(String(format: "%.0f%%", (session.chewingFraction ?? 0) * 100))")
-                        .font(.appFont(.bold, size: 13))
-                        .foregroundStyle(Color.ink800)
-                } else {
-                    Text("분석 없음")
-                        .font(.appFont(.regular, size: 13))
-                        .foregroundStyle(Color.ink400)
-                }
-            }
+            Text(formatTime(session.startedAt))
+                .font(.appFont(.heavy, size: 17))
+                .foregroundStyle(Color.ink800)
+                .monospacedDigit()
             Spacer(minLength: 0)
+            Text(formatDuration(session.durationSec))
+                .font(.appFont(.semibold, size: 14))
+                .foregroundStyle(Color.ink600)
+                .monospacedDigit()
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(Color.white.opacity(0.78), in: RoundedRectangle(cornerRadius: 14))
+        .padding(.horizontal, 4)
+        .padding(.vertical, 14)
     }
 
     private func formatTime(_ d: Date) -> String {
@@ -416,6 +443,131 @@ struct SessionReportDetailView: View {
                   let data = ReportCardRenderer.render(model)
             else { return }
             sharePayload = ReportCardSharePayload(imageData: data)
+        }
+    }
+}
+
+
+// MARK: - Day inline expansion (calendar 밑에 열리는 세션 리스트)
+
+/// 시간대별로 묶어 보여주는 일간 식사 리스트. 캘린더 그리드 바로 아래에서 펼침/접힘.
+private struct DayInlineSection: View {
+    let date: Date
+    let sessions: [ChewingSessionDTO]
+    let onTapSession: ((ChewingSessionDTO) -> Void)?
+
+    var body: some View {
+        if sessions.isEmpty {
+            Text("이 날은 식사 기록이 없어요.")
+                .font(.appFont(.semibold, size: 14))
+                .foregroundStyle(Color.ink600)
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.vertical, 14)
+        } else {
+            VStack(alignment: .leading, spacing: 18) {
+                ForEach(slotGroups, id: \.slot) { group in
+                    slotBlock(slot: group.slot, sessions: group.sessions)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func slotBlock(slot: DayMealSlot, sessions: [ChewingSessionDTO]) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text(slot.emoji).font(.appFont(.regular, size: 20))
+                Text(slot.label)
+                    .font(.appFont(.heavy, size: 16))
+                    .foregroundStyle(Color.ink800)
+                Spacer(minLength: 0)
+            }
+            VStack(spacing: 6) {
+                ForEach(sessions, id: \.id) { session in
+                    sessionRow(session)
+                }
+            }
+        }
+    }
+
+    private func sessionRow(_ session: ChewingSessionDTO) -> some View {
+        Button {
+            onTapSession?(session)
+        } label: {
+            HStack(spacing: 12) {
+                Text(formatTime12(session.startedAt))
+                    .font(.appFont(.semibold, size: 15))
+                    .foregroundStyle(Color.ink800)
+                    .monospacedDigit()
+                Spacer(minLength: 0)
+                Text(formatDuration(session.durationSec))
+                    .font(.appFont(.semibold, size: 14))
+                    .foregroundStyle(Color.ink600)
+                    .monospacedDigit()
+                Image(systemName: "chevron.right")
+                    .font(.appFont(.semibold, size: 12))
+                    .foregroundStyle(Color.ink400)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Color.acorn50.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var slotGroups: [(slot: DayMealSlot, sessions: [ChewingSessionDTO])] {
+        let grouped = Dictionary(grouping: sessions) { dto in
+            DayMealSlot(hour: Calendar.current.component(.hour, from: dto.startedAt))
+        }
+        return DayMealSlot.allCases.compactMap { slot in
+            guard let group = grouped[slot], !group.isEmpty else { return nil }
+            return (slot, group.sorted { $0.startedAt < $1.startedAt })
+        }
+    }
+
+    private func formatTime12(_ d: Date) -> String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ko_KR")
+        f.dateFormat = "a h:mm"
+        return f.string(from: d)
+    }
+
+    private func formatDuration(_ secs: Double) -> String {
+        let total = Int(secs.rounded())
+        let m = total / 60
+        let s = total % 60
+        if m == 0 { return "\(s)초" }
+        if s == 0 { return "\(m)분" }
+        return "\(m)분 \(s)초"
+    }
+}
+
+/// 끼니 슬롯 분류. 시각(시간)으로 매핑. UI 라벨/이모지 보관.
+enum DayMealSlot: CaseIterable, Hashable {
+    case morning, lunch, dinner, lateNight
+
+    var label: String {
+        switch self {
+        case .morning:   "아침"
+        case .lunch:     "점심"
+        case .dinner:    "저녁"
+        case .lateNight: "야식"
+        }
+    }
+    var emoji: String {
+        switch self {
+        case .morning:   "🌅"
+        case .lunch:     "🍱"
+        case .dinner:    "🌙"
+        case .lateNight: "🍎"
+        }
+    }
+    init(hour: Int) {
+        switch hour {
+        case 6...10:  self = .morning
+        case 11...14: self = .lunch
+        case 15...21: self = .dinner
+        default:      self = .lateNight
         }
     }
 }
