@@ -53,24 +53,40 @@ struct IMUWaveformView: View {
         let midY = size.height / 2
         let amplitude = size.height * 0.49
 
+        // 샘플을 (x, y) 점으로 변환한 뒤 Catmull-Rom 형식의 cubic Bezier로 보간해
+        // 각진 polyline 대신 부드러운 곡선으로 렌더.
+        let points: [CGPoint] = clampedSamples.indices.map { i in
+            let x = CGFloat(i) * stepX
+            let phase = Double(i) * 0.58
+            // 연속 sine — 부호 점프 없이 부드러운 파형. Catmull-Rom 보간과 결합되어
+            // 자연스럽게 흐르는 곡선이 된다.
+            let y = midY - CGFloat(clampedSamples[i] * sin(phase)) * amplitude
+            return CGPoint(x: x, y: y)
+        }
+
         var fillPath = Path()
         var linePath = Path()
+        linePath.move(to: points[0])
+        fillPath.move(to: CGPoint(x: points[0].x, y: midY))
+        fillPath.addLine(to: points[0])
 
-        for sampleIndex in clampedSamples.indices {
-            let x = CGFloat(sampleIndex) * stepX
-            let phase = Double(sampleIndex) * 0.58
-            let direction = sin(phase) >= 0 ? 1.0 : -1.0
-            let y = midY - CGFloat(clampedSamples[sampleIndex] * direction) * amplitude
-            let point = CGPoint(x: x, y: y)
+        for i in 1..<points.count {
+            let p1 = points[i - 1]
+            let p2 = points[i]
+            let p0 = i - 2 >= 0 ? points[i - 2] : p1
+            let p3 = i + 1 < points.count ? points[i + 1] : p2
 
-            if sampleIndex == clampedSamples.startIndex {
-                linePath.move(to: point)
-                fillPath.move(to: CGPoint(x: x, y: midY))
-                fillPath.addLine(to: point)
-            } else {
-                linePath.addLine(to: point)
-                fillPath.addLine(to: point)
-            }
+            // Catmull-Rom → cubic Bezier 변환. 텐션 1/6이 표준.
+            let c1 = CGPoint(
+                x: p1.x + (p2.x - p0.x) / 6,
+                y: p1.y + (p2.y - p0.y) / 6
+            )
+            let c2 = CGPoint(
+                x: p2.x - (p3.x - p1.x) / 6,
+                y: p2.y - (p3.y - p1.y) / 6
+            )
+            linePath.addCurve(to: p2, control1: c1, control2: c2)
+            fillPath.addCurve(to: p2, control1: c1, control2: c2)
         }
 
         fillPath.addLine(to: CGPoint(x: size.width, y: midY))
