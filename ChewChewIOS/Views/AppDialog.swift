@@ -27,7 +27,7 @@ struct AppDialog: View {
             divider
             buttonRow
         }
-        .frame(maxWidth: 280)
+        .frame(maxWidth: 320)
         .background(Color.white, in: RoundedRectangle(cornerRadius: 14))
         .shadow(color: .black.opacity(0.18), radius: 24, y: 8)
     }
@@ -41,13 +41,13 @@ struct AppDialog: View {
                 .lineSpacing(2)
             if let message {
                 Text(message)
-                    .font(.appFont(.regular, size: 13))
+                    .font(.appFont(.semibold, size: 15))
                     .foregroundStyle(Color.ink600)
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
             }
         }
-        .padding(.horizontal, 18)
+        .padding(.horizontal, 22)
         .padding(.vertical, 20)
     }
 
@@ -57,17 +57,19 @@ struct AppDialog: View {
 
     @ViewBuilder
     private var buttonRow: some View {
-        if let secondary {
-            HStack(spacing: 0) {
-                button(secondary, emphasis: .secondary)
-                Color.ink100.frame(width: 0.5)
+        Group {
+            if let secondary {
+                HStack(spacing: 0) {
+                    button(secondary, emphasis: .secondary)
+                    Color.ink100.frame(width: 0.5)
+                    button(primary, emphasis: .primary)
+                }
+            } else {
                 button(primary, emphasis: .primary)
             }
-            .frame(height: 44)
-        } else {
-            button(primary, emphasis: .primary)
-                .frame(height: 44)
         }
+        .frame(height: 44)
+        .padding(.bottom, 8)
     }
 
     private enum Emphasis { case primary, secondary }

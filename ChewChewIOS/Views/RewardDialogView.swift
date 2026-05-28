@@ -40,14 +40,14 @@ struct RewardDialogView: View {
             }
 
             Text(grant.kind.subtitle)
-                .font(.appFont(.regular, size: 12))
+                .font(.appFont(.semibold, size: 14))
                 .foregroundStyle(Color.ink600)
                 .multilineTextAlignment(.center)
                 .lineSpacing(3)
         }
-        .padding(.vertical, 28)
-        .padding(.horizontal, 32)
-        .frame(maxWidth: 280)
+        .padding(.vertical, 24)
+        .padding(.horizontal, 22)
+        .frame(maxWidth: 320)
         .background(Color.white, in: RoundedRectangle(cornerRadius: 28))
         .neuoShadow(.md)
         .contentShape(Rectangle())

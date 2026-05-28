@@ -40,20 +40,19 @@ struct SettingsView: View {
         .appDialog(
             isPresented: $showDeleteConfirmation,
             title: "내 데이터를 삭제할까요?",
-            message: "씹기 기록, 도토리, 스트릭 등 모든 데이터가 영구 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
+            message: "씹기 기록, 도토리, 스트릭 모두 사라져요. 되돌릴 수 없어요.",
             primary: .init("모두 삭제", role: .destructive) {
                 Task { await state.eraseAllUserData() }
             },
             secondary: .init("취소", role: .cancel) {}
         )
-        .sheet(isPresented: $showAirPodsPicker) {
-            AirPodsModelPicker(selected: Binding(
+        .airPodsPickerDialog(
+            isPresented: $showAirPodsPicker,
+            selected: Binding(
                 get: { airPodsModel },
                 set: { airPodsRawValue = $0.rawValue }
-            ))
-            .presentationDetents([.medium])
-            .presentationDragIndicator(.visible)
-        }
+            )
+        )
     }
 
     // MARK: - Sections
@@ -74,8 +73,8 @@ struct SettingsView: View {
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text("측정 기기")
-                            .font(.appFont(.medium, size: 13))
-                            .foregroundStyle(Color.ink400)
+                            .font(.appFont(.semibold, size: 14))
+                            .foregroundStyle(Color.ink600)
                         Text(airPodsModel.displayName)
                             .font(.appFont(.bold, size: 15))
                             .foregroundStyle(Color.ink800)
@@ -84,8 +83,8 @@ struct SettingsView: View {
                     Spacer()
 
                     Image(systemName: "chevron.right")
-                        .font(.appFont(.medium, size: 13))
-                        .foregroundStyle(Color.ink400)
+                        .font(.appFont(.semibold, size: 14))
+                        .foregroundStyle(Color.ink600)
                 }
                 .padding(16)
                 .background(Color.white, in: RoundedRectangle(cornerRadius: 18))
@@ -117,8 +116,8 @@ struct SettingsView: View {
                     Spacer()
 
                     Image(systemName: "chevron.right")
-                        .font(.appFont(.medium, size: 13))
-                        .foregroundStyle(Color.ink400)
+                        .font(.appFont(.semibold, size: 14))
+                        .foregroundStyle(Color.ink600)
                 }
                 .padding(16)
                 .background(Color.white, in: RoundedRectangle(cornerRadius: 18))
@@ -133,84 +132,161 @@ struct SettingsView: View {
         HStack {
             Text(title)
                 .font(.appFont(.semibold, size: 13))
-                .foregroundStyle(Color.ink400)
+                .foregroundStyle(Color.ink600)
             Spacer()
         }
         .padding(.bottom, 8)
     }
 }
 
-// MARK: - AirPods Model Picker (bottom sheet)
+// MARK: - AirPods Model Picker (dialog overlay)
 
-/// 사용자가 자신의 AirPods 모델을 선택하는 바텀 시트 picker.
-/// daramg-demo의 모델 선택 UI 패턴(흰 카드 행 + 체크 마커)을 iOS에 옮긴 것.
-private struct AirPodsModelPicker: View {
-    @Binding var selected: AirPodsModel
-    @Environment(\.dismiss) private var dismiss
+/// 측정 기기 선택 다이얼로그. AppDialog와 동일한 시각 chrome(320pt, 22/28 padding,
+/// 헤어라인 디바이더)에 라디오 리스트와 취소/확인 푸터를 얹은 형태.
+private struct AirPodsPickerDialog: View {
+    let initial: AirPodsModel
+    let onConfirm: (AirPodsModel) -> Void
+    let onCancel: () -> Void
+
+    @State private var draft: AirPodsModel
+
+    init(initial: AirPodsModel, onConfirm: @escaping (AirPodsModel) -> Void, onCancel: @escaping () -> Void) {
+        self.initial = initial
+        self.onConfirm = onConfirm
+        self.onCancel = onCancel
+        _draft = State(initialValue: initial)
+    }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("측정 기기 선택")
-                    .font(.appFont(.heavy, size: 17))
-                    .foregroundStyle(Color.ink800)
-                Text("사용 중인 AirPods 모델을 선택해 주세요")
-                    .font(.appFont(.medium, size: 12))
-                    .foregroundStyle(Color.ink400)
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 24)
+        VStack(spacing: 0) {
+            // Header — title only, no body description.
+            Text("사용 중인 AirPods 모델을 선택해요.")
+                .font(.appFont(.heavy, size: 17))
+                .foregroundStyle(Color.ink800)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 22)
+                .padding(.vertical, 20)
+                .frame(maxWidth: .infinity)
 
-            ScrollView {
-                VStack(spacing: 8) {
-                    ForEach(AirPodsModel.allCases) { model in
-                        row(model)
+            divider
+
+            // Radio rows
+            VStack(spacing: 0) {
+                ForEach(Array(AirPodsModel.allCases.enumerated()), id: \.element.id) { idx, model in
+                    row(model)
+                    if idx < AirPodsModel.allCases.count - 1 {
+                        divider.padding(.leading, 22)
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 20)
             }
+
+            divider
+
+            // Footer — 취소 / 확인
+            HStack(spacing: 0) {
+                Button {
+                    onCancel()
+                } label: {
+                    Text("취소")
+                        .font(.appFont(.semibold, size: 16))
+                        .foregroundStyle(Color.ink600)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                Color.ink100.frame(width: 0.5)
+
+                Button {
+                    onConfirm(draft)
+                } label: {
+                    Text("확인")
+                        .font(.appFont(.bold, size: 16))
+                        .foregroundStyle(Color.acorn700)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(height: 44)
+            .padding(.bottom, 8)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.cream.ignoresSafeArea())
+        .frame(maxWidth: 320)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 14))
+        .shadow(color: .black.opacity(0.18), radius: 24, y: 8)
+    }
+
+    private var divider: some View {
+        Color.ink100.frame(height: 0.5)
     }
 
     private func row(_ model: AirPodsModel) -> some View {
-        let isActive = model == selected
+        let isActive = model == draft
         return Button {
-            selected = model
-            dismiss()
+            draft = model
         } label: {
-            HStack(spacing: 12) {
-                Image(systemName: "airpodspro")
-                    .font(.appFont(.medium, size: 16))
-                    .foregroundStyle(Color.sage600)
-                    .frame(width: 36, height: 36)
-                    .background(Color.white, in: RoundedRectangle(cornerRadius: 12))
-                    .neuoShadow(.sm)
-
+            HStack(spacing: 14) {
+                radio(isActive: isActive)
                 Text(model.displayName)
-                    .font(.appFont(.bold, size: 15))
+                    .font(.appFont(.semibold, size: 15))
                     .foregroundStyle(Color.ink800)
-
-                Spacer(minLength: 0)
-
-                if isActive {
-                    Image(systemName: "checkmark")
-                        .font(.appFont(.bold, size: 14))
-                        .foregroundStyle(Color.sage600)
-                }
+                Spacer()
             }
-            .padding(14)
-            .background(
-                isActive ? Color.sage50 : Color.white,
-                in: RoundedRectangle(cornerRadius: 16)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 16)
-                    .stroke(isActive ? Color.sage400 : Color.clear, lineWidth: 1.5)
-            )
+            .padding(.horizontal, 22)
+            .padding(.vertical, 14)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    /// SF Symbol 없이 그린 라디오 버튼 — 외곽 원 + 활성 시 안쪽 닷.
+    private func radio(isActive: Bool) -> some View {
+        ZStack {
+            Circle()
+                .stroke(isActive ? Color.acorn600 : Color.ink400, lineWidth: 1.5)
+                .frame(width: 20, height: 20)
+            if isActive {
+                Circle()
+                    .fill(Color.acorn600)
+                    .frame(width: 10, height: 10)
+            }
+        }
+    }
+}
+
+private struct AirPodsPickerDialogOverlay: ViewModifier {
+    @Binding var isPresented: Bool
+    @Binding var selected: AirPodsModel
+
+    func body(content: Content) -> some View {
+        ZStack {
+            content
+            if isPresented {
+                Color.black.opacity(0.32)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+                    .onTapGesture { isPresented = false }
+                AirPodsPickerDialog(
+                    initial: selected,
+                    onConfirm: { chosen in
+                        selected = chosen
+                        isPresented = false
+                    },
+                    onCancel: { isPresented = false }
+                )
+                .padding(.horizontal, 32)
+                .transition(.scale(scale: 0.96).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.28, dampingFraction: 0.88), value: isPresented)
+    }
+}
+
+extension View {
+    fileprivate func airPodsPickerDialog(
+        isPresented: Binding<Bool>,
+        selected: Binding<AirPodsModel>
+    ) -> some View {
+        modifier(AirPodsPickerDialogOverlay(isPresented: isPresented, selected: selected))
     }
 }
