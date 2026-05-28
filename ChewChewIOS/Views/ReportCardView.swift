@@ -75,6 +75,10 @@ struct ReportCardView: View {
             header
             scoreSection
             scoreBreakdownGrid
+            if showScoreFormula {
+                ScoreFormulaInline(model: model)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
             chewRestSection
             captionSection
             if onDeepReport != nil { deepReportCTA }
@@ -89,10 +93,6 @@ struct ReportCardView: View {
             in: RoundedRectangle(cornerRadius: 28)
         )
         .neuoShadow(.md)
-        .popover(isPresented: $showScoreFormula, arrowEdge: .bottom) {
-            ScoreFormulaPopover(model: model)
-                .presentationCompactAdaptation(.popover)
-        }
         .onAppear {
             withAnimation(.easeOut(duration: 1.2)) {
                 scoreProgress = 1.0
@@ -146,10 +146,14 @@ struct ReportCardView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 0) {
                 Spacer()
-                Button { showScoreFormula = true } label: {
-                    Image(systemName: "info.circle")
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        showScoreFormula.toggle()
+                    }
+                } label: {
+                    Image(systemName: showScoreFormula ? "info.circle.fill" : "info.circle")
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(Color.ink400)
+                        .foregroundStyle(showScoreFormula ? Color.acorn500 : Color.ink400)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("점수 산식 보기")
@@ -495,23 +499,27 @@ struct EmptyReportCardView: View {
     }
 }
 
-// MARK: - 점수 산식 팝오버 (info 버튼 → 작은 말풍선)
+// MARK: - 점수 산식 인라인 박스 (info 토글)
 
-/// 점수가 어떻게 산출됐는지 4요소 산식을 짧게 풀어 보여주는 작은 팝오버.
-/// 카드 그리드 상단의 info 버튼에서 호출. iPhone에서도 sheet로 fallback 안 되게
-/// presentationCompactAdaptation(.popover)을 강제해 트리거 버튼 옆 말풍선으로 뜬다.
-private struct ScoreFormulaPopover: View {
+/// 점수 근거 그리드 아래에 inline으로 펼쳐지는 산식 박스. 4요소 기준값만 짧게.
+/// 시스템 popover의 iPhone placement 변덕(상단 점프)을 피하기 위해 카드 안
+/// inline 배치 — 다른 콘텐츠는 가리지 않고 아래로 밀린다.
+private struct ScoreFormulaInline: View {
     let model: ReportCardModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(spacing: 6) {
             formulaRow(label: "속도",      detail: "28회/분",       subScore: model.speedScore)
             formulaRow(label: "리듬",      detail: "씹기 비율 50%+", subScore: model.rhythmScore)
             formulaRow(label: "연속성",    detail: "200회+",         subScore: model.continuityScore)
             formulaRow(label: "식사 시간", detail: "12분 부근",      subScore: model.lengthScore)
         }
-        .padding(14)
-        .frame(width: 220)
+        .padding(12)
+        .frame(maxWidth: .infinity)
+        .background(Color.white.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12).stroke(Color.acorn100, lineWidth: 1)
+        )
     }
 
     private func formulaRow(label: String, detail: String, subScore: Int) -> some View {
@@ -525,7 +533,7 @@ private struct ScoreFormulaPopover: View {
                 .foregroundStyle(Color.ink400)
             Spacer(minLength: 0)
             Text("\(subScore)")
-                .font(.appFont(.heavy, size: 14))
+                .font(.appFont(.heavy, size: 13))
                 .foregroundStyle(Color.ink800)
                 .monospacedDigit()
         }
