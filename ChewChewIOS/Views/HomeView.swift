@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreMotion
+import AVFoundation
 
 struct HomeView: View {
     @Environment(AppState.self) private var state
@@ -16,6 +17,8 @@ struct HomeView: View {
 
     // MARK: - 설정 sheet (REQ-05)
     @State private var showSettings = false
+    /// 야간 시간대 판정에 쓰는 현재 시각 — 60초마다 갱신해 22:00·06:00 경계에서 stale을 방지.
+    @State private var nowTick = Date()
 
     var body: some View {
         VStack(spacing: 14) {
@@ -26,8 +29,11 @@ struct HomeView: View {
             mealToggleButton
         }
         .padding(.horizontal, 24)
-        .padding(.top, 12)
+        .padding(.top, 24)
         .padding(.bottom, 18)
+        .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { newDate in
+            nowTick = newDate
+        }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .overlay(alignment: .top) {
             if showAirPodsToast {
@@ -73,8 +79,11 @@ struct HomeView: View {
         let status = CMHeadphoneMotionManager.authorizationStatus()
         let available = service.isDeviceMotionAvailable
 
-        if status == .denied || status == .restricted || !available {
-            presentAirPodsToast()
+        // 모션 권한·기기 호환·실제 오디오 라우트(에어팟/헤드폰 등) 셋 다 확인.
+        // isDeviceMotionAvailable이 기기 호환만 보고 연결을 확신하지 못하는 케이스를
+        // 라우트 체크로 보완 — 시작 자체를 막아 silent 빈 세션을 차단한다.
+        if status == .denied || status == .restricted || !available || !hasHeadphoneAudioRoute {
+            state.showAirPodsConnectionPrompt = true
             return
         }
 
@@ -85,7 +94,7 @@ struct HomeView: View {
                 hapticTrigger.toggle()
                 state.startEating()
             } onDenied: {
-                presentAirPodsToast()
+                state.showAirPodsConnectionPrompt = true
             }
             return
         }
@@ -94,6 +103,21 @@ struct HomeView: View {
         // 차단 안 됐을 때만 햅틱 + 시작
         hapticTrigger.toggle()
         state.toggleEating()
+    }
+
+    /// 현재 오디오 출력 라우트에 AirPods/Bluetooth/유선 헤드폰이 포함되어 있는지.
+    /// CMHeadphoneMotionManager.isDeviceMotionAvailable이 미연결 상태에서도 true를
+    /// 반환하는 케이스를 보완한다.
+    private var hasHeadphoneAudioRoute: Bool {
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
+        return outputs.contains { output in
+            switch output.portType {
+            case .bluetoothA2DP, .bluetoothLE, .bluetoothHFP, .headphones, .headsetMic:
+                return true
+            default:
+                return false
+            }
+        }
     }
 
     private func presentAirPodsToast() {
@@ -212,7 +236,8 @@ struct HomeView: View {
                 glasses: state.equippedGlassesItem,
                 acc: state.equippedAccItem,
                 animKey: state.animKey,
-                isEating: state.isEating
+                isEating: state.isEating,
+                isNight: isNightTime
             )
             .scaleEffect(1.5)
             .frame(height: 246)
@@ -235,14 +260,7 @@ struct HomeView: View {
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity)
         .frame(minHeight: 390)
-        .background(
-            LinearGradient(
-                colors: [.white, .cream, Color.acorn50],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 26)
-        )
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 26))
         .neuoShadow(.md)
     }
 
@@ -319,5 +337,13 @@ struct PressableButtonStyle: ButtonStyle {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
             .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+    }
+}
+
+private extension HomeView {
+    /// 야간 시간대(22:00~06:00). 다람쥐를 잠자는 일러스트로 교체하는 데 사용.
+    var isNightTime: Bool {
+        let hour = Calendar.current.component(.hour, from: nowTick)
+        return hour >= 22 || hour < 6
     }
 }

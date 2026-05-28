@@ -29,18 +29,15 @@ struct SettingsView: View {
                 }
             }
         }
-        .confirmationDialog(
-            "내 데이터를 삭제할까요?",
+        .appDialog(
             isPresented: $showDeleteConfirmation,
-            titleVisibility: .visible
-        ) {
-            Button("모두 삭제", role: .destructive) {
+            title: "내 데이터를 삭제할까요?",
+            message: "씹기 기록, 도토리, 스트릭 등 모든 데이터가 영구 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
+            primary: .init("모두 삭제", role: .destructive) {
                 Task { await state.eraseAllUserData() }
-            }
-            Button("취소", role: .cancel) {}
-        } message: {
-            Text("씹기 기록, 도토리, 스트릭 등 모든 데이터가 영구 삭제됩니다. 이 작업은 되돌릴 수 없습니다.")
-        }
+            },
+            secondary: .init("취소", role: .cancel) {}
+        )
     }
 
     // MARK: - Subviews

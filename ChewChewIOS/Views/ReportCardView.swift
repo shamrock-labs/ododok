@@ -84,13 +84,7 @@ struct ReportCardView: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity)
-        .background(
-            LinearGradient(
-                colors: [Color.acorn50, .cream, Color.sage50],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 28)
-        )
+        .background(Color.cream, in: RoundedRectangle(cornerRadius: 28))
         .neuoShadow(.md)
         .onAppear {
             withAnimation(.easeOut(duration: 1.2)) {
@@ -215,7 +209,7 @@ struct ReportCardView: View {
             .frame(height: 5)
             Text(reference)
                 .font(.appFont(.medium, size: 9))
-                .foregroundStyle(Color.ink400)
+                .foregroundStyle(Color.ink400.opacity(0.7))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
@@ -476,7 +470,7 @@ struct EmptyReportCardView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            Text(emoji).font(.appFont(.regular, size: 48))
+            Text(emoji).font(.appFont(.regular, size: 40))
             Text(title)
                 .font(.appFont(.heavy, size: 18))
                 .foregroundStyle(Color.ink800)
@@ -487,15 +481,9 @@ struct EmptyReportCardView: View {
                 .lineSpacing(3)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 60)
+        .padding(.vertical, 48)
         .padding(.horizontal, 24)
-        .background(
-            LinearGradient(
-                colors: [Color.acorn50, .cream, Color.sage50],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 28)
-        )
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 28))
         .neuoShadow(.md)
     }
 }
@@ -517,9 +505,9 @@ private struct ScoreFormulaInline: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity)
-        .background(Color.white.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
+        .background(Color.white.opacity(0.6), in: RoundedRectangle(cornerRadius: 14))
         .overlay(
-            RoundedRectangle(cornerRadius: 12).stroke(Color.acorn100, lineWidth: 1)
+            RoundedRectangle(cornerRadius: 14).stroke(Color.acorn100, lineWidth: 1)
         )
     }
 

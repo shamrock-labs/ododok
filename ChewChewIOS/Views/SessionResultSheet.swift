@@ -65,7 +65,7 @@ struct SessionResultSheet: View {
     /// 공간이라 정보 밀도는 의도적으로 낮춤.
     private var analyzingView: some View {
         VStack(spacing: 18) {
-            Spacer(minLength: 60)
+            Spacer(minLength: 48)
             ProgressView()
                 .controlSize(.large)
                 .tint(Color.acorn500)
@@ -77,9 +77,9 @@ struct SessionResultSheet: View {
                     .font(.appFont(.regular, size: 13))
                     .foregroundStyle(Color.ink400)
             }
-            Spacer(minLength: 60)
+            Spacer(minLength: 48)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
+        .padding(.vertical, 32)
     }
 }

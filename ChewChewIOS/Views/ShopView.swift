@@ -28,7 +28,7 @@ private struct ShopPlaceholderView: View {
             roadmapCard
         }
         .padding(.horizontal, 24)
-        .padding(.top, 12)
+        .padding(.top, 24)
         .padding(.bottom, 28)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
@@ -363,7 +363,7 @@ private struct ShopGridView: View {
             Button {
                 switch state.buyItem(item) {
                 case .success:
-                    showToast(ToastMessage(text: "\(item.name) 구매 완료", kind: .success))
+                    showToast(ToastMessage(text: "\(item.name) 구매 완료 🌰", kind: .success))
                 case .notEnoughPoints:
                     showToast(ToastMessage(text: "도토리가 부족해요", kind: .warn))
                 case .alreadyOwned:
@@ -466,7 +466,7 @@ private struct ShopGridView: View {
             Button {
                 switch state.buyAcornPack(pack) {
                 case .success:
-                    showToast(ToastMessage(text: "\(pack.name) 획득", kind: .success))
+                    showToast(ToastMessage(text: "\(pack.name) 획득 🌰", kind: .success))
                 case .notEnoughPoints:
                     showToast(ToastMessage(text: "도토리가 부족해요", kind: .warn))
                 case .alreadyOwned:
@@ -555,5 +555,5 @@ private struct ShopGridView: View {
 #Preview("Placeholder (기본)") {
     ShopView()
         .environment(AppState())
-        .background(LinearGradient.appBackground)
+        .background(Color.cream)
 }

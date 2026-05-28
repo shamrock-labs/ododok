@@ -10,7 +10,7 @@ struct RewardDialogView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            Image(Mood.happy.imageName)
+            Image(grant.kind.imageName)
                 .resizable()
                 .scaledToFit()
                 .frame(width: 110, height: 110)
@@ -48,13 +48,7 @@ struct RewardDialogView: View {
         .padding(.vertical, 28)
         .padding(.horizontal, 32)
         .frame(maxWidth: 280)
-        .background(
-            LinearGradient(
-                colors: [Color.acorn50, .cream, Color.sage50],
-                startPoint: .topLeading, endPoint: .bottomTrailing
-            ),
-            in: RoundedRectangle(cornerRadius: 28)
-        )
+        .background(Color.cream, in: RoundedRectangle(cornerRadius: 28))
         .neuoShadow(.md)
         .contentShape(Rectangle())
         .onTapGesture { onDismiss() }
@@ -116,6 +110,16 @@ struct RewardGrant: Equatable {
         var isFreezeGain: Bool {
             if case .streakMilestone = self { return true }
             return false
+        }
+
+        /// 보상 종류별 다람이 일러스트. 매핑이 없으면 기본 happy.
+        var imageName: String {
+            switch self {
+            case .attendance:      "DaramHeart"
+            case .sessionComplete: "DaramDotori"
+            case .streakReset:     "DaramSad"
+            case .streakMilestone, .streakSaved, .streakFirstDay: Mood.happy.imageName
+            }
         }
     }
 }

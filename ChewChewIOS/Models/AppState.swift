@@ -200,6 +200,14 @@ final class AppState {
     /// ContentView가 .sheet binding으로 관찰. PRD #3 — 종료 후 2초 이내 카드 표시.
     var lastCompletedSession: ChewingSessionDTO?
 
+    /// 식사를 끝냈는데 IMU 샘플이 0개(중간에 끊김 등)일 때 사용자에게 안내하는 플래그.
+    /// 시작 시 가드 통과 후에도 0샘플로 종료되는 드문 케이스에서 사용.
+    var showEmptySessionNotice: Bool = false
+
+    /// 시작 시점에 AirPods/모션 권한이 없거나 라우트가 비어 시작을 차단했을 때 띄우는 플래그.
+    /// 종료 시점 빈 세션 안내(showEmptySessionNotice)와 메시지를 분리한다.
+    var showAirPodsConnectionPrompt: Bool = false
+
     /// 도토리 적립 시 ContentView가 overlay로 보여줄 RewardDialogView trigger.
     /// RewardLedger가 +n🌰 반환했을 때 set, 사용자가 다이얼로그 dismiss 시 nil.
     /// 출석 보너스(`.attendance`) + 세션 종료 적립(`.sessionComplete`) 두 종 trigger.
@@ -290,8 +298,12 @@ final class AppState {
             imuSessionRecorder = nil
             let endedAt = Date()
             let output = recorder.finalize(endedAt: endedAt)
-            // 빈 세션(시뮬레이터 등에서 IMU 샘플 0개)은 사용자에게 알릴 가치 없어 스킵.
-            guard output.sampleCount > 0 else { return }
+            // IMU 샘플이 0개이면(주로 AirPods 미연결) 분석을 만들 수 없으니
+            // DB 업로드는 건너뛰고 사용자에게 안내 다이얼로그를 띄운다.
+            guard output.sampleCount > 0 else {
+                showEmptySessionNotice = true
+                return
+            }
             sessionUploadStatus = .uploading
             Task { [weak self] in
                 let stats = await builder?.build(modelVersion: AppState.modelVersion)

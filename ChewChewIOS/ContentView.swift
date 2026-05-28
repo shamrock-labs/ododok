@@ -74,15 +74,28 @@ struct ContentView: View {
                 }
                 .tag(Tab.shop)
         }
-        .background(LinearGradient.appBackground.ignoresSafeArea())
+        .background(Color.cream.ignoresSafeArea())
         .tint(Color.acorn600)
-        // 성공 케이스는 SessionResultSheet 카드로 표시(PRD #3) — alert는 실패 시에만.
-        .alert("저장 실패", isPresented: failureAlertBinding) {
-            Button("다시 시도") { state.retryLastSessionUpload() }
-            Button("취소", role: .cancel) { state.dismissSessionUploadStatus() }
-        } message: {
-            Text("이번 식사의 IMU 데이터를 서버에 올리지 못했어요.\n다시 시도하지 않으면 이 세션 데이터는 사라집니다.")
-        }
+        // 성공 케이스는 SessionResultSheet 카드로 표시(PRD #3) — 실패 다이얼로그는 AppDialog로 통일.
+        .appDialog(
+            isPresented: failureAlertBinding,
+            title: "저장 실패",
+            message: "이번 식사의 IMU 데이터를 서버에 올리지 못했어요.\n다시 시도하지 않으면 이 세션 데이터는 사라집니다.",
+            primary: .init("다시 시도") { state.retryLastSessionUpload() },
+            secondary: .init("취소", role: .cancel) { state.dismissSessionUploadStatus() }
+        )
+        .appDialog(
+            isPresented: airPodsPromptBinding,
+            title: "AirPods를 연결해 주세요",
+            message: "씹기 분석을 위해 AirPods Pro · AirPods 3/4세대 · AirPods Max 중 하나를 연결하고 착용한 뒤 다시 시도해 주세요.",
+            primary: .init("확인") {}
+        )
+        .appDialog(
+            isPresented: emptySessionBinding,
+            title: "기록되지 않았어요",
+            message: "이번 식사의 IMU 신호를 받지 못해 분석을 만들지 못했어요. AirPods 연결 상태를 확인해 주세요.",
+            primary: .init("확인") {}
+        )
         .sheet(isPresented: resultSheetBinding) {
             SessionResultSheet(
                 dto: state.lastCompletedSession,
@@ -110,6 +123,20 @@ struct ContentView: View {
                 .animation(.spring(response: 0.35, dampingFraction: 0.85), value: state.pendingRewardGrant)
             }
         }
+    }
+
+    private var emptySessionBinding: Binding<Bool> {
+        Binding(
+            get: { state.showEmptySessionNotice },
+            set: { newValue in if !newValue { state.showEmptySessionNotice = false } }
+        )
+    }
+
+    private var airPodsPromptBinding: Binding<Bool> {
+        Binding(
+            get: { state.showAirPodsConnectionPrompt },
+            set: { newValue in if !newValue { state.showAirPodsConnectionPrompt = false } }
+        )
     }
 
     private var failureAlertBinding: Binding<Bool> {
@@ -164,7 +191,7 @@ struct ContentView: View {
                 content()
                     .frame(minHeight: proxy.size.height, alignment: .top)
             }
-            .background(LinearGradient.appBackground.ignoresSafeArea())
+            .background(Color.cream.ignoresSafeArea())
         }
     }
 }

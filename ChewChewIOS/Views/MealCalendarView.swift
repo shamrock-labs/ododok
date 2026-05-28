@@ -233,21 +233,18 @@ struct MealCalendarView: View {
                     }
                 }
             }
-            .confirmationDialog(
-                "모든 식사 기록을 삭제할까요?",
+            .appDialog(
                 isPresented: $showDeleteAllConfirm,
-                titleVisibility: .visible
-            ) {
-                Button("전체 삭제", role: .destructive) {
+                title: "모든 식사 기록을 삭제할까요?",
+                message: "이 기기의 모든 식사 세션이 사라집니다.\n도토리/꾸미기 등 게임 상태는 보존돼요.\n되돌릴 수 없어요.",
+                primary: .init("전체 삭제", role: .destructive) {
                     Task {
                         await state.deleteAllChewingSessions()
                         monthSessions = []
                     }
-                }
-                Button("취소", role: .cancel) { }
-            } message: {
-                Text("이 기기의 모든 식사 세션이 사라집니다.\n도토리/꾸미기 등 게임 상태는 보존돼요.\n되돌릴 수 없어요.")
-            }
+                },
+                secondary: .init("취소", role: .cancel) { }
+            )
             .navigationDestination(for: Date.self) { date in
                 DaySessionsView(
                     date: date,
