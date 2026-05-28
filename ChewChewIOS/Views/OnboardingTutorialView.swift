@@ -1,7 +1,6 @@
 import SwiftUI
 
 /// 이름 입력 다음 단계 — 앱 사용법을 가로 스와이프 카드로 안내한다.
-/// 디자인 레퍼런스: chewing-imu-collector의 RecordingGuideView.
 /// 마지막 카드의 "시작하기" 또는 우상단 "건너뛰기"에서 `onFinish`를 호출해 온보딩을 끝낸다.
 struct OnboardingTutorialView: View {
     let onFinish: () -> Void
@@ -33,11 +32,9 @@ struct OnboardingTutorialView: View {
                 .padding(.bottom, 12)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(LinearGradient.appBackground.ignoresSafeArea())
+        .background(Color.cream.ignoresSafeArea())
         .interactiveDismissDisabled()
     }
-
-    // MARK: 건너뛰기 바
 
     private var skipBar: some View {
         HStack {
@@ -55,18 +52,10 @@ struct OnboardingTutorialView: View {
         .padding(.top, 8)
     }
 
-    // MARK: 카드
-
     private func cardView(_ step: OnboardingStep) -> some View {
         VStack(spacing: 22) {
-            ZStack {
-                Circle()
-                    .fill(step.accent.opacity(0.18))
-                    .frame(width: 96, height: 96)
-                Image(systemName: step.icon)
-                    .font(.system(size: 40))
-                    .foregroundStyle(step.accent)
-            }
+            visual(step)
+                .frame(height: 180)
 
             Text(step.title)
                 .font(.appFont(.heavy, size: 21))
@@ -83,11 +72,20 @@ struct OnboardingTutorialView: View {
         .padding(.horizontal, 24)
         .padding(.vertical, 36)
         .frame(maxWidth: .infinity)
-        .background(Color.white.opacity(0.9), in: RoundedRectangle(cornerRadius: 26))
-        .neuoShadow(.md)
     }
 
-    // MARK: 페이지 인디케이터
+    @ViewBuilder
+    private func visual(_ step: OnboardingStep) -> some View {
+        if let asset = step.asset {
+            Image(asset)
+                .resizable()
+                .scaledToFit()
+        } else {
+            Image(systemName: step.icon)
+                .font(.system(size: 64, weight: .regular))
+                .foregroundStyle(Color.acorn600)
+        }
+    }
 
     private var pageIndicator: some View {
         HStack(spacing: 8) {
@@ -99,8 +97,6 @@ struct OnboardingTutorialView: View {
             }
         }
     }
-
-    // MARK: 다음 / 시작하기
 
     private var primaryButton: some View {
         Button {
@@ -115,16 +111,9 @@ struct OnboardingTutorialView: View {
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 15)
-                .background(
-                    LinearGradient(
-                        colors: [Color.acorn400, Color.acorn600],
-                        startPoint: .topLeading, endPoint: .bottomTrailing
-                    ),
-                    in: RoundedRectangle(cornerRadius: 16)
-                )
+                .background(Color.acorn600, in: RoundedRectangle(cornerRadius: 16))
         }
         .buttonStyle(PressableButtonStyle())
-        .softShadow(.pill)
         .accessibilityIdentifier(isLastPage ? "OnboardingStart" : "OnboardingNext")
     }
 }

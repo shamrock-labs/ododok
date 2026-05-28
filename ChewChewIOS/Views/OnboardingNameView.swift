@@ -58,7 +58,7 @@ struct OnboardingNameView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(LinearGradient.appBackground.ignoresSafeArea())
+        .background(Color.cream.ignoresSafeArea())
         .interactiveDismissDisabled()
         .onAppear { isFocused = true }
     }
