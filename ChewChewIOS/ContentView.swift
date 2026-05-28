@@ -193,6 +193,13 @@ struct ContentView: View {
                     .frame(minHeight: proxy.size.height, alignment: .top)
             }
             .background(Color.cream.ignoresSafeArea())
+            // 스크롤 시 콘텐츠가 status bar 영역까지 비쳐 보이는 것을 막기 위해
+            // 상단에 cream 색 반투명 inset을 두어 자연스러운 헤더 buffer를 만든다.
+            .safeAreaInset(edge: .top, spacing: 0) {
+                Color.cream
+                    .frame(height: 12)
+                    .background(Color.cream.ignoresSafeArea(edges: .top))
+            }
         }
     }
 }

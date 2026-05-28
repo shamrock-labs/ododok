@@ -230,16 +230,31 @@ struct HomeView: View {
         VStack(spacing: 10) {
             Spacer(minLength: 0)
 
-            SquirrelView(
-                mood: state.isEating ? state.status.mood : .happy,
-                hat: state.equippedHatItem,
-                glasses: state.equippedGlassesItem,
-                acc: state.equippedAccItem,
-                animKey: state.animKey,
-                isEating: state.isEating,
-                isNight: isNightTime
-            )
-            .scaleEffect(1.5)
+            ZStack {
+                if !state.isEating {
+                    Circle()
+                        .stroke(Color.ink100, lineWidth: 5)
+                        .frame(width: 220, height: 220)
+                    Circle()
+                        .trim(from: 0, to: state.todayProgress)
+                        .stroke(
+                            Color.acorn500,
+                            style: StrokeStyle(lineWidth: 5, lineCap: .round)
+                        )
+                        .frame(width: 220, height: 220)
+                        .rotationEffect(.degrees(-90))
+                }
+                SquirrelView(
+                    mood: state.isEating ? state.status.mood : .happy,
+                    hat: state.equippedHatItem,
+                    glasses: state.equippedGlassesItem,
+                    acc: state.equippedAccItem,
+                    animKey: state.animKey,
+                    isEating: state.isEating,
+                    isNight: isNightTime
+                )
+                .scaleEffect(1.5)
+            }
             .frame(height: 246)
 
             VStack(spacing: 2) {
@@ -249,6 +264,13 @@ struct HomeView: View {
                 Text(state.status.subtitle)
                     .font(.appFont(.regular, size: 13))
                     .foregroundStyle(Color.ink400)
+                if !state.isEating {
+                    Text("오늘 \(state.todayRealChewCount.koLocale) / \(Constants.dailyGoal.koLocale)회")
+                        .font(.appFont(.medium, size: 11))
+                        .foregroundStyle(Color.ink400)
+                        .monospacedDigit()
+                        .padding(.top, 2)
+                }
             }
 
             imuWaveformCard

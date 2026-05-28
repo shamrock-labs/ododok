@@ -543,6 +543,18 @@ final class AppState {
         min(1.0, max(0.0, Double(chewCount) / Double(Constants.dailyGoal)))
     }
 
+    /// 오늘 세션들의 실제 씹기 횟수 합. 식사 중에는 갱신되지 않고 세션이 끝나
+    /// `todaySessions`에 추가될 때만 변한다. `chewCount`는 fake 도토리 카운터라
+    /// 화면에 노출되는 "실제 씹기" 수치는 반드시 이 값을 쓴다.
+    var todayRealChewCount: Int {
+        todaySessions.reduce(0) { $0 + ($1.estimatedTotalChews ?? 0) }
+    }
+
+    /// 실제 씹기 횟수 기반 일일 목표 진행도(0~1). 홈 다람이 둘레 링이 사용.
+    var todayProgress: Double {
+        min(1.0, max(0.0, Double(todayRealChewCount) / Double(Constants.dailyGoal)))
+    }
+
     var imuWaveformStatusText: String {
         imuWaveformSource.statusText
     }
@@ -931,7 +943,12 @@ final class AppState {
             lastCompletedSession = dto
             // PRD #8: 세션 종료 적립 = estimatedTotalChews × 0.05. RewardLedger가
             // idempotency(같은 sessionId 중복 차단) + 일일 상한 500🌰 enforcement.
-            let granted = RewardLedger.accrue(forSession: dto.id, chewCount: dto.estimatedTotalChews)
+            // 리포트가 생성될 수 없는 세션(durationSec < 60 또는 분석 5필드 nil)은
+            // 사용자에게 결과를 못 보여주는 만큼 도토리도 주지 않는다.
+            let canRender = ReportCardModel.from(dto) != nil
+            let granted = canRender
+                ? RewardLedger.accrue(forSession: dto.id, chewCount: dto.estimatedTotalChews)
+                : 0
             if granted > 0 {
                 points += granted
             }
