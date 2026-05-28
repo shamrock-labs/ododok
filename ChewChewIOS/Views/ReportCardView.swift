@@ -517,18 +517,10 @@ private struct ScoreFormulaSheet: View {
 
                 Divider()
 
-                formulaRow(label: "속도",
-                           detail: "분당 28회 부근에서 만점",
-                           subScore: model.speedScore)
-                formulaRow(label: "리듬",
-                           detail: "씹은 시간 비율 50% 이상에서 만점",
-                           subScore: model.rhythmScore)
-                formulaRow(label: "연속성",
-                           detail: "씹은 횟수에 곡선 가산 — 200회에서 만점",
-                           subScore: model.continuityScore)
-                formulaRow(label: "식사 시간",
-                           detail: "12분 안팎에서 만점",
-                           subScore: model.lengthScore)
+                formulaRow(label: "속도",       detail: "28회/분",       subScore: model.speedScore)
+                formulaRow(label: "리듬",       detail: "씹기 비율 50%+", subScore: model.rhythmScore)
+                formulaRow(label: "연속성",     detail: "200회+",         subScore: model.continuityScore)
+                formulaRow(label: "식사 시간",  detail: "12분 부근",      subScore: model.lengthScore)
 
                 Divider()
 
