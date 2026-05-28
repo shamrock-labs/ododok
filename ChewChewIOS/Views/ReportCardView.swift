@@ -89,7 +89,7 @@ struct ReportCardView: View {
             in: RoundedRectangle(cornerRadius: 28)
         )
         .neuoShadow(.md)
-        .popover(isPresented: $showScoreFormula, arrowEdge: .top) {
+        .popover(isPresented: $showScoreFormula, arrowEdge: .bottom) {
             ScoreFormulaPopover(model: model)
                 .presentationCompactAdaptation(.popover)
         }
@@ -504,38 +504,14 @@ private struct ScoreFormulaPopover: View {
     let model: ReportCardModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("점수가 어떻게 나왔어요?")
-                    .font(.appFont(.bold, size: 14))
-                    .foregroundStyle(Color.ink800)
-                Text("4요소를 같은 비중으로 평균낸 값")
-                    .font(.appFont(.regular, size: 11))
-                    .foregroundStyle(Color.ink400)
-            }
-
-            Divider()
-
+        VStack(alignment: .leading, spacing: 8) {
             formulaRow(label: "속도",      detail: "28회/분",       subScore: model.speedScore)
             formulaRow(label: "리듬",      detail: "씹기 비율 50%+", subScore: model.rhythmScore)
             formulaRow(label: "연속성",    detail: "200회+",         subScore: model.continuityScore)
             formulaRow(label: "식사 시간", detail: "12분 부근",      subScore: model.lengthScore)
-
-            Divider()
-
-            HStack {
-                Text("총점")
-                    .font(.appFont(.bold, size: 12))
-                    .foregroundStyle(Color.ink800)
-                Spacer(minLength: 0)
-                Text("\(model.score)점")
-                    .font(.appFont(.heavy, size: 15))
-                    .foregroundStyle(Color.acorn700)
-                    .monospacedDigit()
-            }
         }
-        .padding(16)
-        .frame(width: 260)
+        .padding(14)
+        .frame(width: 220)
     }
 
     private func formulaRow(label: String, detail: String, subScore: Int) -> some View {
