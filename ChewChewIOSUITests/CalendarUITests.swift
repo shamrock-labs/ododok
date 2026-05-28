@@ -26,7 +26,7 @@ final class CalendarUITests: XCTestCase {
         XCTAssert(app.staticTexts["0회"].waitForExistence(timeout: 5))
 
         // Empty state message
-        XCTAssert(app.staticTexts["아직 오늘 식사 기록이 없어요"].waitForExistence(timeout: 5))
+        XCTAssert(app.staticTexts["오늘은 아직 식사 전이에요"].waitForExistence(timeout: 5))
     }
 
     func testTracking_calendarHeader() {

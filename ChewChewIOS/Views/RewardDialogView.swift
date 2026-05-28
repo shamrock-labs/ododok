@@ -84,12 +84,12 @@ struct RewardGrant: Equatable {
 
         var title: String {
             switch self {
-            case .attendance:      "출석 보상!"
-            case .sessionComplete: "식사 완료!"
-            case .streakMilestone(let count): "🔥 \(count)일 달성!"
+            case .attendance:      "출석 보상"
+            case .sessionComplete: "식사 완료"
+            case .streakMilestone(let count): "🔥 \(count)일 연속"
             case .streakSaved:     "🛡️ 프리즈로 스트릭 유지"
             case .streakReset:     "스트릭이 끊겼어요"
-            case .streakFirstDay:  "🔥 1일째!"
+            case .streakFirstDay:  "🔥 1일째"
             }
         }
 
@@ -100,7 +100,7 @@ struct RewardGrant: Equatable {
             case .streakMilestone: "프리즈를 받았어요"
             case .streakSaved:     "프리즈 1개로 스트릭을 지켰어요"
             case .streakReset:     "다시 시작해 볼까요?"
-            case .streakFirstDay:  "스트릭을 시작했어요!"
+            case .streakFirstDay:  "스트릭을 시작했어요"
             }
         }
 

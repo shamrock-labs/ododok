@@ -216,8 +216,8 @@ struct TrackingView: View {
         } else {
             EmptyReportCardView(
                 emoji: "🍽️",
-                title: "아직 오늘 식사 기록이 없어요",
-                subtitle: "홈에서 식사를 시작하면 여기에 표시돼요"
+                title: "오늘은 아직 식사 전이에요",
+                subtitle: "홈에서 식사를 시작하면 여기에 기록돼요"
             )
         }
     }
@@ -265,16 +265,17 @@ struct TrackingView: View {
 
     private var tipCard: some View {
         HStack(alignment: .top, spacing: 12) {
-            Text("💡")
-                .font(.appFont(.regular, size: 22))
+            Image(systemName: "lightbulb")
+                .font(.appFont(.medium, size: 18))
+                .foregroundStyle(Color.butter600)
                 .frame(width: 40, height: 40)
                 .background(.white, in: RoundedRectangle(cornerRadius: 12))
                 .neuoShadow(.sm)
             VStack(alignment: .leading, spacing: 2) {
-                Text("오늘의 코치 팁")
+                Text("씹기 팁")
                     .font(.appFont(.bold, size: 12))
                     .foregroundStyle(Color.ink800)
-                Text("저녁 식사는 한 입당 30회 씹는 걸 추천해요. 포만감이 빨리 와요!")
+                Text("저녁엔 한 입에 30번씩 씹어보세요. 포만감이 빨리 와요.")
                     .font(.appFont(.regular, size: 11))
                     .foregroundStyle(Color.ink600)
                     .lineSpacing(3)

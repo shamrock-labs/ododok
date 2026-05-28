@@ -152,7 +152,9 @@ struct ReportCardView: View {
 
     private var captionSection: some View {
         HStack(alignment: .top, spacing: 10) {
-            Text("💬").font(.appFont(.regular, size: 16))
+            Image(systemName: "quote.opening")
+                .font(.appFont(.bold, size: 13))
+                .foregroundStyle(Color.acorn300)
             Text(model.caption ?? "오늘도 잘 챙겨 먹었어요.")
                 .font(.appFont(.regular, size: 13))
                 .foregroundStyle(Color.ink600)
@@ -167,7 +169,7 @@ struct ReportCardView: View {
     private var footer: some View {
         HStack {
             Spacer()
-            Text("다람이 · chewchew.app")
+            Text("다람이 · 오도독")
                 .font(.appFont(.medium, size: 10))
                 .foregroundStyle(Color.ink400)
         }
@@ -259,7 +261,7 @@ struct ReportCardView: View {
 
 extension ReportCardModel {
     /// `ChewingSessionDTO` → 카드 모델. `durationSec < 60`이거나 분석 5필드가
-    /// 채워지지 않은 세션에서 nil 반환 → 호출자가 빈 상태 카드를 표시 (PRD #3 "데이터가 부족해요").
+    /// 채워지지 않은 세션에서 nil 반환 → 호출자가 빈 상태 카드를 표시 (PRD #3 빈 분석 카드 "분석을 만들지 못했어요").
     static func from(_ dto: ChewingSessionDTO) -> ReportCardModel? {
         guard dto.durationSec >= 60 else { return nil }
         guard let score = SessionScore.compute(dto) else { return nil }
@@ -312,7 +314,7 @@ private extension Mood {
 /// "오늘 식사 0건" 같은 다른 빈 상태에도 같은 디자인으로 재사용 가능.
 struct EmptyReportCardView: View {
     var emoji: String = "🐿️"
-    var title: String = "데이터가 부족해요"
+    var title: String = "분석을 만들지 못했어요"
     var subtitle: String = "식사 시간이 너무 짧거나, AirPods IMU 신호를 받지 못해\n이번 식사의 분석을 만들지 못했어요."
 
     var body: some View {

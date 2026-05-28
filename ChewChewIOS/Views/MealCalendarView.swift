@@ -292,7 +292,7 @@ struct DaySessionsView: View {
             if sessions.isEmpty {
                 VStack {
                     Spacer()
-                    Text("이 날엔 식사 기록이 없어요.")
+                    Text("이 날은 식사 기록이 없어요.")
                         .font(.appFont(.regular, size: 13))
                         .foregroundStyle(Color.ink600)
                     Spacer()

@@ -63,7 +63,7 @@ final class HomeMealToggleUITests: XCTestCase {
     /// 함께 기다린다. 다른 test class와 연속 실행 시 state race로 dialog 표시 시점이
     /// 더 늦어질 수 있어 timeout을 보수적으로 잡는다.
     private func dismissAttendanceDialogIfPresent() {
-        let attendance = app.staticTexts["출석 보상!"]
+        let attendance = app.staticTexts["출석 보상"]
         if attendance.waitForExistence(timeout: 5) {
             attendance.tap()
             _ = attendance.waitForNonExistence(timeout: 5)

@@ -15,11 +15,11 @@ struct MealReminderSettingsView: View {
                     if permissionStatus == .denied {
                         deniedBanner
                     }
-                    mealCard(title: "🌅 아침", slot: $settings.breakfast)
-                    mealCard(title: "🍱 점심", slot: $settings.lunch)
-                    mealCard(title: "🌙 저녁", slot: $settings.dinner)
-                    mealCard(title: "☕ 추가 1", slot: $settings.extra1)
-                    mealCard(title: "🍎 추가 2", slot: $settings.extra2)
+                    mealCard(title: "아침", slot: $settings.breakfast)
+                    mealCard(title: "점심", slot: $settings.lunch)
+                    mealCard(title: "저녁", slot: $settings.dinner)
+                    mealCard(title: "추가 1", slot: $settings.extra1)
+                    mealCard(title: "추가 2", slot: $settings.extra2)
                     footerHint
                     Spacer(minLength: 24)
                 }
@@ -54,7 +54,7 @@ struct MealReminderSettingsView: View {
             Text("알림 권한이 꺼져 있어요")
                 .font(.appFont(.bold, size: 14))
                 .foregroundStyle(Color.ink800)
-            Text("iOS 설정 → ChewChew → 알림에서 켜주세요.")
+            Text("iOS 설정 → Ododok → 알림에서 켜주세요.")
                 .font(.appFont(.regular, size: 12))
                 .foregroundStyle(Color.ink600)
                 .multilineTextAlignment(.center)

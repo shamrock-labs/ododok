@@ -2,7 +2,7 @@ import SwiftUI
 
 /// 식사 종료 직후 자동으로 표시되는 sheet — `ReportCardView`를 감싸고 닫기 CTA를 제공.
 /// 공유/캘린더/다시 시작 CTA는 commit ②b 이후 단계에서 추가. 분석 5필드가 nil인
-/// 세션(시뮬레이터/AirPods 미연결/60초 미만)은 PRD #3의 "데이터가 부족해요" 빈 카드로
+/// 세션(시뮬레이터/AirPods 미연결/60초 미만)은 PRD #3의 "분석을 만들지 못했어요" 빈 카드로
 /// 대체.
 struct SessionResultSheet: View {
     let dto: ChewingSessionDTO

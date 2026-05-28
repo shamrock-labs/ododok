@@ -64,7 +64,7 @@ private struct ShopPlaceholderView: View {
             }
 
             VStack(spacing: 6) {
-                Text("상점은 곧 열려요")
+                Text("상점을 준비하고 있어요")
                     .font(.appFont(.heavy, size: 21))
                     .foregroundStyle(Color.ink800)
                     .multilineTextAlignment(.center)
@@ -92,14 +92,14 @@ private struct ShopPlaceholderView: View {
     private var roadmapCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
-                Image(systemName: "sparkles")
+                Image(systemName: "bag")
                     .font(.appFont(.bold, size: 18))
                     .foregroundStyle(Color.butter600)
                     .frame(width: 38, height: 38)
                     .background(Color.butter100, in: RoundedRectangle(cornerRadius: 12))
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("다음 라운드")
+                    Text("준비 중인 아이템")
                         .font(.appFont(.bold, size: 12))
                         .foregroundStyle(Color.ink800)
                     Text("모자 · 안경 · 액세서리 · 도토리 팩")
@@ -269,7 +269,7 @@ private struct ShopGridView: View {
         return VStack(spacing: 10) {
             HStack {
                 if item.rarity == .rare {
-                    Text("RARE")
+                    Text("희귀")
                         .font(.appFont(.heavy, size: 9))
                         .foregroundStyle(.white)
                         .padding(.horizontal, 6)
@@ -354,7 +354,7 @@ private struct ShopGridView: View {
         } else if owned {
             Button {
                 state.equip(item)
-                showToast(ToastMessage(text: "\(item.name) 장착!", kind: .success))
+                showToast(ToastMessage(text: "\(item.name) 장착", kind: .success))
             } label: {
                 pillLabel("장착하기", style: .acorn)
             }
@@ -363,7 +363,7 @@ private struct ShopGridView: View {
             Button {
                 switch state.buyItem(item) {
                 case .success:
-                    showToast(ToastMessage(text: "\(item.name) 구매 완료 🌰", kind: .success))
+                    showToast(ToastMessage(text: "\(item.name) 구매 완료", kind: .success))
                 case .notEnoughPoints:
                     showToast(ToastMessage(text: "도토리가 부족해요", kind: .warn))
                 case .alreadyOwned:
@@ -466,7 +466,7 @@ private struct ShopGridView: View {
             Button {
                 switch state.buyAcornPack(pack) {
                 case .success:
-                    showToast(ToastMessage(text: "\(pack.name) 획득!", kind: .success))
+                    showToast(ToastMessage(text: "\(pack.name) 획득", kind: .success))
                 case .notEnoughPoints:
                     showToast(ToastMessage(text: "도토리가 부족해요", kind: .warn))
                 case .alreadyOwned:
