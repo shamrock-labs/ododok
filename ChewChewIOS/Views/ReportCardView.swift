@@ -68,6 +68,7 @@ struct ReportCardView: View {
     var onDeepReport: (() -> Void)? = nil
 
     @State private var scoreProgress: Double = 0
+    @State private var showScoreFormula = false
 
     var body: some View {
         VStack(spacing: 18) {
@@ -88,6 +89,11 @@ struct ReportCardView: View {
             in: RoundedRectangle(cornerRadius: 28)
         )
         .neuoShadow(.md)
+        .sheet(isPresented: $showScoreFormula) {
+            ScoreFormulaSheet(model: model)
+                .presentationDetents([.height(440)])
+                .presentationDragIndicator(.visible)
+        }
         .onAppear {
             withAnimation(.easeOut(duration: 1.2)) {
                 scoreProgress = 1.0
@@ -139,6 +145,16 @@ struct ReportCardView: View {
 
     private var scoreBreakdownGrid: some View {
         VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 0) {
+                Spacer()
+                Button { showScoreFormula = true } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(Color.ink400)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("점수 산식 보기")
+            }
             LazyVGrid(
                 columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
                 spacing: 12
@@ -477,5 +493,79 @@ struct EmptyReportCardView: View {
             in: RoundedRectangle(cornerRadius: 28)
         )
         .neuoShadow(.md)
+    }
+}
+
+// MARK: - 점수 산식 시트 (info 버튼 → 작은 모달)
+
+/// 점수가 어떻게 산출됐는지 4요소 산식을 짧게 풀어 보여주는 작은 시트.
+/// 카드 그리드 상단의 info 버튼에서 호출. presentationDetents로 화면을 적게 가린다.
+private struct ScoreFormulaSheet: View {
+    let model: ReportCardModel
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("점수가 어떻게 나왔어요?")
+                        .font(.appFont(.heavy, size: 18))
+                        .foregroundStyle(Color.ink800)
+                    Text("4가지 요소를 같은 비중으로 평균낸 값이에요.")
+                        .font(.appFont(.regular, size: 13))
+                        .foregroundStyle(Color.ink400)
+                }
+
+                Divider()
+
+                formulaRow(label: "속도",
+                           detail: "분당 28회 부근에서 만점",
+                           subScore: model.speedScore)
+                formulaRow(label: "리듬",
+                           detail: "씹은 시간 비율 50% 이상에서 만점",
+                           subScore: model.rhythmScore)
+                formulaRow(label: "연속성",
+                           detail: "씹은 횟수에 곡선 가산 — 200회에서 만점",
+                           subScore: model.continuityScore)
+                formulaRow(label: "식사 시간",
+                           detail: "12분 안팎에서 만점",
+                           subScore: model.lengthScore)
+
+                Divider()
+
+                HStack {
+                    Text("총점")
+                        .font(.appFont(.bold, size: 14))
+                        .foregroundStyle(Color.ink800)
+                    Spacer()
+                    Text("\(model.score)점")
+                        .font(.appFont(.heavy, size: 20))
+                        .foregroundStyle(Color.acorn700)
+                        .monospacedDigit()
+                }
+            }
+            .padding(.horizontal, 22)
+            .padding(.top, 20)
+            .padding(.bottom, 24)
+        }
+        .background(Color.cream.ignoresSafeArea())
+    }
+
+    private func formulaRow(label: String, detail: String, subScore: Int) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(label)
+                    .font(.appFont(.bold, size: 14))
+                    .foregroundStyle(Color.ink800)
+                Text(detail)
+                    .font(.appFont(.regular, size: 12))
+                    .foregroundStyle(Color.ink400)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+            Text("\(subScore)")
+                .font(.appFont(.heavy, size: 18))
+                .foregroundStyle(Color.ink800)
+                .monospacedDigit()
+        }
     }
 }
