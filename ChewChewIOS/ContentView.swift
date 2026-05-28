@@ -84,9 +84,11 @@ struct ContentView: View {
             Text("이번 식사의 IMU 데이터를 서버에 올리지 못했어요.\n다시 시도하지 않으면 이 세션 데이터는 사라집니다.")
         }
         .sheet(isPresented: resultSheetBinding) {
-            if let dto = state.lastCompletedSession {
-                SessionResultSheet(dto: dto, onClose: closeResultSheet)
-            }
+            SessionResultSheet(
+                dto: state.lastCompletedSession,
+                isAnalyzing: state.sessionUploadStatus == .uploading,
+                onClose: closeResultSheet
+            )
         }
         .sheet(isPresented: onboardingBinding) {
             OnboardingNameView(onComplete: {})
@@ -121,12 +123,17 @@ struct ContentView: View {
         )
     }
 
-    /// 식사 종료 → INSERT 성공 시 AppState가 `lastCompletedSession`을 set → 이 binding이
-    /// true → sheet 표시. 사용자가 닫으면 `closeResultSheet`가 lastCompletedSession을
-    /// nil로 되돌리고 성공 status도 함께 정리.
+    /// 식사 종료 직후엔 `sessionUploadStatus == .uploading`만으로 sheet를 띄워
+    /// "분석 중" 화면을 먼저 보여주고, INSERT 성공 → `lastCompletedSession` set
+    /// 이후엔 같은 sheet 안에서 `ReportCardView`로 전환된다. 사용자가 닫으면
+    /// `closeResultSheet`가 lastCompletedSession을 nil로 되돌리고 성공 status도
+    /// 함께 정리.
     private var resultSheetBinding: Binding<Bool> {
         Binding(
-            get: { state.lastCompletedSession != nil },
+            get: {
+                state.lastCompletedSession != nil
+                    || state.sessionUploadStatus == .uploading
+            },
             set: { presented in
                 if !presented { closeResultSheet() }
             }

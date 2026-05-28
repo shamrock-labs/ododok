@@ -1,34 +1,39 @@
 import SwiftUI
 
-/// 식사 종료 직후 자동으로 표시되는 sheet — `ReportCardView`를 감싸고 닫기 CTA를 제공.
-/// 공유/캘린더/다시 시작 CTA는 commit ②b 이후 단계에서 추가. 분석 5필드가 nil인
-/// 세션(시뮬레이터/AirPods 미연결/60초 미만)은 PRD #3의 "분석을 만들지 못했어요" 빈 카드로
-/// 대체.
+/// 식사 종료 직후 자동으로 표시되는 sheet. 측정 종료 → IMU 업로드/온디바이스
+/// 분석이 진행되는 동안 같은 sheet 안에서 "분석 중" 스피너를 먼저 보여주고,
+/// `ChewingSessionDTO`가 채워지면 `ReportCardView`로 자연스럽게 전환된다.
+/// 분석 5필드가 nil인 세션(시뮬레이터/AirPods 미연결/60초 미만)은 PRD #3의
+/// "분석을 만들지 못했어요" 빈 카드로 대체.
 struct SessionResultSheet: View {
-    let dto: ChewingSessionDTO
+    let dto: ChewingSessionDTO?
+    let isAnalyzing: Bool
     let onClose: () -> Void
 
     /// PNG 렌더는 ImageRenderer 호출 비용이 작지 않아 sheet 진입 시 1회만 만든다.
-    /// 빈 상태(분석 5필드 nil) 세션에선 nil로 남아 공유 버튼이 자동 hidden.
     @State private var sharePayload: ReportCardSharePayload?
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 Group {
-                    if let model = ReportCardModel.from(dto) {
-                        ReportCardView(model: model)
+                    if let dto {
+                        if let model = ReportCardModel.from(dto) {
+                            ReportCardView(model: model)
+                        } else {
+                            EmptyReportCardView()
+                        }
                     } else {
-                        EmptyReportCardView()
+                        analyzingView
                     }
                 }
                 .padding(20)
             }
             .background(LinearGradient.appBackground.ignoresSafeArea())
-            .navigationTitle("식사 리포트")
+            .navigationTitle(dto == nil ? "분석 중" : "식사 리포트")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                if let payload = sharePayload {
+                if dto != nil, let payload = sharePayload {
                     ToolbarItem(placement: .topBarLeading) {
                         ShareLink(item: payload, preview: SharePreview("식사 리포트")) {
                             Image(systemName: "square.and.arrow.up")
@@ -36,19 +41,45 @@ struct SessionResultSheet: View {
                         .foregroundStyle(Color.acorn600)
                     }
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("닫기") { onClose() }
-                        .foregroundStyle(Color.ink600)
+                if dto != nil {
+                    // 분석 중에는 닫기 버튼 숨김 — 분석은 보통 수 초 안에 끝나므로
+                    // 사용자가 잠깐 기다리도록 유도. 인터랙티브 dismiss도 같이 차단.
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button("닫기") { onClose() }
+                            .foregroundStyle(Color.ink600)
+                    }
                 }
             }
-            .task {
-                guard sharePayload == nil,
+            .task(id: dto?.id) {
+                guard let dto, sharePayload == nil,
                       let model = ReportCardModel.from(dto),
                       let data = ReportCardRenderer.render(model)
                 else { return }
                 sharePayload = ReportCardSharePayload(imageData: data)
             }
         }
+        .interactiveDismissDisabled(dto == nil)
     }
 
+    /// 분석 중 화면 — 스피너 + 안내 문구. 측정 종료 직후 사용자가 잠깐 머무는
+    /// 공간이라 정보 밀도는 의도적으로 낮춤.
+    private var analyzingView: some View {
+        VStack(spacing: 18) {
+            Spacer(minLength: 60)
+            ProgressView()
+                .controlSize(.large)
+                .tint(Color.acorn500)
+            VStack(spacing: 6) {
+                Text("씹기 분석 중이에요")
+                    .font(.appFont(.bold, size: 16))
+                    .foregroundStyle(Color.ink800)
+                Text("잠시만 기다려 주세요")
+                    .font(.appFont(.regular, size: 13))
+                    .foregroundStyle(Color.ink400)
+            }
+            Spacer(minLength: 60)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 40)
+    }
 }

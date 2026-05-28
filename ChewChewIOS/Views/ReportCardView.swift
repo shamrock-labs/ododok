@@ -1,22 +1,29 @@
 import SwiftUI
 
 /// 식사 후 분석 리포트 카드의 표시 모델. `ChewingSessionDTO` → 이 모델로 변환하는
-/// 매퍼는 종료 후 표시(commit ②)에서 추가한다. UI 컴포넌트가 DTO 변경에 직접 결합되지
-/// 않도록 분리.
+/// 매퍼는 아래 extension에서 노출. UI 컴포넌트가 DTO 변경에 직접 결합되지 않도록 분리.
 struct ReportCardModel: Equatable {
     /// 식사 점수 0~100.
     let score: Int
-    /// 점수 등급. 컬러/라벨 분기.
+    /// 점수 등급. 컬러/라벨/이모지 분기.
     let grade: Grade
     /// 4대 지표.
     let chewCount: Int
     let totalDurationSec: Double
     let chewsPerMinute: Double
-    /// 만족 표정 0~5 (PRD #3 — 점수가 아니라 5단계 표정 척도). 표시는 "n/5".
-    let satisfaction: Int
+    /// 씹기 집중 비율 0~1 (`chewingFraction`). 리듬 요소 점수의 근거 값.
+    let chewingFraction: Double
+    /// 씹기·쉬기 구간 바. 한 끼 중 실제 씹은 시간 / 쉰 시간(초).
+    let chewingSeconds: Double
+    let restSeconds: Double
+    /// 점수 4요소 분해 (각 0~100) — "왜 이 점수인지" 근거를 그리드에 노출.
+    let speedScore: Int
+    let rhythmScore: Int
+    let continuityScore: Int
+    let lengthScore: Int
     /// 한 줄 캡션. nil이면 기본 멘트 fallback.
     let caption: String?
-    /// 다람이 일러스트. 점수 등급에서 매핑.
+    /// 다람이 일러스트(점수 등급에서 매핑). 헤더 표정으로 사용.
     let mood: Mood
     /// 식사 종료 시각 — 헤더 날짜 라벨에 사용.
     let endedAt: Date
@@ -31,6 +38,15 @@ struct ReportCardModel: Equatable {
             case .bad:  "다음엔 천천히"
             }
         }
+
+        /// v1.0 헤더 표정 이모지. 프리미엄에서는 다람이 캐릭터로 교체.
+        var emoji: String {
+            switch self {
+            case .good: "😀"
+            case .soso: "😐"
+            case .bad:  "😪"
+            }
+        }
     }
 }
 
@@ -41,21 +57,30 @@ func scoreCountUpValue(progress: Double, target: Int) -> Int {
     return Int((Double(target) * clamped).rounded())
 }
 
-/// 식사 후 분석 리포트 카드. 식사 종료 직후 sheet/overlay 표시(commit ②)와
-/// 캘린더에서 과거 세션 재현(commit ④) 양쪽에서 동일하게 사용된다. 1080×1920 PNG
-/// 공유(commit ③)도 같은 View를 ImageRenderer로 렌더.
+/// 식사 후 분석 리포트 카드. 식사 종료 직후 sheet/overlay 표시와 캘린더에서 과거 세션
+/// 재현 양쪽에서 동일하게 사용된다. 1080×1920 PNG 공유도 같은 View를 ImageRenderer로 렌더.
+///
+/// `onDeepReport`가 주어지면 하단에 [심층 분석 보기] CTA(REQ-17 진입)를 노출한다.
+/// 기본 nil이라 PNG 공유 렌더처럼 CTA가 불필요한 호출부는 그대로 둔다.
 struct ReportCardView: View {
     let model: ReportCardModel
+    var onDeepReport: (() -> Void)? = nil
 
     @State private var scoreProgress: Double = 0
+    @State private var showScoreFormula = false
 
     var body: some View {
         VStack(spacing: 18) {
             header
             scoreSection
-            metricsGrid
+            scoreBreakdownGrid
+            if showScoreFormula {
+                ScoreFormulaInline(model: model)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+            chewRestSection
             captionSection
-            footer
+            if onDeepReport != nil { deepReportCTA }
         }
         .padding(24)
         .frame(maxWidth: .infinity)
@@ -114,40 +139,122 @@ struct ReportCardView: View {
         .padding(.vertical, 4)
     }
 
-    private var metricsGrid: some View {
-        LazyVGrid(
-            columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
-            spacing: 12
-        ) {
-            metric(label: "씹기 횟수", value: model.chewCount.koLocale, unit: "회")
-            metric(label: "총 시간",  value: formatDurationShort(model.totalDurationSec), unit: nil)
-            metric(label: "분당 속도", value: String(format: "%.0f", model.chewsPerMinute), unit: "회/분")
-            metric(label: "만족도",   value: "\(model.satisfaction)", unit: "/5")
+    // MARK: - 점수 근거 그리드 (4요소 = 왜 이 점수인지)
+
+    private var scoreBreakdownGrid: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 0) {
+                Spacer()
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        showScoreFormula.toggle()
+                    }
+                } label: {
+                    Image(systemName: showScoreFormula ? "info.circle.fill" : "info.circle")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(showScoreFormula ? Color.acorn500 : Color.ink400)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("점수 산식 보기")
+            }
+            LazyVGrid(
+                columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
+                spacing: 12
+            ) {
+                factorCell(
+                    label: "속도",
+                    value: String(format: "%.0f", model.chewsPerMinute), unit: "회/분",
+                    subScore: model.speedScore, reference: "권장 28회/분"
+                )
+                factorCell(
+                    label: "리듬",
+                    value: "\(Int((model.chewingFraction * 100).rounded()))", unit: "%",
+                    subScore: model.rhythmScore, reference: "권장 씹기 비율 50%+"
+                )
+                factorCell(
+                    label: "연속성",
+                    value: model.chewCount.koLocale, unit: "회",
+                    subScore: model.continuityScore, reference: "권장 200회+"
+                )
+                factorCell(
+                    label: "식사 시간",
+                    value: formatDurationShort(model.totalDurationSec), unit: nil,
+                    subScore: model.lengthScore, reference: "권장 12분 안팎"
+                )
+            }
         }
     }
 
-    private func metric(label: String, value: String, unit: String?) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+    /// 점수 한 요소 카드: 실제 값 + 0~100 요소 점수 미니바 + 기준선 문구.
+    private func factorCell(label: String, value: String, unit: String?, subScore: Int, reference: String) -> some View {
+        let color = factorColor(subScore)
+        return VStack(alignment: .leading, spacing: 6) {
             Text(label)
                 .font(.appFont(.medium, size: 11))
                 .foregroundStyle(Color.ink400)
             HStack(alignment: .firstTextBaseline, spacing: 3) {
                 Text(value)
-                    .font(.appFont(.heavy, size: 22))
+                    .font(.appFont(.heavy, size: 20))
                     .foregroundStyle(Color.ink800)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.7)
+                    .minimumScaleFactor(0.6)
                     .monospacedDigit()
                 if let unit {
                     Text(unit)
-                        .font(.appFont(.bold, size: 12))
+                        .font(.appFont(.bold, size: 11))
                         .foregroundStyle(Color.acorn600)
                 }
             }
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.ink100)
+                    Capsule().fill(color)
+                        .frame(width: geo.size.width * CGFloat(max(0, min(100, subScore))) / 100)
+                }
+            }
+            .frame(height: 5)
+            Text(reference)
+                .font(.appFont(.medium, size: 9))
+                .foregroundStyle(Color.ink400)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
+        .padding(12)
         .background(Color.white.opacity(0.78), in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    // MARK: - 씹기 · 쉬기 구간 바
+
+    private var chewRestSection: some View {
+        let total = max(0.001, model.chewingSeconds + model.restSeconds)
+        let chewFrac = CGFloat(model.chewingSeconds / total)
+        return VStack(alignment: .leading, spacing: 8) {
+            sectionTitle("씹기 · 쉬기 구간")
+            GeometryReader { geo in
+                HStack(spacing: 2) {
+                    Rectangle().fill(Color.sage500)
+                        .frame(width: max(0, geo.size.width * chewFrac - 1))
+                    Rectangle().fill(Color.acorn200)
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 7))
+            }
+            .frame(height: 14)
+            HStack(spacing: 16) {
+                legendDot(color: .sage500, label: "씹기 \(formatDurationShort(model.chewingSeconds))")
+                legendDot(color: .acorn200, label: "쉬기 \(formatDurationShort(model.restSeconds))")
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private func legendDot(color: Color, label: String) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(color).frame(width: 8, height: 8)
+            Text(label)
+                .font(.appFont(.medium, size: 11))
+                .foregroundStyle(Color.ink600)
+        }
     }
 
     private var captionSection: some View {
@@ -166,13 +273,33 @@ struct ReportCardView: View {
         .background(Color.white.opacity(0.55), in: RoundedRectangle(cornerRadius: 14))
     }
 
-    private var footer: some View {
-        HStack {
-            Spacer()
-            Text("다람이 · 오도독")
-                .font(.appFont(.medium, size: 10))
-                .foregroundStyle(Color.ink400)
+    private var deepReportCTA: some View {
+        Button(action: { onDeepReport?() }) {
+            HStack(spacing: 8) {
+                Text("심층 분석 보기")
+                    .font(.appFont(.bold, size: 14))
+                    .foregroundStyle(Color.acorn700)
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color.acorn600)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity)
+            .background(Color.acorn50, in: RoundedRectangle(cornerRadius: 14))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14).stroke(Color.acorn200, lineWidth: 1)
+            )
         }
+        .buttonStyle(.plain)
+    }
+
+    private func sectionTitle(_ text: String) -> some View {
+        Text(text)
+            .font(.appFont(.bold, size: 13))
+            .foregroundStyle(Color.ink600)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var gradeColor: Color {
@@ -180,6 +307,15 @@ struct ReportCardView: View {
         case .good: Color.sage600
         case .soso: Color.butter500
         case .bad:  Color.blush400
+        }
+    }
+
+    /// 요소 점수(0~100) → 점수 컬러 토큰. 등급 경계(80/60)와 동일.
+    private func factorColor(_ subScore: Int) -> Color {
+        switch subScore {
+        case 80...:     Color.sage600
+        case 60..<80:   Color.butter500
+        default:        Color.blush400
         }
     }
 
@@ -209,11 +345,17 @@ struct ReportCardView: View {
             chewCount: 318,
             totalDurationSec: 642,
             chewsPerMinute: 29.7,
-            satisfaction: 4,
+            chewingFraction: 0.71,
+            chewingSeconds: 456,
+            restSeconds: 186,
+            speedScore: 89,
+            rhythmScore: 100,
+            continuityScore: 100,
+            lengthScore: 87,
             caption: "오늘은 천천히 잘 씹었어요. 한 입에 30회 목표 달성!",
             mood: .champ,
             endedAt: Date()
-        ))
+        ), onDeepReport: {})
         .padding(20)
     }
 }
@@ -227,7 +369,13 @@ struct ReportCardView: View {
             chewCount: 192,
             totalDurationSec: 420,
             chewsPerMinute: 27.4,
-            satisfaction: 3,
+            chewingFraction: 0.52,
+            chewingSeconds: 218,
+            restSeconds: 202,
+            speedScore: 96,
+            rhythmScore: 100,
+            continuityScore: 96,
+            lengthScore: 50,
             caption: nil,
             mood: .puffy,
             endedAt: Date()
@@ -245,11 +393,17 @@ struct ReportCardView: View {
             chewCount: 87,
             totalDurationSec: 180,
             chewsPerMinute: 29.0,
-            satisfaction: 2,
+            chewingFraction: 0.38,
+            chewingSeconds: 68,
+            restSeconds: 112,
+            speedScore: 93,
+            rhythmScore: 76,
+            continuityScore: 44,
+            lengthScore: 10,
             caption: "조금 빨리 먹은 것 같아요. 다음 식사엔 한 입 30회를 의식해 봐요.",
             mood: .sleepy,
             endedAt: Date()
-        ))
+        ), onDeepReport: {})
         .padding(20)
     }
 }
@@ -268,9 +422,6 @@ extension ReportCardModel {
         let mins = max(0.001, dto.durationSec / 60)
         let chews = dto.estimatedTotalChews ?? 0
         let chewsPerMin = Double(chews) / mins
-        // 만족 표정 0~5 — PRD가 산출식을 명시하지 않아 잠정적으로 점수에 단조 매핑.
-        // 후속 PR에서 사용자 피드백 입력으로 분리될 여지.
-        let satisfaction = max(0, min(5, Int((Double(score.total) / 20.0).rounded())))
         let grade = Grade(scoreGrade: score.grade)
         let mood = Mood(grade: grade)
         let caption = CaptionPool.report(for: grade)
@@ -280,7 +431,13 @@ extension ReportCardModel {
             chewCount: chews,
             totalDurationSec: dto.durationSec,
             chewsPerMinute: chewsPerMin,
-            satisfaction: satisfaction,
+            chewingFraction: dto.chewingFraction ?? 0,
+            chewingSeconds: dto.chewingSeconds ?? 0,
+            restSeconds: dto.restSeconds ?? 0,
+            speedScore: score.speed,
+            rhythmScore: score.rhythm,
+            continuityScore: score.continuity,
+            lengthScore: score.length,
             caption: caption,
             mood: mood,
             endedAt: dto.endedAt
@@ -340,5 +497,46 @@ struct EmptyReportCardView: View {
             in: RoundedRectangle(cornerRadius: 28)
         )
         .neuoShadow(.md)
+    }
+}
+
+// MARK: - 점수 산식 인라인 박스 (info 토글)
+
+/// 점수 근거 그리드 아래에 inline으로 펼쳐지는 산식 박스. 4요소 기준값만 짧게.
+/// 시스템 popover의 iPhone placement 변덕(상단 점프)을 피하기 위해 카드 안
+/// inline 배치 — 다른 콘텐츠는 가리지 않고 아래로 밀린다.
+private struct ScoreFormulaInline: View {
+    let model: ReportCardModel
+
+    var body: some View {
+        VStack(spacing: 6) {
+            formulaRow(label: "속도",      detail: "28회/분",       subScore: model.speedScore)
+            formulaRow(label: "리듬",      detail: "씹기 비율 50%+", subScore: model.rhythmScore)
+            formulaRow(label: "연속성",    detail: "200회+",         subScore: model.continuityScore)
+            formulaRow(label: "식사 시간", detail: "12분 부근",      subScore: model.lengthScore)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity)
+        .background(Color.white.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12).stroke(Color.acorn100, lineWidth: 1)
+        )
+    }
+
+    private func formulaRow(label: String, detail: String, subScore: Int) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 10) {
+            Text(label)
+                .font(.appFont(.bold, size: 12))
+                .foregroundStyle(Color.ink800)
+                .frame(width: 56, alignment: .leading)
+            Text(detail)
+                .font(.appFont(.regular, size: 11))
+                .foregroundStyle(Color.ink400)
+            Spacer(minLength: 0)
+            Text("\(subScore)")
+                .font(.appFont(.heavy, size: 13))
+                .foregroundStyle(Color.ink800)
+                .monospacedDigit()
+        }
     }
 }
