@@ -14,6 +14,8 @@ final class NotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotific
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        // 중단/재개 알림의 계속하기·그만하기 액션 버튼을 쓰려면 카테고리 등록이 선행돼야 한다.
+        MealNotificationService.registerCategories()
         return true
     }
 
@@ -33,15 +35,29 @@ final class NotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotific
         withCompletionHandler completionHandler: @escaping () -> Void
     ) {
         defer { completionHandler() }
-        let userInfo = response.notification.request.content.userInfo
-        guard let deepLink = userInfo["deepLink"] as? String,
-              deepLink == MealNotificationService.deepLinkStart,
-              let url = URL(string: deepLink) else { return }
+        let action = response.actionIdentifier
+        let deepLink = response.notification.request.content.userInfo["deepLink"] as? String
         Task { @MainActor in
-            // onOpenURL 경로와 동일한 처리 — appState가 주입되기 전 탭은 무시.
+            // appState가 주입되기 전(콜드 스타트 직후) 탭은 무시.
             guard let state = appState else { return }
-            _ = url // URL scheme 검증은 handleOpenURL 내부
-            state.requestStartHighlight()
+            switch action {
+            case MealNotificationService.resumeActionId:
+                state.resumeMeasurement()
+            case MealNotificationService.stopActionId:
+                state.stopMeasurementFromNotification()
+            case UNNotificationDefaultActionIdentifier:
+                // 알림 본문 탭 — deepLink에 따라 분기.
+                switch deepLink {
+                case MealNotificationService.deepLinkResume:
+                    state.resumeMeasurement()
+                case MealNotificationService.deepLinkStart:
+                    state.requestStartHighlight()
+                default:
+                    break
+                }
+            default:
+                break
+            }
         }
     }
 }

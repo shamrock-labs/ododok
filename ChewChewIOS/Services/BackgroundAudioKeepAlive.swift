@@ -94,6 +94,29 @@ final class BackgroundAudioKeepAlive {
         }
     }
 
+    // MARK: - Resume
+
+    /// 인터럽트(전화 등)로 일시정지된 ambient 재생을 사용자 동작으로 다시 켠다.
+    /// 세션을 active로 되돌린 뒤 기존 플레이어를 재생 — `start()`를 다시 부르면
+    /// 인터럽션 옵저버가 중복 등록되므로, 살아있는 플레이어가 있으면 재생만 한다.
+    /// 플레이어가 사라졌으면(앱 종료 후 복귀 등) `start()`로 폴백.
+    func resume() {
+        guard let audioPlayer else {
+            start()
+            return
+        }
+        do {
+            let session = AVAudioSession.sharedInstance()
+            try session.setCategory(.playback, options: .mixWithOthers)
+            try session.setActive(true)
+        } catch {
+            print("[KeepAlive] resume 세션 재활성화 실패: \(error)")
+        }
+        audioPlayer.play()
+        interruptionBeganAt = nil
+        print("[KeepAlive] ambient 재개")
+    }
+
     // MARK: - Interruption (테스트 가능하게 분리)
 
     /// 인터럽트 처리 진입점. `AVAudioSession.interruptionNotification` 핸들러와
@@ -163,6 +186,7 @@ final class BackgroundAudioKeepAlive {
     func start() {}
     func stop() {}
     func setMuted(_ muted: Bool) {}
+    func resume() {}
     func handleInterruption(type: AVAudioSession.InterruptionType, options: AVAudioSession.InterruptionOptions) {}
 
     #endif

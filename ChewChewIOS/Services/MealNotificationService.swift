@@ -80,4 +80,65 @@ enum MealNotificationService {
     }
 
     static let deepLinkStart = "chewchew://start"
+
+    // MARK: - 측정 중단/재개 알림 (전화 인터럽트)
+
+    static let deepLinkResume = "chewchew://resume"
+
+    /// 중단 알림에 붙는 액션 카테고리 + 두 버튼(계속하기/그만하기) 식별자.
+    static let interruptionCategoryId = "MEAL_INTERRUPTION"
+    static let resumeActionId = "MEAL_RESUME"
+    static let stopActionId = "MEAL_STOP"
+
+    /// 중단 알림은 한 번에 하나만 유지 — 고정 identifier로 중복 발사를 막는다.
+    private static let interruptionId = "session.interruption"
+
+    /// 중단 알림 액션 카테고리 등록. 앱 시작 시 1회 호출.
+    static func registerCategories() {
+        let resume = UNNotificationAction(
+            identifier: resumeActionId,
+            title: "계속하기",
+            options: [.foreground]
+        )
+        let stop = UNNotificationAction(
+            identifier: stopActionId,
+            title: "그만하기",
+            options: [.foreground, .destructive]
+        )
+        let category = UNNotificationCategory(
+            identifier: interruptionCategoryId,
+            actions: [resume, stop],
+            intentIdentifiers: [],
+            options: []
+        )
+        center.setNotificationCategories([category])
+    }
+
+    /// 전화로 측정이 멈췄을 때 "이어서 측정하시겠어요?" 알림을 즉시 띄운다.
+    /// 통화 도중(앱이 살아있을 때) 발사해두면 통화 길이와 무관하게 알림이 남아,
+    /// 통화를 끊은 뒤 계속하기/그만하기를 고를 수 있다.
+    static func scheduleInterruptionPrompt() async {
+        let status = await authorizationStatus()
+        guard status == .authorized || status == .provisional else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = "식사 측정이 중단되었어요!"
+        content.body = "방금 알림이나 전화가 왔나요? 식사 기록을 이어서 계속 진행하시겠어요?"
+        content.sound = .default
+        content.categoryIdentifier = interruptionCategoryId
+        content.userInfo = ["deepLink": deepLinkResume]
+
+        let request = UNNotificationRequest(
+            identifier: interruptionId,
+            content: content,
+            trigger: nil
+        )
+        try? await center.add(request)
+    }
+
+    /// 중단 알림 제거 — 재개했거나 세션이 끝났을 때 pending/delivered 양쪽을 정리.
+    static func cancelInterruptionPrompt() {
+        center.removePendingNotificationRequests(withIdentifiers: [interruptionId])
+        center.removeDeliveredNotifications(withIdentifiers: [interruptionId])
+    }
 }
