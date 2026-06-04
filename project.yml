@@ -19,6 +19,9 @@ targets:
     platform: iOS
     sources:
       - ChewChewIOS
+    dependencies:
+      - target: OdodokWidgets
+        embed: true
     configFiles:
       Debug: Config/Secrets.xcconfig
       Release: Config/Secrets.xcconfig
@@ -44,6 +47,7 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         UIStatusBarStyle: UIStatusBarStyleDefault
+        NSSupportsLiveActivities: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sungho.ododok
@@ -52,6 +56,24 @@ targets:
         IPHONEOS_DEPLOYMENT_TARGET: "17.0"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+
+  OdodokWidgets:
+    type: app-extension
+    platform: iOS
+    sources:
+      - OdodokWidgets
+      - path: ChewChewIOS/Models/MealActivityAttributes.swift
+    info:
+      path: OdodokWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: 오도독
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sungho.ododok.OdodokWidgets
+        TARGETED_DEVICE_FAMILY: "1"
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
 
   ChewChewIOSTests:
     type: bundle.unit-test

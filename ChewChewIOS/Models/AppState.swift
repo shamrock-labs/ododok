@@ -178,6 +178,9 @@ final class AppState {
     /// 중단 알림의 "계속하기"를 누를 때까지 기다린다. 재난문자 등은 false라 자동 재개.
     @ObservationIgnored private var interruptionWasCall = false
 
+    /// 식사 측정 Live Activity(잠금화면·다이내믹 아일랜드) 관리자. 설정에서 꺼져 있으면 노옵.
+    @ObservationIgnored private let mealActivity = MealActivityController()
+
     // MARK: - ML inference
 
     /// 식사 세션 동안 활성. nil이면 추론 없이 (모델 로드 실패) 가짜 Timer만 동작.
@@ -319,6 +322,7 @@ final class AppState {
             Task { @MainActor [weak self] in
                 guard let self, self.isEating else { return }
                 self.interruptionWasCall = true
+                self.mealActivity.setPaused(true)
                 await MealNotificationService.scheduleInterruptionPrompt()
             }
         }
@@ -326,6 +330,7 @@ final class AppState {
         // 중단 알림이 권한 부재로 막히지 않도록 세션 시작 시 1회 권한 확보(이미 결정됐으면 노옵).
         Task { await MealNotificationService.requestAuthorizationIfNeeded() }
         backgroundKeepAlive.start()
+        mealActivity.start(startedAt: now)
 
         if !startHeadphoneMotionLoop() {
             startDemoIMUWaveformLoop(source: imuWaveformSource)
@@ -348,6 +353,7 @@ final class AppState {
         callMonitor.stop()
         interruptionWasCall = false
         MealNotificationService.cancelInterruptionPrompt()
+        mealActivity.end()
         resetIMUWaveform()
         imuWaveformSource = .idle
         chewTimestamps.removeAll()
@@ -390,6 +396,7 @@ final class AppState {
         callMonitor.stop()
         interruptionWasCall = false
         MealNotificationService.cancelInterruptionPrompt()
+        mealActivity.end()
         resetIMUWaveform()
         imuWaveformSource = .idle
         chewTimestamps.removeAll()
@@ -423,6 +430,7 @@ final class AppState {
         #endif
         interruptionWasCall = false
         MealNotificationService.cancelInterruptionPrompt()
+        mealActivity.setPaused(false)
         backgroundKeepAlive.resume()
         _ = startHeadphoneMotionLoop()
     }
