@@ -27,6 +27,7 @@ Config/Secrets.xcconfig
 
 # xcodegen이 생성하는 Info.plist — 매번 project.yml에서 다시 만들어진다
 ChewChewIOS/Info.plist
+OdodokWidgets/Info.plist
 
 # InsForge & AI agent skills
 .insforge

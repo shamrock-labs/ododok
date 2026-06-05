@@ -13,6 +13,10 @@ final class IMUSessionRecorder {
     private(set) var rows: [IMURow] = []
     private(set) var sensorLocation: String = "default"
 
+    /// 전화 등 오디오 인터럽트로 인해 IMU 수집이 일시 중단된 구간.
+    /// 각 원소는 `(began: Date, ended: Date)`. finalize된 Output에 그대로 포함된다.
+    private(set) var interruptionGaps: [(began: Date, ended: Date)] = []
+
     init(sessionId: UUID = UUID(), startedAt: Date = Date()) {
         self.sessionId = sessionId
         self.startedAt = startedAt
@@ -25,6 +29,11 @@ final class IMUSessionRecorder {
     /// 한 세션에 두 위치(left/right)가 섞일 일은 거의 없지만 안전하게 마지막 값으로 덮어씀.
     func updateSensorLocation(_ location: String) {
         sensorLocation = location
+    }
+
+    /// 인터럽트 갭 1건을 기록한다. `began`~`ended` 구간 동안 IMU 수집이 중단되었음을 나타냄.
+    func recordInterruptionGap(began: Date, ended: Date) {
+        interruptionGaps.append((began: began, ended: ended))
     }
 
     /// 봉인 — CSV 직렬화. 호출 후 인스턴스는 폐기 대상.
@@ -44,7 +53,8 @@ final class IMUSessionRecorder {
             durationSec: endedAt.timeIntervalSince(startedAt),
             sampleCount: rows.count,
             sensorLocation: sensorLocation,
-            csvData: Data(csv.utf8)
+            csvData: Data(csv.utf8),
+            interruptionGaps: interruptionGaps
         )
     }
 
@@ -56,5 +66,7 @@ final class IMUSessionRecorder {
         let sampleCount: Int
         let sensorLocation: String
         let csvData: Data
+        /// 전화 등 인터럽트로 IMU 수집이 중단된 구간 목록.
+        let interruptionGaps: [(began: Date, ended: Date)]
     }
 }

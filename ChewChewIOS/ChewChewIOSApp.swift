@@ -54,11 +54,18 @@ struct ChewChewIOSApp: App {
         }
     }
 
-    /// `chewchew://start` URL 수신 처리. onOpenURL 및 NotificationDelegate에서 공통 호출.
+    /// `chewchew://` 딥링크 처리. onOpenURL 및 NotificationDelegate에서 공통 호출.
     @MainActor
     func handleOpenURL(_ url: URL) {
-        guard url.scheme == "chewchew", url.host == "start" else { return }
-        appState.requestStartHighlight()
+        guard url.scheme == "chewchew" else { return }
+        switch url.host {
+        case "start":
+            appState.requestStartHighlight()
+        case "resume":
+            appState.resumeMeasurement()
+        default:
+            break
+        }
     }
 
     /// 시뮬레이터 진단용 launch argument.

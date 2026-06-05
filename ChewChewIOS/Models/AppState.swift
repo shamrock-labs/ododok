@@ -171,6 +171,16 @@ final class AppState {
     /// 식사 종료 시 stop. 시뮬레이터에선 노옵 (`BackgroundAudioKeepAlive` 내부 가드).
     @ObservationIgnored private let backgroundKeepAlive = BackgroundAudioKeepAlive()
 
+    /// 식사 세션 동안 전화 통화 시작을 관찰해, 오디오 인터럽트가 전화 때문인지 판별한다.
+    @ObservationIgnored private let callMonitor = CallInterruptionMonitor()
+
+    /// 직전 인터럽트가 전화였는지 표시. 전화면 `.ended`에서 자동 재개하지 않고,
+    /// 중단 알림의 "계속하기"를 누를 때까지 기다린다. 재난문자 등은 false라 자동 재개.
+    @ObservationIgnored private var interruptionWasCall = false
+
+    /// 식사 측정 Live Activity(잠금화면·다이내믹 아일랜드) 관리자. 설정에서 꺼져 있으면 노옵.
+    @ObservationIgnored private let mealActivity = MealActivityController()
+
     // MARK: - ML inference
 
     /// 식사 세션 동안 활성. nil이면 추론 없이 (모델 로드 실패) 가짜 Timer만 동작.
@@ -282,9 +292,45 @@ final class AppState {
         // in-app 화폐 기능이라 ML 추론 결과를 카운터에 반영하지 않음.
         startFakeChewLoop()
 
-        // 잠금 화면/홈 화면으로 빠져도 AirPods IMU 콜백이 끊기지 않도록 무음 오디오 keep-alive 활성.
+        // 잠금 화면/홈 화면으로 빠져도 AirPods IMU 콜백이 끊기지 않도록 ambient 오디오 keep-alive 활성.
         // 시뮬레이터에선 내부적으로 노옵.
+        interruptionWasCall = false
+        backgroundKeepAlive.onInterrupt = { [weak self] shouldResume in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if shouldResume {
+                    // 전화였다면 자동 재개하지 않고 중단 알림의 "계속하기"를 기다린다.
+                    guard AppState.shouldAutoResume(
+                        interruptionWasCall: self.interruptionWasCall,
+                        shouldResume: true
+                    ) else { return }
+                    // 재난문자 등 통화가 아닌 인터럽트 — 갭 기록 후 자동 재개.
+                    #if os(iOS) && !targetEnvironment(simulator)
+                    if let began = self.backgroundKeepAlive.interruptionBeganAt {
+                        self.imuSessionRecorder?.recordInterruptionGap(began: began, ended: Date())
+                    }
+                    #endif
+                    _ = self.startHeadphoneMotionLoop()
+                } else {
+                    // 인터럽트 시작 — IMU 루프 중단.
+                    self.stopHeadphoneMotionLoop()
+                }
+            }
+        }
+        // 통화가 시작되면(앱이 살아있는 동안) 중단 알림을 띄워 통화 후 이어가게 한다.
+        callMonitor.onCallStarted = { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.isEating else { return }
+                self.interruptionWasCall = true
+                self.mealActivity.setPaused(true)
+                await MealNotificationService.scheduleInterruptionPrompt()
+            }
+        }
+        callMonitor.start()
+        // 중단 알림이 권한 부재로 막히지 않도록 세션 시작 시 1회 권한 확보(이미 결정됐으면 노옵).
+        Task { await MealNotificationService.requestAuthorizationIfNeeded() }
         backgroundKeepAlive.start()
+        mealActivity.start(startedAt: now)
 
         if !startHeadphoneMotionLoop() {
             startDemoIMUWaveformLoop(source: imuWaveformSource)
@@ -299,9 +345,15 @@ final class AppState {
         stopFakeChewLoop()
         stopDemoIMUWaveformLoop()
         // 식사가 끝나면 더 이상 백그라운드 wake가 필요 없으므로 즉시 stop —
-        // 무음이라도 오디오 세션이 살아있는 동안엔 다른 앱(타이머/시스템 사운드 등)
+        // ambient 오디오 세션이 살아있는 동안엔 다른 앱(타이머/시스템 사운드 등)
         // 미디어 라우팅에 영향이 가니, 세션 끝과 동시에 해제하는 게 안전.
+        backgroundKeepAlive.onInterrupt = nil
         backgroundKeepAlive.stop()
+        callMonitor.onCallStarted = nil
+        callMonitor.stop()
+        interruptionWasCall = false
+        MealNotificationService.cancelInterruptionPrompt()
+        mealActivity.end()
         resetIMUWaveform()
         imuWaveformSource = .idle
         chewTimestamps.removeAll()
@@ -338,7 +390,13 @@ final class AppState {
         stopHeadphoneMotionLoop()
         stopFakeChewLoop()
         stopDemoIMUWaveformLoop()
+        backgroundKeepAlive.onInterrupt = nil
         backgroundKeepAlive.stop()
+        callMonitor.onCallStarted = nil
+        callMonitor.stop()
+        interruptionWasCall = false
+        MealNotificationService.cancelInterruptionPrompt()
+        mealActivity.end()
         resetIMUWaveform()
         imuWaveformSource = .idle
         chewTimestamps.removeAll()
@@ -354,6 +412,40 @@ final class AppState {
 
     func toggleEating() {
         isEating ? stopEating() : startEating()
+    }
+
+    /// 중단된 측정을 같은 세션으로 이어간다 — 중단 알림 "계속하기" 또는 `chewchew://resume`에서 호출.
+    /// 녹음 버퍼·시작 시각·추론기를 그대로 두고 갭만 기록해, 한 끼가 통화로 두 세션으로 쪼개지지 않게 한다.
+    /// 세션이 메모리에서 사라졌으면(앱 종료 등) 새로 시작하도록 시작 버튼을 강조한다.
+    @MainActor
+    func resumeMeasurement() {
+        guard isEating else {
+            requestStartHighlight()
+            return
+        }
+        #if os(iOS) && !targetEnvironment(simulator)
+        if let began = backgroundKeepAlive.interruptionBeganAt {
+            imuSessionRecorder?.recordInterruptionGap(began: began, ended: Date())
+        }
+        #endif
+        interruptionWasCall = false
+        MealNotificationService.cancelInterruptionPrompt()
+        mealActivity.setPaused(false)
+        backgroundKeepAlive.resume()
+        _ = startHeadphoneMotionLoop()
+    }
+
+    /// 중단 알림 "그만하기"에서 호출 — 멈춘 세션을 정상 종료(부분 기록 업로드)한다.
+    @MainActor
+    func stopMeasurementFromNotification() {
+        MealNotificationService.cancelInterruptionPrompt()
+        if isEating { stopEating() }
+    }
+
+    /// `.ended + shouldResume` 인터럽트에서 자동 재개할지 판단하는 순수 함수.
+    /// 전화는 사용자가 중단 알림에서 직접 이어가므로 자동 재개하지 않는다.
+    static func shouldAutoResume(interruptionWasCall: Bool, shouldResume: Bool) -> Bool {
+        shouldResume && !interruptionWasCall
     }
 
     /// 딥링크(`chewchew://start`) 수신 시 호출. 시작 버튼을 3초간 강조.

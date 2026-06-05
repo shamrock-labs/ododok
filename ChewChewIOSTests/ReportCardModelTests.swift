@@ -44,13 +44,11 @@ final class ReportCardModelTests: XCTestCase {
             XCTAssertEqual(model.totalDurationSec, 600, accuracy: 0.001)
             XCTAssertGreaterThanOrEqual(model.score, 0)
             XCTAssertLessThanOrEqual(model.score, 100)
-            XCTAssertGreaterThanOrEqual(model.satisfaction, 0)
-            XCTAssertLessThanOrEqual(model.satisfaction, 5)
         }
     }
 
-    func testFrom_satisfaction_in_0to5() {
-        // Test various score values and verify satisfaction is always 0–5
+    func testFrom_score_in_0to100() {
+        // 다양한 입력에서 score가 항상 0~100 범위인지 확인
         let testCases: [(Int, Double)] = [
             (0, 0.0),
             (100, 1.0),
@@ -62,10 +60,10 @@ final class ReportCardModelTests: XCTestCase {
             let dto = makeDTO(chews: chews > 0 ? chews : nil, fraction: fraction)
             if chews == 0 { continue }
             if let model = ReportCardModel.from(dto) {
-                XCTAssertGreaterThanOrEqual(model.satisfaction, 0,
-                    "satisfaction must be >= 0 for chews=\(chews) fraction=\(fraction)")
-                XCTAssertLessThanOrEqual(model.satisfaction, 5,
-                    "satisfaction must be <= 5 for chews=\(chews) fraction=\(fraction)")
+                XCTAssertGreaterThanOrEqual(model.score, 0,
+                    "score must be >= 0 for chews=\(chews) fraction=\(fraction)")
+                XCTAssertLessThanOrEqual(model.score, 100,
+                    "score must be <= 100 for chews=\(chews) fraction=\(fraction)")
             }
         }
     }
