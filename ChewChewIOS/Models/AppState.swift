@@ -128,12 +128,6 @@ final class AppState {
     /// 식사 시작 시각. 통계/지속시간 표시 등에 사용.
     @ObservationIgnored private(set) var eatingStartedAt: Date?
 
-    /// 최근 60초 안의 chew 타임스탬프 (분당 저작 횟수 계산용).
-    @ObservationIgnored private var chewTimestamps: [Date] = []
-
-    /// 분당 저작 횟수. chew() 호출 시 갱신.
-    var chewRatePerMinute: Int = 0
-
     /// 화면 표시용 최근 IMU 에너지 샘플. 원시 IMU 데이터는 저장하지 않음.
     var imuWaveformSamples: [Double] = AppState.idleIMUWaveformSamples
     var imuWaveformSource: IMUWaveformSource = .idle
@@ -155,9 +149,6 @@ final class AppState {
     /// `.active`로 처음 도달할 때 `sceneDidChange(toForeground:true)`의 전이
     /// 조건(`!wasInForeground && toForeground`)이 성립해 일일 출석 보너스가 트리거된다.
     var isInForeground: Bool = false
-
-    /// 마지막으로 background로 전환된 시각. 백그라운드 체류 시간 표시용.
-    var lastBackgroundedAt: Date?
 
     /// 시뮬레이터에선 첫 접근을 막아 CoreMotion 권한 다이얼로그가 안 뜨도록 lazy.
     /// 실기기에선 식사 시작 시 최초 1회 init.
@@ -356,8 +347,6 @@ final class AppState {
         mealActivity.end()
         resetIMUWaveform()
         imuWaveformSource = .idle
-        chewTimestamps.removeAll()
-        chewRatePerMinute = 0
         // 식사 종료 시 게임 진행 상태를 디스크에 한 번에 스냅샷 저장
         persistSnapshot()
 
@@ -399,8 +388,6 @@ final class AppState {
         mealActivity.end()
         resetIMUWaveform()
         imuWaveformSource = .idle
-        chewTimestamps.removeAll()
-        chewRatePerMinute = 0
         persistSnapshot()
         statsBuilder = nil
         predictor = nil
@@ -469,11 +456,6 @@ final class AppState {
     func chew() {
         chewCount += 1
         animKey &+= 1
-
-        let now = Date()
-        chewTimestamps = chewTimestamps.filter { now.timeIntervalSince($0) < 60 }
-        chewTimestamps.append(now)
-        chewRatePerMinute = chewTimestamps.count
 
         // dailyGoal 첫 도달 flag는 유지 — 향후 트로피/스트릭 trigger 등으로 활용.
         // 더 이상 여기서 도토리 보너스를 주지 않음.
@@ -569,7 +551,6 @@ final class AppState {
             }
         }
         if wasInForeground && !toForeground {
-            lastBackgroundedAt = Date()
             // 백그라운드 진입 시 안전하게 스냅샷 — 시스템 종료/메모리 회수 대비
             persistSnapshot()
         }
@@ -650,10 +631,6 @@ final class AppState {
     // MARK: - Derived
 
     var status: MoodStatus { MoodStatus.from(count: todayRealChewCount) }
-
-    var progress: Double {
-        min(1.0, max(0.0, Double(chewCount) / Double(Constants.dailyGoal)))
-    }
 
     /// 오늘 세션들의 실제 씹기 횟수 합. 식사 중에는 갱신되지 않고 세션이 끝나
     /// `todaySessions`에 추가될 때만 변한다. `chewCount`는 fake 도토리 카운터라
