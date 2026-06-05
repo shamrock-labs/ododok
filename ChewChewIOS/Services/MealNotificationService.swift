@@ -63,7 +63,11 @@ enum MealNotificationService {
             content.title = titleText
             content.body  = CaptionPool.random(from: CaptionPool.mealReminder)
             content.sound = .default
-            content.userInfo = ["deepLink": deepLinkStart]
+            content.userInfo = [
+                "deepLink": deepLinkStart,
+                "notificationKind": "mealReminder"
+            ]
+            content.categoryIdentifier = mealReminderCategoryId
 
             var components = DateComponents()
             components.hour = slot.hour
@@ -80,6 +84,11 @@ enum MealNotificationService {
     }
 
     static let deepLinkStart = "chewchew://start"
+
+    /// 끼니 리마인더 알림에 붙는 카테고리 + "식사 시작" 액션 식별자.
+    /// 이 알림은 Live Activity가 아니라 단순 푸시로 오고, 버튼으로 바로 측정을 시작한다.
+    static let mealReminderCategoryId = "MEAL_REMINDER"
+    static let startActionId = "MEAL_START"
 
     // MARK: - 측정 중단/재개 알림 (전화 인터럽트)
 
@@ -105,13 +114,27 @@ enum MealNotificationService {
             title: "그만하기",
             options: [.foreground, .destructive]
         )
-        let category = UNNotificationCategory(
+        let interruption = UNNotificationCategory(
             identifier: interruptionCategoryId,
             actions: [resume, stop],
             intentIdentifiers: [],
             options: []
         )
-        center.setNotificationCategories([category])
+
+        // 끼니 리마인더 — 알림에서 바로 측정을 시작하는 "식사 시작" 버튼.
+        let start = UNNotificationAction(
+            identifier: startActionId,
+            title: "식사 시작하기",
+            options: [.foreground]
+        )
+        let reminder = UNNotificationCategory(
+            identifier: mealReminderCategoryId,
+            actions: [start],
+            intentIdentifiers: [],
+            options: []
+        )
+
+        center.setNotificationCategories([interruption, reminder])
     }
 
     /// 전화로 측정이 멈췄을 때 "이어서 측정하시겠어요?" 알림을 즉시 띄운다.
