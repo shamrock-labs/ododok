@@ -144,6 +144,10 @@ final class AppState {
     /// HomeView의 MealToggle 강조 스타일 트리거.
     var startButtonHighlighted: Bool = false
 
+    /// 끼니 리마인더 알림의 "식사 시작" 액션에서 set. HomeView가 관찰해 시작 가드를
+    /// 그대로 태운다(모션 권한·AirPods 체크 재사용). 한 번 처리하면 false로 되돌린다.
+    var pendingMealStartRequest: Bool = false
+
     /// 앱 foreground 여부. scenePhase 관찰자가 갱신.
     /// 초기값 false — 앱 launch 시점엔 아직 .active phase가 아니므로, scenePhase가
     /// `.active`로 처음 도달할 때 `sceneDidChange(toForeground:true)`의 전이
@@ -425,7 +429,18 @@ final class AppState {
     @MainActor
     func stopMeasurementFromNotification() {
         MealNotificationService.cancelInterruptionPrompt()
-        if isEating { stopEating() }
+        guard isEating else { return }
+        if AppState.shouldConfirmShortSessionStop(startedAt: eatingStartedAt) {
+            showShortSessionConfirm = true
+            return
+        }
+        stopEating()
+    }
+
+    /// 앱 내 종료 버튼과 알림 "그만하기"가 공유하는 1분 미만 세션 확인 기준.
+    static func shouldConfirmShortSessionStop(startedAt: Date?, now: Date = Date()) -> Bool {
+        guard let startedAt else { return false }
+        return now.timeIntervalSince(startedAt) < 60
     }
 
     /// `.ended + shouldResume` 인터럽트에서 자동 재개할지 판단하는 순수 함수.
@@ -443,6 +458,14 @@ final class AppState {
             try? await Task.sleep(for: .seconds(duration))
             startButtonHighlighted = false
         }
+    }
+
+    /// 끼니 리마인더 알림의 "식사 시작" 액션 진입점. 측정 중이 아니면 시작 요청 플래그를
+    /// 올려 HomeView가 시작 가드(권한·AirPods 확인)를 태우게 한다.
+    @MainActor
+    func requestMealStart() {
+        guard !isEating else { return }
+        pendingMealStartRequest = true
     }
 
     // MARK: - Shop / Wardrobe actions
@@ -608,6 +631,15 @@ final class AppState {
     // MARK: - Derived
 
     var status: MoodStatus { MoodStatus.from(count: todayRealChewCount) }
+
+    /// 홈에 표시할 "오늘 기준" 연속 출석 일수. 저장된 `streak`은 세션 종료/포그라운드
+    /// 평가 시점에만 갱신되므로, 표시용으로는 `lastSuccessDate`와 오늘 사이의 간격으로
+    /// 현재 유효한 스트릭을 직접 계산한다. 마지막 성공이 없거나 2일 이상 비면 0(끊김).
+    var currentStreak: Int {
+        guard let last = lastSuccessDate else { return 0 }
+        // gap 0(오늘 성공)·1(어제 성공, 오늘 유지 가능)이면 아직 살아 있음. 2일+면 끊김.
+        return StreakService.effectiveGapDays(last: last, now: Date()) <= 1 ? streak : 0
+    }
 
     /// 오늘 세션들의 실제 씹기 횟수 합. 식사 중에는 갱신되지 않고 세션이 끝나
     /// `todaySessions`에 추가될 때만 변한다. 화면에 노출되는 "실제 씹기" 수치는
@@ -994,25 +1026,25 @@ final class AppState {
             try await remoteStore.insertSession(dto)
             sessionUploadStatus = .success
             pendingUpload = nil
+            // 리포트가 생성될 수 없는 세션(durationSec < 60 또는 분석 5필드 nil)은
+            // 결과·도토리·스트릭 어디에도 반영하지 않는다 — 결과를 못 보여주는 만큼 보상도 없음.
+            // 알림 '그만하기'로 끝낸 너무 짧은 세션도 홈 '그만두기'(discard)와 동일하게 무보상.
+            // (이전엔 streak이 canRender와 무관하게 적용되던 버그.) raw IMU는 이미 업로드됐고,
+            // fetchTodaySessions가 reload 시 이런 세션을 필터한다.
+            guard ReportCardModel.from(dto) != nil else { return }
+
             // 방금 INSERT한 행을 즉시 리스트에 반영 — GET 라운드트립 생략.
             // started_at 오름차순 정렬을 유지하기 위해 append (방금 종료된 세션이 가장 최신).
             todaySessions.append(dto)
             // 식사 종료 직후 ReportCardView를 sheet로 띄울 trigger. 사용자가 닫으면 nil.
             lastCompletedSession = dto
             // PRD #8: 세션 종료 적립 = estimatedTotalChews × 0.05. RewardLedger가
-            // idempotency(같은 sessionId 중복 차단) + 일일 상한 500🌰 enforcement.
-            // 리포트가 생성될 수 없는 세션(durationSec < 60 또는 분석 5필드 nil)은
-            // 사용자에게 결과를 못 보여주는 만큼 도토리도 주지 않는다.
-            let canRender = ReportCardModel.from(dto) != nil
-            let granted = canRender
-                ? RewardLedger.accrue(forSession: dto.id, chewCount: dto.estimatedTotalChews)
-                : 0
+            // idempotency(같은 sessionId 중복 차단) + 일일 상한 enforcement.
+            let granted = RewardLedger.accrue(forSession: dto.id, chewCount: dto.estimatedTotalChews)
             if granted > 0 {
                 points += granted
             }
-            // PRD #11 streak — 세션 종료 시 카운트 평가 + 마일스톤 프리즈 적립 + 2일+ 공백
-            // 시 자동 방어. foreground 진입에선 evaluate 안 함(이번 PR 단순화) — 다음
-            // 세션 종료에서 한 번에 정리.
+            // PRD #11 streak — 세션 종료 시 카운트 평가 + 마일스톤 프리즈 적립.
             let streakEvents = StreakService.evaluate(self)
             if granted > 0 || !streakEvents.isEmpty {
                 persistSnapshot()
