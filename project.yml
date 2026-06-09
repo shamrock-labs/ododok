@@ -22,6 +22,8 @@ targets:
     dependencies:
       - target: OdodokWidgets
         embed: true
+      - target: OdodokNotificationContent
+        embed: true
     configFiles:
       Debug: Config/Secrets.xcconfig
       Release: Config/Secrets.xcconfig
@@ -50,7 +52,7 @@ targets:
         NSSupportsLiveActivities: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.sungho.ododok
+        PRODUCT_BUNDLE_IDENTIFIER: $(ODODOK_BUNDLE_PREFIX).ododok
         TARGETED_DEVICE_FAMILY: "1"
         ENABLE_PREVIEWS: YES
         IPHONEOS_DEPLOYMENT_TARGET: "17.0"
@@ -63,6 +65,9 @@ targets:
     sources:
       - OdodokWidgets
       - path: ChewChewIOS/Models/MealActivityAttributes.swift
+    configFiles:
+      Debug: Config/Secrets.xcconfig
+      Release: Config/Secrets.xcconfig
     info:
       path: OdodokWidgets/Info.plist
       properties:
@@ -71,9 +76,38 @@ targets:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.sungho.ododok.OdodokWidgets
+        PRODUCT_BUNDLE_IDENTIFIER: $(ODODOK_BUNDLE_PREFIX).ododok.OdodokWidgets
         TARGETED_DEVICE_FAMILY: "1"
         IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+
+  OdodokNotificationContent:
+    type: app-extension
+    platform: iOS
+    sources:
+      - OdodokNotificationContent
+      - OdodokWidgets/Assets.xcassets
+    configFiles:
+      Debug: Config/Secrets.xcconfig
+      Release: Config/Secrets.xcconfig
+    info:
+      path: OdodokNotificationContent/Info.plist
+      properties:
+        CFBundleDisplayName: 오도독
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.content-extension
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationViewController
+          NSExtensionAttributes:
+            UNNotificationExtensionCategory:
+              - MEAL_REMINDER
+              - MEAL_INTERRUPTION
+            UNNotificationExtensionDefaultContentHidden: true
+            UNNotificationExtensionInitialContentSizeRatio: 0.56
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(ODODOK_BUNDLE_PREFIX).ododok.OdodokNotificationContent
+        TARGETED_DEVICE_FAMILY: "1"
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+        APPLICATION_EXTENSION_API_ONLY: YES
 
   ChewChewIOSTests:
     type: bundle.unit-test
@@ -101,3 +135,24 @@ targets:
         TEST_TARGET_NAME: ChewChewIOS
         GENERATE_INFOPLIST_FILE: YES
         IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+
+# 앱 스킴을 명시적으로 정의해 항상 shared 스킴(xcshareddata)으로 생성한다.
+# 위젯 익스텐션은 단독 실행이 안 되므로(Run 시 SpringBoard 에러) 앱 스킴만 둔다.
+# xcodegen 재생성·Xcode 재오픈에도 ChewChewIOS 스킴이 안정적으로 보이게 하기 위함.
+schemes:
+  ChewChewIOS:
+    build:
+      targets:
+        ChewChewIOS: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - ChewChewIOSTests
+    profile:
+      config: Release
+    analyze:
+      config: Debug
+    archive:
+      config: Release

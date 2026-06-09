@@ -13,10 +13,8 @@ struct ProfileDTO: Codable, Equatable {
 /// snake_case ↔ camelCase 매핑은 PostgREST 호출부에서 keyEncodingStrategy로 처리한다.
 struct UserStatsDTO: Codable, Equatable {
     var deviceId: String
-    var chewCount: Int
     var streak: Int
     var points: Int
-    var goalAlreadyHit: Bool
     var owned: [String]
     var equipped: EquippedDTO
     var ownedAcornPacks: [String: Int]

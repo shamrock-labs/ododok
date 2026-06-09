@@ -72,4 +72,24 @@ final class REQ13MealPushTests: XCTestCase {
         state.requestStartHighlight(duration: 60) // 長 duration → 테스트 중 false로 안 바뀜
         XCTAssertTrue(state.startButtonHighlighted)
     }
+
+    // MARK: - Notification stop routing
+
+    func testNotificationStop_usesShortSessionConfirmationForSubMinuteMeal() {
+        let state = AppState(remoteStore: NoopRemoteStore())
+        state.startEating()
+
+        state.stopMeasurementFromNotification()
+
+        XCTAssertTrue(state.isEating)
+        XCTAssertTrue(state.showShortSessionConfirm)
+    }
+
+    func testShouldConfirmStopForShortSession_matchesInAppStopThreshold() {
+        let startedAt = Date(timeIntervalSinceReferenceDate: 1_000)
+
+        XCTAssertTrue(AppState.shouldConfirmShortSessionStop(startedAt: startedAt, now: startedAt.addingTimeInterval(59)))
+        XCTAssertFalse(AppState.shouldConfirmShortSessionStop(startedAt: startedAt, now: startedAt.addingTimeInterval(60)))
+        XCTAssertFalse(AppState.shouldConfirmShortSessionStop(startedAt: nil, now: startedAt))
+    }
 }

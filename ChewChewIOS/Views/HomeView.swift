@@ -31,6 +31,19 @@ struct HomeView: View {
             nowTick = newDate
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .onChange(of: state.pendingMealStartRequest) { _, requested in
+            // 끼니 리마인더 알림의 "식사 시작" 액션 — 시작 가드를 그대로 태운다.
+            guard requested else { return }
+            state.pendingMealStartRequest = false
+            if !state.isEating { handleMealToggle() }
+        }
+        .onAppear {
+            // 콜드스타트로 열려 onChange를 놓친 경우 보완.
+            if state.pendingMealStartRequest {
+                state.pendingMealStartRequest = false
+                if !state.isEating { handleMealToggle() }
+            }
+        }
         .sensoryFeedback(.impact(weight: .medium), trigger: hapticTrigger)
         .sheet(isPresented: $showMealReminderSettings) {
             MealReminderSettingsView()
@@ -146,7 +159,7 @@ struct HomeView: View {
         HStack(spacing: 14) {
             statCard(
                 label: state.freezeInventory > 0 ? "연속 출석 · 🛡️\(state.freezeInventory)" : "연속 출석",
-                value: "\(state.streak)일째",
+                value: "\(state.currentStreak)일째",
                 iconBG: Color.blush100
             ) {
                 Text("🔥").font(.appFont(.regular, size: 26))
@@ -214,7 +227,10 @@ struct HomeView: View {
                         .rotationEffect(.degrees(-90))
                 }
                 SquirrelView(
-                    mood: state.isEating ? state.status.mood : .happy,
+                    // 식사 중엔 isEating이 다람이를 DaramEating(우물거리는 모습)으로 바꾸고
+                    // animKey 펄스가 씹는 모션을 준다. status.mood는 실시간 값이 아니라(완료 세션
+                    // 기준) 식사 중엔 0=sleepy로 떨어져 💤이 끼므로, 여기선 happy로 고정한다.
+                    mood: .happy,
                     hat: state.equippedHatItem,
                     glasses: state.equippedGlassesItem,
                     acc: state.equippedAccItem,
@@ -227,7 +243,7 @@ struct HomeView: View {
             .frame(height: 246)
 
             VStack(spacing: 4) {
-                Text(state.status.title)
+                Text(state.isEating ? "맛있게 먹는 중이에요" : state.status.title)
                     .font(.appFont(.bold, size: 19))
                     .foregroundStyle(Color.ink800)
                 if !state.isEating {

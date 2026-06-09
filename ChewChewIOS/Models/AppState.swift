@@ -43,11 +43,10 @@ enum IMUWaveformSource: Equatable {
 
 /// 앱의 글로벌 상태 + 식사 세션 관리.
 ///
-/// 화면의 `chewCount` 카운터는 사실 도토리(in-app 화폐) 카운터로, 식사 동안 가짜 Timer가
-/// 0.85초마다 `chew()`를 호출해 데모용으로 굴린다 (실제 씹기 횟수와 무관).
 /// 실 씹기 검출은 `ChewingPredictor`가 IMU sample을 받아 `SessionStatsBuilder`에 누적하고,
 /// 세션 종료 시 `chewing_session` 행의 분석 5필드로 저장 — Tracking 탭의 "오늘의 식사 기록"
-/// 에서 사후 확인.
+/// 에서 사후 확인. 식사 중 다람이의 씹기 모션은 `animKey`를 일정 주기로 올려 구동하며,
+/// 실제 씹기 검출과는 무관한 화면 연출이다.
 @Observable
 final class AppState {
     private static let maxIMUWaveformSamples = 54
@@ -61,9 +60,10 @@ final class AppState {
     // 새 사용자에게 "이미 누군가 사용한 듯한" 느낌을 주고, `dailyGoal` 도달 보너스가
     // 첫 식사에서 즉시 트리거되는 부작용도 있어 제거.
 
-    var chewCount: Int = 0
     var streak: Int = 0
     var points: Int = 0
+    /// 다람이 씹기 모션 트리거 — 식사 중 펄스 타이머가 일정 주기로 올려 SquirrelView가
+    /// 한 번 우물거리는 bounce를 재생한다. 실제 씹기 횟수가 아니라 화면 연출용 카운터.
     var animKey: Int = 0
 
     /// PRD #11 streak 상태 — 프리즈 인벤토리 (0~3) + 마지막 성공 자정 시각.
@@ -128,12 +128,6 @@ final class AppState {
     /// 식사 시작 시각. 통계/지속시간 표시 등에 사용.
     @ObservationIgnored private(set) var eatingStartedAt: Date?
 
-    /// 최근 60초 안의 chew 타임스탬프 (분당 저작 횟수 계산용).
-    @ObservationIgnored private var chewTimestamps: [Date] = []
-
-    /// 분당 저작 횟수. chew() 호출 시 갱신.
-    var chewRatePerMinute: Int = 0
-
     /// 화면 표시용 최근 IMU 에너지 샘플. 원시 IMU 데이터는 저장하지 않음.
     var imuWaveformSamples: [Double] = AppState.idleIMUWaveformSamples
     var imuWaveformSource: IMUWaveformSource = .idle
@@ -150,22 +144,22 @@ final class AppState {
     /// HomeView의 MealToggle 강조 스타일 트리거.
     var startButtonHighlighted: Bool = false
 
+    /// 끼니 리마인더 알림의 "식사 시작" 액션에서 set. HomeView가 관찰해 시작 가드를
+    /// 그대로 태운다(모션 권한·AirPods 체크 재사용). 한 번 처리하면 false로 되돌린다.
+    var pendingMealStartRequest: Bool = false
+
     /// 앱 foreground 여부. scenePhase 관찰자가 갱신.
     /// 초기값 false — 앱 launch 시점엔 아직 .active phase가 아니므로, scenePhase가
     /// `.active`로 처음 도달할 때 `sceneDidChange(toForeground:true)`의 전이
     /// 조건(`!wasInForeground && toForeground`)이 성립해 일일 출석 보너스가 트리거된다.
     var isInForeground: Bool = false
 
-    /// 마지막으로 background로 전환된 시각. 백그라운드 체류 시간 표시용.
-    var lastBackgroundedAt: Date?
-
     /// 시뮬레이터에선 첫 접근을 막아 CoreMotion 권한 다이얼로그가 안 뜨도록 lazy.
     /// 실기기에선 식사 시작 시 최초 1회 init.
     @ObservationIgnored private lazy var headphoneMotionService = HeadphoneMotionService()
-    @ObservationIgnored private var fakeChewTimer: Timer?
+    @ObservationIgnored private var chewPulseTimer: Timer?
     @ObservationIgnored private var demoIMUWaveformTimer: Timer?
     @ObservationIgnored private var imuWaveformPhase: Double = 0
-    @ObservationIgnored private var goalAlreadyHit = false
 
     /// 식사 세션 동안 백그라운드 IMU 수집이 끊기지 않도록 무음 오디오를 굴려 앱을 깨워두는 keep-alive.
     /// 식사 종료 시 stop. 시뮬레이터에선 노옵 (`BackgroundAudioKeepAlive` 내부 가드).
@@ -288,9 +282,9 @@ final class AppState {
         // 모델 로드 실패 시 predictor=nil이면 stats만 비고 나머지는 정상 동작.
         predictor = try? ChewingPredictor()
         statsBuilder = SessionStatsBuilder()
-        // 가짜 Timer는 식사 내내 굴림 — 도토리 카운터(`chewCount`)는 실 씹기와 무관한
-        // in-app 화폐 기능이라 ML 추론 결과를 카운터에 반영하지 않음.
-        startFakeChewLoop()
+        // 다람이 씹기 모션용 고정 주기 펄스 — 식사 내내 일정 간격으로 animKey만 올려
+        // 화면 속 다람이가 자연스럽게 우물거리게 한다. 실제 씹기 검출과는 무관.
+        startChewAnimationLoop()
 
         // 잠금 화면/홈 화면으로 빠져도 AirPods IMU 콜백이 끊기지 않도록 ambient 오디오 keep-alive 활성.
         // 시뮬레이터에선 내부적으로 노옵.
@@ -342,7 +336,7 @@ final class AppState {
         isEating = false
         eatingStartedAt = nil
         stopHeadphoneMotionLoop()
-        stopFakeChewLoop()
+        stopChewAnimationLoop()
         stopDemoIMUWaveformLoop()
         // 식사가 끝나면 더 이상 백그라운드 wake가 필요 없으므로 즉시 stop —
         // ambient 오디오 세션이 살아있는 동안엔 다른 앱(타이머/시스템 사운드 등)
@@ -356,8 +350,6 @@ final class AppState {
         mealActivity.end()
         resetIMUWaveform()
         imuWaveformSource = .idle
-        chewTimestamps.removeAll()
-        chewRatePerMinute = 0
         // 식사 종료 시 게임 진행 상태를 디스크에 한 번에 스냅샷 저장
         persistSnapshot()
 
@@ -388,7 +380,7 @@ final class AppState {
         isEating = false
         eatingStartedAt = nil
         stopHeadphoneMotionLoop()
-        stopFakeChewLoop()
+        stopChewAnimationLoop()
         stopDemoIMUWaveformLoop()
         backgroundKeepAlive.onInterrupt = nil
         backgroundKeepAlive.stop()
@@ -399,8 +391,6 @@ final class AppState {
         mealActivity.end()
         resetIMUWaveform()
         imuWaveformSource = .idle
-        chewTimestamps.removeAll()
-        chewRatePerMinute = 0
         persistSnapshot()
         statsBuilder = nil
         predictor = nil
@@ -439,7 +429,18 @@ final class AppState {
     @MainActor
     func stopMeasurementFromNotification() {
         MealNotificationService.cancelInterruptionPrompt()
-        if isEating { stopEating() }
+        guard isEating else { return }
+        if AppState.shouldConfirmShortSessionStop(startedAt: eatingStartedAt) {
+            showShortSessionConfirm = true
+            return
+        }
+        stopEating()
+    }
+
+    /// 앱 내 종료 버튼과 알림 "그만하기"가 공유하는 1분 미만 세션 확인 기준.
+    static func shouldConfirmShortSessionStop(startedAt: Date?, now: Date = Date()) -> Bool {
+        guard let startedAt else { return false }
+        return now.timeIntervalSince(startedAt) < 60
     }
 
     /// `.ended + shouldResume` 인터럽트에서 자동 재개할지 판단하는 순수 함수.
@@ -459,27 +460,12 @@ final class AppState {
         }
     }
 
-    // MARK: - Chew (한 입 = 한 번의 저작 신호)
-
-    /// 한 번의 chew 이벤트. 추후 실제 IMU 감지기가 호출할 진입점.
-    /// 도토리(`points`) 적립은 이 함수에서 분리됨 — PRD #8의 보상 정책(일일 출석 +2🌰,
-    /// 세션 종료 시 `estimatedTotalChews × 0.05`, 일일 상한 500🌰)이 fake Timer로 굴러
-    /// 실 씹기와 무관하게 자동 누적되는 옛 동작과 어긋났던 문제 해소. 실제 도토리 적립은
-    /// `RewardLedger`(commit ③)에서 세션 종료 시 / foreground 진입 시 처리.
-    func chew() {
-        chewCount += 1
-        animKey &+= 1
-
-        let now = Date()
-        chewTimestamps = chewTimestamps.filter { now.timeIntervalSince($0) < 60 }
-        chewTimestamps.append(now)
-        chewRatePerMinute = chewTimestamps.count
-
-        // dailyGoal 첫 도달 flag는 유지 — 향후 트로피/스트릭 trigger 등으로 활용.
-        // 더 이상 여기서 도토리 보너스를 주지 않음.
-        if chewCount >= Constants.dailyGoal && !goalAlreadyHit {
-            goalAlreadyHit = true
-        }
+    /// 끼니 리마인더 알림의 "식사 시작" 액션 진입점. 측정 중이 아니면 시작 요청 플래그를
+    /// 올려 HomeView가 시작 가드(권한·AirPods 확인)를 태우게 한다.
+    @MainActor
+    func requestMealStart() {
+        guard !isEating else { return }
+        pendingMealStartRequest = true
     }
 
     // MARK: - Shop / Wardrobe actions
@@ -569,7 +555,6 @@ final class AppState {
             }
         }
         if wasInForeground && !toForeground {
-            lastBackgroundedAt = Date()
             // 백그라운드 진입 시 안전하게 스냅샷 — 시스템 종료/메모리 회수 대비
             persistSnapshot()
         }
@@ -603,7 +588,6 @@ final class AppState {
     func eraseAllUserData() async {
         // 로컬 인메모리 상태 리셋 (reset()과 동일 범위)
         stopEating()
-        chewCount = 0
         streak = 0
         points = 0
         animKey = 0
@@ -611,7 +595,6 @@ final class AppState {
         lastSuccessDate = nil
         resetIMUWaveform()
         imuWaveformSource = .idle
-        goalAlreadyHit = false
         owned = []
         equipped = Equipped()
         ownedAcornPacks = [:]
@@ -627,13 +610,11 @@ final class AppState {
 
     func reset() {
         stopEating()
-        chewCount = 0
         streak = 0
         points = 0
         animKey = 0
         resetIMUWaveform()
         imuWaveformSource = .idle
-        goalAlreadyHit = false
         owned = []
         equipped = Equipped()
         ownedAcornPacks = [:]
@@ -651,13 +632,18 @@ final class AppState {
 
     var status: MoodStatus { MoodStatus.from(count: todayRealChewCount) }
 
-    var progress: Double {
-        min(1.0, max(0.0, Double(chewCount) / Double(Constants.dailyGoal)))
+    /// 홈에 표시할 "오늘 기준" 연속 출석 일수. 저장된 `streak`은 세션 종료/포그라운드
+    /// 평가 시점에만 갱신되므로, 표시용으로는 `lastSuccessDate`와 오늘 사이의 간격으로
+    /// 현재 유효한 스트릭을 직접 계산한다. 마지막 성공이 없거나 2일 이상 비면 0(끊김).
+    var currentStreak: Int {
+        guard let last = lastSuccessDate else { return 0 }
+        // gap 0(오늘 성공)·1(어제 성공, 오늘 유지 가능)이면 아직 살아 있음. 2일+면 끊김.
+        return StreakService.effectiveGapDays(last: last, now: Date()) <= 1 ? streak : 0
     }
 
     /// 오늘 세션들의 실제 씹기 횟수 합. 식사 중에는 갱신되지 않고 세션이 끝나
-    /// `todaySessions`에 추가될 때만 변한다. `chewCount`는 fake 도토리 카운터라
-    /// 화면에 노출되는 "실제 씹기" 수치는 반드시 이 값을 쓴다.
+    /// `todaySessions`에 추가될 때만 변한다. 화면에 노출되는 "실제 씹기" 수치는
+    /// 항상 이 값을 쓴다.
     var todayRealChewCount: Int {
         todaySessions.reduce(0) { $0 + ($1.estimatedTotalChews ?? 0) }
     }
@@ -675,18 +661,20 @@ final class AppState {
         isEating && (imuWaveformSource.usesRealMotion || imuWaveformSource == .demo)
     }
 
-    // MARK: - Fake chew loop (백엔드 IMU 붙으면 이 함수만 교체)
+    // MARK: - Chew animation pulse (다람이 씹기 모션용 고정 주기 틱)
 
-    private func startFakeChewLoop() {
-        stopFakeChewLoop()
-        fakeChewTimer = Timer.scheduledTimer(withTimeInterval: 0.85, repeats: true) { [weak self] _ in
-            self?.chew()
+    /// 식사 중 다람이가 자연스럽게 우물거리도록 일정 간격으로 `animKey`를 올린다.
+    /// SquirrelView가 `animKey` 변화를 받아 한 번 씹는 bounce를 재생 — 실제 씹기 검출과 무관.
+    private func startChewAnimationLoop() {
+        stopChewAnimationLoop()
+        chewPulseTimer = Timer.scheduledTimer(withTimeInterval: 0.85, repeats: true) { [weak self] _ in
+            self?.animKey &+= 1
         }
     }
 
-    private func stopFakeChewLoop() {
-        fakeChewTimer?.invalidate()
-        fakeChewTimer = nil
+    private func stopChewAnimationLoop() {
+        chewPulseTimer?.invalidate()
+        chewPulseTimer = nil
     }
 
     // MARK: - Motion permission guard (REQ-01)
@@ -780,7 +768,7 @@ final class AppState {
             recorder.updateSensorLocation(sample.sensorLocation)
 
             // ML 추론은 별도 Task로 — actor 호출이 sample 콜백 빈도(50Hz)를 막지 않도록.
-            // 결과는 통계 누적용으로만 사용; 화면 카운터(`chewCount` = 도토리)는 절대 건드리지 않음.
+            // 결과는 세션 통계 누적용으로만 사용한다.
             if let predictor = self.predictor, let statsBuilder = self.statsBuilder {
                 Task {
                     guard let prediction = await predictor.feed(row) else { return }
@@ -848,11 +836,11 @@ final class AppState {
     /// v2 — `owned`/`equipped`/`ownedAcornPacks` 추가.
     /// v3 — PRD #11 streak: `freezeInventory`/`lastSuccessDate` 추가. 모두 옵셔널이라
     /// 옛 스냅샷을 디코드하면 자동으로 nil → 기본값(0/nil)으로 초기화된다.
+    /// v4 — 미사용 가짜 카운터 `chewCount`/`goalAlreadyHit` 제거. 옛 스냅샷에 남아 있어도
+    /// 디코드 시 미지 키로 무시돼 하위호환 문제 없음.
     private struct PersistedSnapshot: Codable {
-        let chewCount: Int
         let streak: Int
         let points: Int
-        let goalAlreadyHit: Bool
         let savedAt: Date
         var owned: [String]?
         var equipped: Equipped?
@@ -864,10 +852,8 @@ final class AppState {
     func persistSnapshot() {
         let now = Date()
         let snapshot = PersistedSnapshot(
-            chewCount: chewCount,
             streak: streak,
             points: points,
-            goalAlreadyHit: goalAlreadyHit,
             savedAt: now,
             owned: Array(owned),
             equipped: equipped,
@@ -901,10 +887,8 @@ final class AppState {
             let data = UserDefaults.standard.data(forKey: Self.persistenceKey),
             let snapshot = try? JSONDecoder().decode(PersistedSnapshot.self, from: data)
         else { return }
-        chewCount = snapshot.chewCount
         streak = snapshot.streak
         points = snapshot.points
-        goalAlreadyHit = snapshot.goalAlreadyHit
         // v2 옵셔널 필드 — v1 스냅샷에선 nil이라 빈 상태가 됨
         if let savedOwned = snapshot.owned {
             owned = Set(savedOwned)
@@ -947,10 +931,8 @@ final class AppState {
     private func makeUserStatsDTO(savedAt: Date) -> UserStatsDTO {
         UserStatsDTO(
             deviceId: DeviceIdentity.shared,
-            chewCount: chewCount,
             streak: streak,
             points: points,
-            goalAlreadyHit: goalAlreadyHit,
             owned: Array(owned),
             equipped: UserStatsDTO.EquippedDTO(
                 hat: equipped.hat,
@@ -985,10 +967,8 @@ final class AppState {
     /// DB에서 받은 UserStatsDTO를 in-memory 상태에 적용.
     /// freezeInventory / lastSuccessDate는 DTO에 없어 건드리지 않음 (DTO 확장은 별도 PR).
     private func applyRemoteSnapshot(_ remote: UserStatsDTO) {
-        chewCount = remote.chewCount
         streak = remote.streak
         points = remote.points
-        goalAlreadyHit = remote.goalAlreadyHit
         owned = Set(remote.owned)
         equipped = Equipped(hat: remote.equipped.hat, glasses: remote.equipped.glasses, acc: remote.equipped.acc)
         ownedAcornPacks = remote.ownedAcornPacks
@@ -998,10 +978,8 @@ final class AppState {
     /// freezeInventory / lastSuccessDate는 현재 in-memory 값을 그대로 유지.
     private func writeSnapshotToUserDefaults(savedAt: Date) {
         let snapshot = PersistedSnapshot(
-            chewCount: chewCount,
             streak: streak,
             points: points,
-            goalAlreadyHit: goalAlreadyHit,
             savedAt: savedAt,
             owned: Array(owned),
             equipped: equipped,
@@ -1048,25 +1026,25 @@ final class AppState {
             try await remoteStore.insertSession(dto)
             sessionUploadStatus = .success
             pendingUpload = nil
+            // 리포트가 생성될 수 없는 세션(durationSec < 60 또는 분석 5필드 nil)은
+            // 결과·도토리·스트릭 어디에도 반영하지 않는다 — 결과를 못 보여주는 만큼 보상도 없음.
+            // 알림 '그만하기'로 끝낸 너무 짧은 세션도 홈 '그만두기'(discard)와 동일하게 무보상.
+            // (이전엔 streak이 canRender와 무관하게 적용되던 버그.) raw IMU는 이미 업로드됐고,
+            // fetchTodaySessions가 reload 시 이런 세션을 필터한다.
+            guard ReportCardModel.from(dto) != nil else { return }
+
             // 방금 INSERT한 행을 즉시 리스트에 반영 — GET 라운드트립 생략.
             // started_at 오름차순 정렬을 유지하기 위해 append (방금 종료된 세션이 가장 최신).
             todaySessions.append(dto)
             // 식사 종료 직후 ReportCardView를 sheet로 띄울 trigger. 사용자가 닫으면 nil.
             lastCompletedSession = dto
             // PRD #8: 세션 종료 적립 = estimatedTotalChews × 0.05. RewardLedger가
-            // idempotency(같은 sessionId 중복 차단) + 일일 상한 500🌰 enforcement.
-            // 리포트가 생성될 수 없는 세션(durationSec < 60 또는 분석 5필드 nil)은
-            // 사용자에게 결과를 못 보여주는 만큼 도토리도 주지 않는다.
-            let canRender = ReportCardModel.from(dto) != nil
-            let granted = canRender
-                ? RewardLedger.accrue(forSession: dto.id, chewCount: dto.estimatedTotalChews)
-                : 0
+            // idempotency(같은 sessionId 중복 차단) + 일일 상한 enforcement.
+            let granted = RewardLedger.accrue(forSession: dto.id, chewCount: dto.estimatedTotalChews)
             if granted > 0 {
                 points += granted
             }
-            // PRD #11 streak — 세션 종료 시 카운트 평가 + 마일스톤 프리즈 적립 + 2일+ 공백
-            // 시 자동 방어. foreground 진입에선 evaluate 안 함(이번 PR 단순화) — 다음
-            // 세션 종료에서 한 번에 정리.
+            // PRD #11 streak — 세션 종료 시 카운트 평가 + 마일스톤 프리즈 적립.
             let streakEvents = StreakService.evaluate(self)
             if granted > 0 || !streakEvents.isEmpty {
                 persistSnapshot()

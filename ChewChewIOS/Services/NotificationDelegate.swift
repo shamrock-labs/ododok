@@ -41,6 +41,8 @@ final class NotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotific
             // appState가 주입되기 전(콜드 스타트 직후) 탭은 무시.
             guard let state = appState else { return }
             switch action {
+            case MealNotificationService.startActionId:
+                state.requestMealStart()
             case MealNotificationService.resumeActionId:
                 state.resumeMeasurement()
             case MealNotificationService.stopActionId:
@@ -51,7 +53,8 @@ final class NotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotific
                 case MealNotificationService.deepLinkResume:
                     state.resumeMeasurement()
                 case MealNotificationService.deepLinkStart:
-                    state.requestStartHighlight()
+                    // 끼니 리마인더 본문 탭 — 강조만 하지 않고 바로 측정 시작(시작 가드 경유).
+                    state.requestMealStart()
                 default:
                     break
                 }

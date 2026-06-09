@@ -231,4 +231,45 @@ final class StreakServiceTests: XCTestCase {
         // streak count is NOT touched by foreground defense (next session sets to 1)
         XCTAssertEqual(state.streak, 5)
     }
+
+    // MARK: - currentStreak (홈 표시용 "오늘 기준" 값)
+
+    func testCurrentStreak_zero_whenNoSuccessEver() {
+        let state = makeState()
+        state.lastSuccessDate = nil
+        state.streak = 5
+        XCTAssertEqual(state.currentStreak, 0)
+    }
+
+    func testCurrentStreak_showsCount_whenSuccessToday() {
+        let state = makeState()
+        state.streak = 4
+        state.lastSuccessDate = Date()
+        XCTAssertEqual(state.currentStreak, 4)
+    }
+
+    func testCurrentStreak_showsCount_whenSuccessYesterday() {
+        let state = makeState()
+        state.streak = 4
+        state.lastSuccessDate = date(daysAgo: 1)
+        XCTAssertEqual(state.currentStreak, 4, "어제 성공이면 오늘 유지 가능 — 아직 살아 있음")
+    }
+
+    func testCurrentStreak_zero_whenBrokenTwoDayGap() {
+        let state = makeState()
+        state.streak = 9
+        state.lastSuccessDate = date(daysAgo: 2)
+        XCTAssertEqual(state.currentStreak, 0, "2일 이상 비면 오늘 기준 끊긴 것으로 0")
+    }
+
+    func testCurrentStreak_zero_afterForegroundDefenseReset() {
+        // 회귀: foreground defense가 streak count(=5)를 안 건드려도 표시값은 0이어야 한다
+        let state = makeState()
+        state.streak = 5
+        state.freezeInventory = 0
+        state.lastSuccessDate = date(daysAgo: 3)
+        _ = StreakService.evaluateForegroundDefense(state)   // lastSuccessDate → nil
+        XCTAssertEqual(state.streak, 5)                       // 저장값은 그대로
+        XCTAssertEqual(state.currentStreak, 0)               // 표시값은 끊김
+    }
 }

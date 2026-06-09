@@ -35,7 +35,7 @@ jobs:
       - name: Stub Secrets.xcconfig
         run: |
           mkdir -p Config
-          [ -f Config/Secrets.xcconfig ] || echo "INSFORGE_API_KEY = ik_dummy_for_ci_build_only" > Config/Secrets.xcconfig
+          [ -f Config/Secrets.xcconfig ] || printf 'INSFORGE_API_KEY = ik_dummy_for_ci_build_only\nODODOK_BUNDLE_PREFIX = com.sungho\n' > Config/Secrets.xcconfig
 
       - name: Generate Xcode project
         run: xcodegen generate

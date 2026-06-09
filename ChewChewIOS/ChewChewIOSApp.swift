@@ -63,6 +63,8 @@ struct ChewChewIOSApp: App {
             appState.requestStartHighlight()
         case "resume":
             appState.resumeMeasurement()
+        case "stop":
+            appState.stopMeasurementFromNotification()
         default:
             break
         }
