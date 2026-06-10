@@ -10,6 +10,9 @@ struct SpringConfig {
 /// Spring REST 백엔드 구현체.
 ///
 /// InsForge(PostgREST)와의 주요 차이점:
+///   - 공통 응답 봉투 — 성공 응답은 `{code, message, result}` 형태이고, 실제 데이터는
+///     `result`에 들어 있다. 조회 메서드는 `BaseResponse<T>`로 디코드한 뒤 `result`를 꺼낸다.
+///     에러는 `{code, message}` 봉투 + 4xx/5xx 상태코드로 내려온다.
 ///   - JSON key 변환 없음 — DTO 필드명(camelCase)이 wire format 그대로.
 ///   - 인증 헤더 없음 — 모든 요청에 X-Device-Id 헤더만 첨부.
 ///   - GET retry 없음 — Tailscale IP 직접 접속이라 IPv6 cold-start 회피 불필요.
@@ -23,6 +26,14 @@ final class SpringRemoteStore: RemoteStore {
     private let session: URLSession
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
+
+    /// 서버 공통 응답 봉투. 성공 응답의 실제 데이터는 `result`에 담긴다.
+    /// 본문이 없는 성공(삭제 등)은 result가 생략되므로 옵셔널로 둔다.
+    private struct BaseResponse<T: Decodable>: Decodable {
+        let code: Int
+        let message: String
+        let result: T?
+    }
 
     init(config: SpringConfig, session: URLSession = .shared) {
         self.config = config
@@ -53,19 +64,19 @@ final class SpringRemoteStore: RemoteStore {
     func upsertProfile(_ profile: ProfileDTO) async throws {
         var req = jsonRequest(method: "PUT", path: "/v1/me/profile", deviceId: profile.deviceId)
         req.httpBody = try encoder.encode(profile)
-        _ = try await sendExpectingStatus(req, expected: 200)
+        _ = try await sendExpectingSuccess(req)
     }
 
-    /// Spring은 신규 디바이스에도 200 + displayName=null 반환.
+    /// Spring은 신규 디바이스에도 200 + result.displayName=null 반환.
     /// displayName이 null(nil)인 경우 nil을 돌려줘 InsForge의 "row 없음 = nil" 계약을 유지한다.
     /// AppState.fetchAndApplyDisplayName은 nil/빈 문자열 모두 온보딩 미완료로 간주하므로
     /// 동작이 동일하다.
     func fetchProfile(deviceId: String) async throws -> ProfileDTO? {
         let req = jsonRequest(method: "GET", path: "/v1/me/profile", deviceId: deviceId)
-        let data = try await sendExpectingStatus(req, expected: 200)
-        let dto = try decoder.decode(ProfileDTO.self, from: data)
-        // displayName == nil → 신규 디바이스, 호출처가 기대하는 "등록 전" 의미로 nil 반환.
-        guard dto.displayName != nil else { return nil }
+        let data = try await sendExpectingSuccess(req)
+        let envelope = try decoder.decode(BaseResponse<ProfileDTO>.self, from: data)
+        // result 없음 또는 displayName == nil → 신규 디바이스, 호출처가 기대하는 "등록 전" 의미로 nil.
+        guard let dto = envelope.result, dto.displayName != nil else { return nil }
         return dto
     }
 
@@ -74,10 +85,10 @@ final class SpringRemoteStore: RemoteStore {
     func upsertUserStats(_ stats: UserStatsDTO) async throws {
         var req = jsonRequest(method: "PUT", path: "/v1/me/stats", deviceId: stats.deviceId)
         req.httpBody = try encoder.encode(stats)
-        _ = try await sendExpectingStatus(req, expected: 200)
+        _ = try await sendExpectingSuccess(req)
     }
 
-    /// 404 → nil (첫 기기 등록 전 stats 없음은 정상).
+    /// 404 → nil (첫 기기 등록 전 stats 없음은 정상). 200 → 봉투의 result 디코드.
     func fetchUserStats(deviceId: String) async throws -> UserStatsDTO? {
         let req = jsonRequest(method: "GET", path: "/v1/me/stats", deviceId: deviceId)
         let (data, response) = try await session.data(for: req)
@@ -88,14 +99,14 @@ final class SpringRemoteStore: RemoteStore {
         guard (200..<300).contains(http.statusCode) else {
             throw RemoteStoreError.http(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
         }
-        return try decoder.decode(UserStatsDTO.self, from: data)
+        return try decoder.decode(BaseResponse<UserStatsDTO>.self, from: data).result
     }
 
     // MARK: - user data
 
     func deleteUserData(deviceId: String) async throws {
         let req = jsonRequest(method: "DELETE", path: "/v1/me", deviceId: deviceId)
-        _ = try await sendExpectingStatus(req, expected: 204)
+        _ = try await sendExpectingSuccess(req)
     }
 
     // MARK: - chewing_session
@@ -103,12 +114,13 @@ final class SpringRemoteStore: RemoteStore {
     func insertSession(_ session: ChewingSessionDTO) async throws {
         var req = jsonRequest(method: "POST", path: "/v1/me/sessions", deviceId: session.deviceId)
         req.httpBody = try encoder.encode(session)
-        _ = try await sendExpectingStatus(req, expected: 201)
+        // 신규 저장은 201, 같은 id 재전송(멱등)은 200 — 둘 다 성공으로 처리.
+        _ = try await sendExpectingSuccess(req)
     }
 
     func fetchChewingSessions(deviceId: String, since: Date, until: Date?) async throws -> [ChewingSessionDTO] {
         let sinceIso = Self.isoFormatter.string(from: since)
-        // since/until 값에 +, : が含まれるため URL エンコード必須.
+        // since/until 값에 +, : 가 포함되어 URL 인코딩 필수.
         guard let encodedSince = sinceIso.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
             throw RemoteStoreError.http(status: -1, body: "failed to percent-encode since value")
         }
@@ -121,19 +133,20 @@ final class SpringRemoteStore: RemoteStore {
             path += "&until=\(encodedUntil)"
         }
         let req = jsonRequest(method: "GET", path: path, deviceId: deviceId)
-        let data = try await sendExpectingStatus(req, expected: 200)
-        return try decoder.decode([ChewingSessionDTO].self, from: data)
+        let data = try await sendExpectingSuccess(req)
+        let envelope = try decoder.decode(BaseResponse<[ChewingSessionDTO]>.self, from: data)
+        return envelope.result ?? []
     }
 
     func deleteChewingSession(id: UUID, deviceId: String) async throws {
         let req = jsonRequest(method: "DELETE", path: "/v1/me/sessions/\(id.uuidString.lowercased())", deviceId: deviceId)
-        // device 불일치도 204 반환 — 멱등 설계.
-        _ = try await sendExpectingStatus(req, expected: 204)
+        // device 불일치도 성공(204→200) 반환 — 멱등 설계.
+        _ = try await sendExpectingSuccess(req)
     }
 
     func deleteAllChewingSessions(deviceId: String) async throws {
         let req = jsonRequest(method: "DELETE", path: "/v1/me/sessions", deviceId: deviceId)
-        _ = try await sendExpectingStatus(req, expected: 204)
+        _ = try await sendExpectingSuccess(req)
     }
 
     // MARK: - imu CSV
@@ -143,10 +156,13 @@ final class SpringRemoteStore: RemoteStore {
         var req = baseRequest(method: "POST", path: path, deviceId: deviceId)
         req.setValue("text/csv", forHTTPHeaderField: "Content-Type")
         req.httpBody = csvData
-        let data = try await sendExpectingStatus(req, expected: 200)
-        struct UploadResponse: Decodable { let key: String }
-        let resp = try JSONDecoder().decode(UploadResponse.self, from: data)
-        return resp.key
+        let data = try await sendExpectingSuccess(req)
+        struct UploadResult: Decodable { let key: String }
+        let envelope = try decoder.decode(BaseResponse<UploadResult>.self, from: data)
+        guard let key = envelope.result?.key else {
+            throw RemoteStoreError.invalidUploadResponse
+        }
+        return key
     }
 
     // MARK: - Helpers
@@ -169,15 +185,15 @@ final class SpringRemoteStore: RemoteStore {
         return req
     }
 
-    /// 단일 expected 상태코드를 expect하는 전송. 범위가 아닌 정확한 코드 비교 — Spring API는
-    /// 각 엔드포인트별 코드가 확정되어 있으므로 엄격하게 검사한다.
+    /// 2xx 성공을 기대하는 전송. Spring 엔드포인트는 200/201(생성)/멱등 200이 섞여 있고
+    /// 삭제도 봉투 때문에 204가 아니라 200이라, 정확한 코드 대신 2xx 범위로 검사한다.
     @discardableResult
-    private func sendExpectingStatus(_ req: URLRequest, expected: Int) async throws -> Data {
+    private func sendExpectingSuccess(_ req: URLRequest) async throws -> Data {
         let (data, response) = try await session.data(for: req)
         guard let http = response as? HTTPURLResponse else {
             throw RemoteStoreError.http(status: -1, body: "no response")
         }
-        guard http.statusCode == expected else {
+        guard (200..<300).contains(http.statusCode) else {
             throw RemoteStoreError.http(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
         }
         return data
