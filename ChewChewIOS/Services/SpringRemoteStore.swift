@@ -1,0 +1,218 @@
+import Foundation
+
+/// Spring 백엔드(Tailscale staging) 접속 설정.
+/// baseURL 예: http://100.99.252.124:8080
+/// 인증 없음 — OAuth/JWT 는 ODO-44에서 추가 예정.
+struct SpringConfig {
+    let baseURL: URL
+}
+
+/// Spring REST 백엔드 구현체.
+///
+/// InsForge(PostgREST)와의 주요 차이점:
+///   - 공통 응답 wrapping — 성공 응답은 `{code, message, result}` 형태이고, 실제 데이터는
+///     `result`에 들어 있다. 조회 메서드는 `BaseResponse<T>`로 디코드한 뒤 `result`를 꺼낸다.
+///     에러는 `{code, message}` wrapping + 4xx/5xx 상태코드로 내려온다.
+///   - JSON key 변환 없음 — DTO 필드명(camelCase)이 wire format 그대로.
+///   - 인증 헤더 없음 — 모든 요청에 X-Device-Id 헤더만 첨부.
+///   - GET retry 없음 — Tailscale IP 직접 접속이라 IPv6 cold-start 회피 불필요.
+///   - fetchProfile: Spring은 신규 디바이스에도 200 + displayName=null 반환.
+///     displayName이 null이면 nil을 반환 — 호출처(AppState.fetchAndApplyDisplayName)는
+///     profile?.displayName이 nil/빈 문자열일 때 온보딩을 열도록 설계되어 있어
+///     InsForge의 "row 없음 = nil" 의미와 동일하게 처리할 수 있다.
+///   - fetchUserStats: 404 → nil 반환 (첫 기기 등록 전 stats 미존재 정상 케이스).
+final class SpringRemoteStore: RemoteStore {
+    private let config: SpringConfig
+    private let session: URLSession
+    private let encoder: JSONEncoder
+    private let decoder: JSONDecoder
+
+    /// 서버 공통 응답 wrapping. 성공 응답의 실제 데이터는 `result`에 담긴다.
+    /// 본문이 없는 성공(삭제 등)은 result가 생략되므로 옵셔널로 둔다.
+    private struct BaseResponse<T: Decodable>: Decodable {
+        let code: Int
+        let message: String
+        let result: T?
+    }
+
+    init(config: SpringConfig, session: URLSession = .shared) {
+        self.config = config
+        self.session = session
+
+        let enc = JSONEncoder()
+        // camelCase 그대로 — convertToSnakeCase 사용 안 함.
+        enc.dateEncodingStrategy = .custom { date, encoder in
+            var c = encoder.singleValueContainer()
+            try c.encode(Self.isoFormatter.string(from: date))
+        }
+        self.encoder = enc
+
+        let dec = JSONDecoder()
+        // camelCase 그대로 — convertFromSnakeCase 사용 안 함.
+        dec.dateDecodingStrategy = .custom { decoder in
+            let c = try decoder.singleValueContainer()
+            let s = try c.decode(String.self)
+            if let d = Self.isoFormatter.date(from: s) { return d }
+            if let d = Self.isoFormatterNoFractional.date(from: s) { return d }
+            throw DecodingError.dataCorruptedError(in: c, debugDescription: "invalid ISO8601: \(s)")
+        }
+        self.decoder = dec
+    }
+
+    // MARK: - profile
+
+    func upsertProfile(_ profile: ProfileDTO) async throws {
+        var req = jsonRequest(method: "PUT", path: "/v1/me/profile", deviceId: profile.deviceId)
+        req.httpBody = try encoder.encode(profile)
+        _ = try await sendExpectingSuccess(req)
+    }
+
+    /// Spring은 신규 디바이스에도 200 + result.displayName=null 반환.
+    /// displayName이 null(nil)인 경우 nil을 돌려줘 InsForge의 "row 없음 = nil" 계약을 유지한다.
+    /// AppState.fetchAndApplyDisplayName은 nil/빈 문자열 모두 온보딩 미완료로 간주하므로
+    /// 동작이 동일하다.
+    func fetchProfile(deviceId: String) async throws -> ProfileDTO? {
+        let req = jsonRequest(method: "GET", path: "/v1/me/profile", deviceId: deviceId)
+        let data = try await sendExpectingSuccess(req)
+        let envelope = try decoder.decode(BaseResponse<ProfileDTO>.self, from: data)
+        // result 없음 또는 displayName == nil → 신규 디바이스, 호출처가 기대하는 "등록 전" 의미로 nil.
+        guard let dto = envelope.result, dto.displayName != nil else { return nil }
+        return dto
+    }
+
+    // MARK: - user_stats
+
+    func upsertUserStats(_ stats: UserStatsDTO) async throws {
+        var req = jsonRequest(method: "PUT", path: "/v1/me/stats", deviceId: stats.deviceId)
+        req.httpBody = try encoder.encode(stats)
+        _ = try await sendExpectingSuccess(req)
+    }
+
+    /// 404 → nil (첫 기기 등록 전 stats 없음은 정상). 200 → wrapping의 result 디코드.
+    func fetchUserStats(deviceId: String) async throws -> UserStatsDTO? {
+        let req = jsonRequest(method: "GET", path: "/v1/me/stats", deviceId: deviceId)
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse else {
+            throw RemoteStoreError.http(status: -1, body: "no response")
+        }
+        if http.statusCode == 404 { return nil }
+        guard (200..<300).contains(http.statusCode) else {
+            throw RemoteStoreError.http(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
+        }
+        return try decoder.decode(BaseResponse<UserStatsDTO>.self, from: data).result
+    }
+
+    // MARK: - user data
+
+    func deleteUserData(deviceId: String) async throws {
+        let req = jsonRequest(method: "DELETE", path: "/v1/me", deviceId: deviceId)
+        _ = try await sendExpectingSuccess(req)
+    }
+
+    // MARK: - chewing_session
+
+    func insertSession(_ session: ChewingSessionDTO) async throws {
+        var req = jsonRequest(method: "POST", path: "/v1/me/sessions", deviceId: session.deviceId)
+        req.httpBody = try encoder.encode(session)
+        // 신규 저장은 201, 같은 id 재전송(멱등)은 200 — 둘 다 성공으로 처리.
+        _ = try await sendExpectingSuccess(req)
+    }
+
+    func fetchChewingSessions(deviceId: String, since: Date, until: Date?) async throws -> [ChewingSessionDTO] {
+        let sinceIso = Self.isoFormatter.string(from: since)
+        // since/until 값에 +, : 가 포함되어 URL 인코딩 필수.
+        guard let encodedSince = sinceIso.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            throw RemoteStoreError.http(status: -1, body: "failed to percent-encode since value")
+        }
+        var path = "/v1/me/sessions?since=\(encodedSince)"
+        if let until {
+            let untilIso = Self.isoFormatter.string(from: until)
+            guard let encodedUntil = untilIso.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+                throw RemoteStoreError.http(status: -1, body: "failed to percent-encode until value")
+            }
+            path += "&until=\(encodedUntil)"
+        }
+        let req = jsonRequest(method: "GET", path: path, deviceId: deviceId)
+        let data = try await sendExpectingSuccess(req)
+        let envelope = try decoder.decode(BaseResponse<[ChewingSessionDTO]>.self, from: data)
+        return envelope.result ?? []
+    }
+
+    func deleteChewingSession(id: UUID, deviceId: String) async throws {
+        let req = jsonRequest(method: "DELETE", path: "/v1/me/sessions/\(id.uuidString.lowercased())", deviceId: deviceId)
+        // device 불일치도 성공(204→200) 반환 — 멱등 설계.
+        _ = try await sendExpectingSuccess(req)
+    }
+
+    func deleteAllChewingSessions(deviceId: String) async throws {
+        let req = jsonRequest(method: "DELETE", path: "/v1/me/sessions", deviceId: deviceId)
+        _ = try await sendExpectingSuccess(req)
+    }
+
+    // MARK: - imu CSV
+
+    func uploadIMUCSV(sessionId: UUID, deviceId: String, csvData: Data) async throws -> String {
+        let path = "/v1/me/sessions/\(sessionId.uuidString.lowercased())/imu"
+        var req = baseRequest(method: "POST", path: path, deviceId: deviceId)
+        req.setValue("text/csv", forHTTPHeaderField: "Content-Type")
+        req.httpBody = csvData
+        let data = try await sendExpectingSuccess(req)
+        struct UploadResult: Decodable { let key: String }
+        let envelope = try decoder.decode(BaseResponse<UploadResult>.self, from: data)
+        guard let key = envelope.result?.key else {
+            throw RemoteStoreError.invalidUploadResponse
+        }
+        return key
+    }
+
+    // MARK: - Helpers
+
+    /// JSON Content-Type 포함 요청 빌더.
+    private func jsonRequest(method: String, path: String, deviceId: String) -> URLRequest {
+        var req = baseRequest(method: method, path: path, deviceId: deviceId)
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        return req
+    }
+
+    /// 공통 요청 빌더 — X-Device-Id 헤더 첨부.
+    private func baseRequest(method: String, path: String, deviceId: String) -> URLRequest {
+        var base = config.baseURL.absoluteString
+        if base.hasSuffix("/") { base.removeLast() }
+        let url = URL(string: base + path)!
+        var req = URLRequest(url: url)
+        req.httpMethod = method
+        req.setValue(deviceId, forHTTPHeaderField: "X-Device-Id")
+        return req
+    }
+
+    /// 2xx 성공을 기대하는 전송. Spring 엔드포인트는 200/201(생성)/멱등 200이 섞여 있고
+    /// 삭제도 wrapping 때문에 204가 아니라 200이라, 정확한 코드 대신 2xx 범위로 검사한다.
+    @discardableResult
+    private func sendExpectingSuccess(_ req: URLRequest) async throws -> Data {
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse else {
+            throw RemoteStoreError.http(status: -1, body: "no response")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            throw RemoteStoreError.http(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
+        }
+        return data
+    }
+
+    // MARK: - Date formatters
+    //
+    // 송신: fractional seconds 포함 ISO8601.
+    // 수신: fractional 유무 둘 다 허용 (InsForgeRemoteStore 패턴 재사용).
+
+    private static let isoFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoFormatterNoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+}
