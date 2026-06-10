@@ -19,7 +19,13 @@ struct ChewChewIOSApp: App {
         let pi = ProcessInfo.processInfo
         let underTest = pi.environment["XCTestConfigurationFilePath"] != nil
             || pi.arguments.contains("-useNoopRemote")
-        return underTest ? NoopRemoteStore() : InsForgeRemoteStore(config: .default)
+        if underTest { return NoopRemoteStore() }
+        // ODO-53 연결 테스트: `-useSpringBackend` arg일 때 Spring staging 백엔드로 전환.
+        // 기본은 InsForge 유지 — arg를 빼면 즉시 원복된다.
+        if pi.arguments.contains("-useSpringBackend") {
+            return SpringRemoteStore(config: .stagingDefault)
+        }
+        return InsForgeRemoteStore(config: .default)
     }
 
     var body: some Scene {
