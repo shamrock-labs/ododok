@@ -43,7 +43,7 @@ enum IMUWaveformSource: Equatable {
 
 /// 앱의 글로벌 상태 + 식사 세션 관리.
 ///
-/// 실 씹기 검출은 `ChewingPredictor`가 IMU sample을 받아 `SessionStatsBuilder`에 누적하고,
+/// 실 씹기 검출은 `ChewCounter`(DSP)가 IMU sample을 받아 피크를 세고,
 /// 세션 종료 시 `chewing_session` 행의 분석 5필드로 저장 — Tracking 탭의 "오늘의 식사 기록"
 /// 에서 사후 확인. 식사 중 다람이의 씹기 모션은 `animKey`를 일정 주기로 올려 구동하며,
 /// 실제 씹기 검출과는 무관한 화면 연출이다.
@@ -175,16 +175,13 @@ final class AppState {
     /// 식사 측정 Live Activity(잠금화면·다이내믹 아일랜드) 관리자. 설정에서 꺼져 있으면 노옵.
     @ObservationIgnored private let mealActivity = MealActivityController()
 
-    // MARK: - ML inference
+    // MARK: - 씹기 감지 (DSP)
 
-    /// 식사 세션 동안 활성. nil이면 추론 없이 (모델 로드 실패) 가짜 Timer만 동작.
-    @ObservationIgnored private var predictor: ChewingPredictor?
+    /// 식사 세션 동안 활성. IMU 샘플을 받아 DSP로 씹기 피크를 세고, 종료 시 세션 통계 산출.
+    @ObservationIgnored private var chewCounter: ChewCounter?
 
-    /// 세션 prediction 누적 → 종료 시 통계 산출.
-    @ObservationIgnored private var statsBuilder: SessionStatsBuilder?
-
-    /// 현재 사용 중인 ChewingClassifier 빌드 버전 식별자. DB의 `model_version` 컬럼에 저장.
-    private static let modelVersion = "ChewingClassifier-v1"
+    /// 현재 사용 중인 감지 알고리즘 식별자. DB의 `model_version` 컬럼에 저장.
+    private static let modelVersion = "dsp-chewcounter-1"
 
     // MARK: - Remote persistence
 
@@ -278,10 +275,8 @@ final class AppState {
         lastIMUSampleAt = nil
         // raw IMU 6채널을 모을 봉투 — 식사 종료 시 finalize + 업로드.
         imuSessionRecorder = IMUSessionRecorder(startedAt: now)
-        // ChewingPredictor + StatsBuilder — 식사 종료 시 chewing_session 분석 5필드 산출용.
-        // 모델 로드 실패 시 predictor=nil이면 stats만 비고 나머지는 정상 동작.
-        predictor = try? ChewingPredictor()
-        statsBuilder = SessionStatsBuilder()
+        // DSP 씹기 카운터 — 식사 종료 시 chewing_session 분석 5필드 산출용.
+        chewCounter = ChewCounter()
         // 다람이 씹기 모션용 고정 주기 펄스 — 식사 내내 일정 간격으로 animKey만 올려
         // 화면 속 다람이가 자연스럽게 우물거리게 한다. 실제 씹기 검출과는 무관.
         startChewAnimationLoop()
@@ -355,9 +350,8 @@ final class AppState {
 
         // IMU 세션 봉인 → Storage 업로드 → chewing_session INSERT.
         // 결과를 sessionUploadStatus로 publish해서 UI alert이 관찰할 수 있게 한다.
-        let builder = statsBuilder
-        statsBuilder = nil
-        predictor = nil
+        let counter = chewCounter
+        chewCounter = nil
         if let recorder = imuSessionRecorder {
             imuSessionRecorder = nil
             let endedAt = Date()
@@ -367,7 +361,7 @@ final class AppState {
             guard output.sampleCount > 0 else { return }
             sessionUploadStatus = .uploading
             Task { [weak self] in
-                let stats = await builder?.build(modelVersion: AppState.modelVersion)
+                let stats = await counter?.sessionStats(modelVersion: AppState.modelVersion)
                 await self?.performSessionUpload(output, stats: stats)
             }
         }
@@ -392,8 +386,7 @@ final class AppState {
         resetIMUWaveform()
         imuWaveformSource = .idle
         persistSnapshot()
-        statsBuilder = nil
-        predictor = nil
+        chewCounter = nil
         if let recorder = imuSessionRecorder {
             imuSessionRecorder = nil
             _ = recorder.finalize(endedAt: Date())
@@ -741,7 +734,7 @@ final class AppState {
             )
             // raw 채널 전체(18컬럼)를 recorder에 누적. 출시 후 재학습 데이터셋으로
             // 그대로 쓸 수 있도록 attitude/gravity/magneticField까지 보존.
-            // 같은 row를 ML predictor에도 흘려보내 SessionStatsBuilder에 누적.
+            // 같은 row를 DSP ChewCounter에도 흘려보내 세션 통계용으로 누적.
             guard let recorder = self.imuSessionRecorder else { return }
             let tRel = Date().timeIntervalSince(recorder.startedAt)
             let row = IMURow(
@@ -767,12 +760,18 @@ final class AppState {
             recorder.append(row)
             recorder.updateSensorLocation(sample.sensorLocation)
 
-            // ML 추론은 별도 Task로 — actor 호출이 sample 콜백 빈도(50Hz)를 막지 않도록.
-            // 결과는 세션 통계 누적용으로만 사용한다.
-            if let predictor = self.predictor, let statsBuilder = self.statsBuilder {
+            // DSP 씹기 감지는 별도 Task로 — actor 호출이 sample 콜백 빈도(50Hz)를 막지 않도록.
+            // 결과는 세션 종료 시 통계 산출에만 쓴다.
+            if let chewCounter = self.chewCounter {
                 Task {
-                    guard let prediction = await predictor.feed(row) else { return }
-                    await statsBuilder.append(prediction)
+                    await chewCounter.feed(
+                        rotX: row.rotationX,
+                        rotY: row.rotationY,
+                        rotZ: row.rotationZ,
+                        accelX: row.userAccelX,
+                        accelY: row.userAccelY,
+                        accelZ: row.userAccelZ
+                    )
                 }
             }
         } onError: { [weak self] message in
