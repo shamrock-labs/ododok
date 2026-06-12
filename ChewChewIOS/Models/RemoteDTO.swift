@@ -90,3 +90,79 @@ struct IMURow {
         return "\(nums),\(sensorLocation)"
     }
 }
+
+// MARK: - 서버 권위 응답 (ODO-54 thin-client)
+//
+// ODO-45 이후 도토리/스트릭/오늘완료 정본은 서버다. 아래 DTO는 Spring 응답(camelCase,
+// wrapping의 `result` 안쪽)과 1:1 매핑한다. iOS는 이 값을 표시만 하고 재계산하지 않는다.
+
+/// 홈 상태 응답(`GET /v1/me/home`, 세션 저장 응답의 `userStats`). 서버가 계산한 화면 정본.
+struct HomeStateDTO: Codable, Equatable {
+    var deviceId: String
+    var displayName: String?
+    var points: Int
+    var streak: Int
+    var freezeInventory: Int
+    var todayRealChewCount: Int
+    var dailyGoal: Int
+    var todayProgress: Double
+    var todayCompleted: Bool
+}
+
+/// 세션 적립 결과(`reward`). 멱등 재전송이면 `idempotentReplay=true` — 알림 억제 신호.
+struct SessionRewardDTO: Codable, Equatable {
+    var grantedPoints: Int
+    var capped: Bool
+    var idempotentReplay: Bool
+}
+
+/// 세션 스트릭 결과(`streak`). `event`는 서버 StreakEvent enum 문자열
+/// (NONE/FIRST_DAY/INCREMENTED/SAVED_BY_FREEZE/RESET/MILESTONE).
+struct SessionStreakDTO: Codable, Equatable {
+    var current: Int
+    var event: String
+    var freezeInventory: Int
+}
+
+/// 오늘 완료 여부(`today`).
+struct SessionTodayDTO: Codable, Equatable {
+    var completed: Bool
+}
+
+/// 정책 세션 저장 응답(`POST /v1/me/chewing-sessions`). 저장된 세션 + 적립/스트릭/오늘/홈을 한 번에.
+struct CreateSessionResultDTO: Codable, Equatable {
+    var chewingSession: ChewingSessionDTO
+    var chewingSessionAccepted: Bool
+    var rewardEligible: Bool
+    var ineligibleReason: String?
+    var reward: SessionRewardDTO
+    var streak: SessionStreakDTO
+    var today: SessionTodayDTO
+    var userStats: HomeStateDTO
+}
+
+/// 출석 적립 응답(`POST /v1/me/attendance`). 세션 응답과 같은 패턴 — 적립량 + 갱신된 홈.
+struct AttendanceResultDTO: Codable, Equatable {
+    var grantedPoints: Int
+    var capped: Bool
+    var idempotentReplay: Bool
+    var userStats: HomeStateDTO
+}
+
+extension HomeStateDTO {
+    /// 서버가 줄 게 없을 때(Noop/레거시 신규 기기)의 중립 홈. `dailyGoal=0`은 호출처에서
+    /// 진행도 분모 가드로 처리한다.
+    static func empty(deviceId: String) -> HomeStateDTO {
+        HomeStateDTO(
+            deviceId: deviceId,
+            displayName: nil,
+            points: 0,
+            streak: 0,
+            freezeInventory: 0,
+            todayRealChewCount: 0,
+            dailyGoal: 0,
+            todayProgress: 0,
+            todayCompleted: false
+        )
+    }
+}

@@ -22,6 +22,8 @@ struct SpringConfig {
 ///     InsForge의 "row 없음 = nil" 의미와 동일하게 처리할 수 있다.
 ///   - fetchUserStats: 404 → nil 반환 (첫 기기 등록 전 stats 미존재 정상 케이스).
 final class SpringRemoteStore: RemoteStore {
+    private static let sessionUploadTimeout: TimeInterval = 8
+
     private let config: SpringConfig
     private let session: URLSession
     private let encoder: JSONEncoder
@@ -33,6 +35,12 @@ final class SpringRemoteStore: RemoteStore {
         let code: Int
         let message: String
         let result: T?
+    }
+
+    /// 서버 에러 봉투 — 비-2xx 응답의 `{code, message}`(result 없음). 사용자에게 보여줄 사유 추출용.
+    private struct BaseErrorResponse: Decodable {
+        let code: Int
+        let message: String
     }
 
     init(config: SpringConfig, session: URLSession = .shared) {
@@ -118,6 +126,29 @@ final class SpringRemoteStore: RemoteStore {
         _ = try await sendExpectingSuccess(req)
     }
 
+    /// 정책 엔드포인트 — 세션 저장 + 서버 계산 적립/스트릭/오늘/홈을 한 번에 받는다.
+    /// 같은 id 재전송은 서버가 멱등 처리(reward는 idempotentReplay=true).
+    func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO {
+        var req = jsonRequest(method: "POST", path: "/v1/me/chewing-sessions", deviceId: session.deviceId)
+        req.timeoutInterval = Self.sessionUploadTimeout
+        req.httpBody = try encoder.encode(session)
+        let data = try await sendExpectingSuccess(req)
+        return try decodeResult(CreateSessionResultDTO.self, from: data)
+    }
+
+    func fetchHome(deviceId: String) async throws -> HomeStateDTO {
+        let req = jsonRequest(method: "GET", path: "/v1/me/home", deviceId: deviceId)
+        let data = try await sendExpectingSuccess(req)
+        return try decodeResult(HomeStateDTO.self, from: data)
+    }
+
+    func earnAttendance(deviceId: String, idempotencyKey: String) async throws -> AttendanceResultDTO {
+        var req = jsonRequest(method: "POST", path: "/v1/me/attendance", deviceId: deviceId)
+        req.httpBody = try JSONSerialization.data(withJSONObject: ["idempotencyKey": idempotencyKey])
+        let data = try await sendExpectingSuccess(req)
+        return try decodeResult(AttendanceResultDTO.self, from: data)
+    }
+
     func fetchChewingSessions(deviceId: String, since: Date, until: Date?) async throws -> [ChewingSessionDTO] {
         let sinceIso = Self.isoFormatter.string(from: since)
         // since/until 값에 +, : 가 포함되어 URL 인코딩 필수.
@@ -154,6 +185,7 @@ final class SpringRemoteStore: RemoteStore {
     func uploadIMUCSV(sessionId: UUID, deviceId: String, csvData: Data) async throws -> String {
         let path = "/v1/me/sessions/\(sessionId.uuidString.lowercased())/imu"
         var req = baseRequest(method: "POST", path: path, deviceId: deviceId)
+        req.timeoutInterval = Self.sessionUploadTimeout
         req.setValue("text/csv", forHTTPHeaderField: "Content-Type")
         req.httpBody = csvData
         let data = try await sendExpectingSuccess(req)
@@ -189,14 +221,40 @@ final class SpringRemoteStore: RemoteStore {
     /// 삭제도 wrapping 때문에 204가 아니라 200이라, 정확한 코드 대신 2xx 범위로 검사한다.
     @discardableResult
     private func sendExpectingSuccess(_ req: URLRequest) async throws -> Data {
-        let (data, response) = try await session.data(for: req)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: req)
+        } catch is URLError {
+            // 응답 자체가 오지 않음(연결 실패/타임아웃) → 오프라인으로 통일. 호출처는 캐시 fallback.
+            throw RemoteStoreError.offline
+        }
         guard let http = response as? HTTPURLResponse else {
-            throw RemoteStoreError.http(status: -1, body: "no response")
+            throw RemoteStoreError.malformed("no HTTP response")
         }
         guard (200..<300).contains(http.statusCode) else {
+            // 서버 표준 에러 봉투({code, message})면 사유를 살려 server 에러로, 아니면 raw http.
+            if let envelope = try? decoder.decode(BaseErrorResponse.self, from: data) {
+                throw RemoteStoreError.server(status: http.statusCode, code: envelope.code, message: envelope.message)
+            }
             throw RemoteStoreError.http(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
         }
         return data
+    }
+
+    /// BaseResponse<T> 본문을 디코드. 파싱 실패/`result` 누락은 malformed로 변환해, 2xx인데
+    /// "잘못 온" 응답을 호출처가 일관되게 처리(친화 메시지 + 재시도)하게 한다.
+    private func decodeResult<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {
+        do {
+            guard let result = try decoder.decode(BaseResponse<T>.self, from: data).result else {
+                throw RemoteStoreError.malformed("empty result")
+            }
+            return result
+        } catch let error as RemoteStoreError {
+            throw error
+        } catch {
+            throw RemoteStoreError.malformed("decode failed: \(error)")
+        }
     }
 
     // MARK: - Date formatters

@@ -16,6 +16,13 @@ protocol RemoteStore {
     func fetchUserStats(deviceId: String) async throws -> UserStatsDTO?
     func deleteUserData(deviceId: String) async throws
     func insertSession(_ session: ChewingSessionDTO) async throws
+    /// 정책 세션 저장 — 세션을 저장하고 서버가 계산한 적립/스트릭/오늘/홈을 함께 받는다.
+    /// 도토리·스트릭·오늘완료 정본은 서버이므로 iOS는 응답값을 표시만 한다(재계산 금지).
+    func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO
+    /// 홈 상태 조회 — 서버가 계산한 도토리/스트릭/오늘 진행도.
+    func fetchHome(deviceId: String) async throws -> HomeStateDTO
+    /// 앱-열기 출석 적립 — iOS가 멱등키로 트리거, 서버가 일 1회 판정 + 적립.
+    func earnAttendance(deviceId: String, idempotencyKey: String) async throws -> AttendanceResultDTO
     /// `since` 이후 + 옵셔널 `until` 이전에 시작된 세션을 시간 오름차순으로 조회.
     /// "오늘의 식사 기록"은 since=오늘 0시 / until=nil, 월간 캘린더는 since=월 첫날 /
     /// until=다음 달 첫날로 호출.
@@ -43,6 +50,22 @@ struct NoopRemoteStore: RemoteStore {
     func fetchUserStats(deviceId: String) async throws -> UserStatsDTO? { nil }
     func deleteUserData(deviceId: String) async throws {}
     func insertSession(_ session: ChewingSessionDTO) async throws {}
+    func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO {
+        CreateSessionResultDTO(
+            chewingSession: session,
+            chewingSessionAccepted: true,
+            rewardEligible: false,
+            ineligibleReason: nil,
+            reward: SessionRewardDTO(grantedPoints: 0, capped: false, idempotentReplay: false),
+            streak: SessionStreakDTO(current: 0, event: "NONE", freezeInventory: 0),
+            today: SessionTodayDTO(completed: false),
+            userStats: .empty(deviceId: session.deviceId)
+        )
+    }
+    func fetchHome(deviceId: String) async throws -> HomeStateDTO { .empty(deviceId: deviceId) }
+    func earnAttendance(deviceId: String, idempotencyKey: String) async throws -> AttendanceResultDTO {
+        AttendanceResultDTO(grantedPoints: 0, capped: false, idempotentReplay: false, userStats: .empty(deviceId: deviceId))
+    }
     func fetchChewingSessions(deviceId: String, since: Date, until: Date?) async throws -> [ChewingSessionDTO] { [] }
     func deleteChewingSession(id: UUID, deviceId: String) async throws {}
     func deleteAllChewingSessions(deviceId: String) async throws {}
@@ -55,19 +78,53 @@ struct InsForgeConfig {
 }
 
 enum RemoteStoreError: Error, CustomStringConvertible {
+    /// 서버 표준 에러 봉투(`{code, message}`) 응답. message는 서버가 준 한국어 사유.
+    case server(status: Int, code: Int, message: String)
+    /// 응답 자체가 오지 않음 — 연결 실패/타임아웃(오프라인).
+    case offline
+    /// 2xx인데 본문 파싱 실패 또는 예기치 않은 형식("잘못 온" 응답).
+    case malformed(String)
+    /// 표준 봉투로 파싱되지 않은 비-2xx 응답(원시 body 보존).
     case http(status: Int, body: String)
     case invalidUploadResponse
 
     var description: String {
         switch self {
+        case .server(let s, let c, let m): return "RemoteStoreError.server(http=\(s), code=\(c)): \(m)"
+        case .offline: return "RemoteStoreError.offline"
+        case .malformed(let d): return "RemoteStoreError.malformed: \(d)"
         case .http(let s, let b): return "RemoteStoreError.http(\(s)): \(b)"
         case .invalidUploadResponse: return "RemoteStoreError.invalidUploadResponse"
+        }
+    }
+
+    /// 사용자에게 보여줄 친화적 한국어 안내. 서버 원문(`server.message`)은 개발용이라 그대로
+    /// 노출하지 않고(로그는 `description`에 남음), 사용자에겐 부드러운 카피로 통일한다.
+    var userMessage: String {
+        switch self {
+        case .offline:
+            return "인터넷 연결을 확인해 주세요."
+        case .server, .http, .malformed, .invalidUploadResponse:
+            return "잠시 후 다시 시도해 주세요."
+        }
+    }
+
+    /// 재시도가 의미 있는 오류인지. 네트워크/서버 일시 오류(offline·5xx·파싱 실패)는 true,
+    /// 잘못된 요청(4xx)은 재시도해도 똑같이 실패하므로 false.
+    var isRetriable: Bool {
+        switch self {
+        case .offline, .malformed, .invalidUploadResponse:
+            return true
+        case .server(let status, _, _), .http(let status, _):
+            return status >= 500
         }
     }
 }
 
 /// InsForge REST 백엔드 구현. PostgREST 스타일 DB + 3단계 Storage 업로드(strategy → upload → confirm).
 final class InsForgeRemoteStore: RemoteStore {
+    private static let sessionUploadTimeout: TimeInterval = 8
+
     private let config: InsForgeConfig
     private let session: URLSession
     private let encoder: JSONEncoder
@@ -153,6 +210,57 @@ final class InsForgeRemoteStore: RemoteStore {
         _ = try await sendExpectingSuccess(req)
     }
 
+    // MARK: - 서버 권위 응답 (레거시 비지원)
+    //
+    // InsForge엔 적립/스트릭/오늘완료 정책 엔진이 없다. 세션은 그대로 INSERT하되 리워드는
+    // 중립(0)으로 돌려주고, 홈은 user_stats에 저장된 도토리/스트릭만 반영한다. thin-client
+    // 보상 UX는 Spring 백엔드에서만 동작한다(`-useInsForge`는 데이터 접근용 레거시 경로).
+
+    func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO {
+        try await insertSession(session)
+        let stats = try? await fetchUserStats(deviceId: session.deviceId)
+        return CreateSessionResultDTO(
+            chewingSession: session,
+            chewingSessionAccepted: true,
+            rewardEligible: false,
+            ineligibleReason: "LEGACY_BACKEND",
+            reward: SessionRewardDTO(grantedPoints: 0, capped: false, idempotentReplay: false),
+            streak: SessionStreakDTO(current: stats?.streak ?? 0, event: "NONE", freezeInventory: 0),
+            today: SessionTodayDTO(completed: false),
+            userStats: Self.legacyHome(deviceId: session.deviceId, stats: stats)
+        )
+    }
+
+    func fetchHome(deviceId: String) async throws -> HomeStateDTO {
+        let stats = try? await fetchUserStats(deviceId: deviceId)
+        return Self.legacyHome(deviceId: deviceId, stats: stats)
+    }
+
+    func earnAttendance(deviceId: String, idempotencyKey: String) async throws -> AttendanceResultDTO {
+        let stats = try? await fetchUserStats(deviceId: deviceId)
+        return AttendanceResultDTO(
+            grantedPoints: 0,
+            capped: false,
+            idempotentReplay: true,
+            userStats: Self.legacyHome(deviceId: deviceId, stats: stats)
+        )
+    }
+
+    /// 저장된 user_stats(있으면)의 도토리/스트릭만 반영한 레거시 홈. 오늘 진행도는 미계산.
+    private static func legacyHome(deviceId: String, stats: UserStatsDTO?) -> HomeStateDTO {
+        HomeStateDTO(
+            deviceId: deviceId,
+            displayName: nil,
+            points: stats?.points ?? 0,
+            streak: stats?.streak ?? 0,
+            freezeInventory: 0,
+            todayRealChewCount: 0,
+            dailyGoal: 0,
+            todayProgress: 0,
+            todayCompleted: false
+        )
+    }
+
     func fetchChewingSessions(deviceId: String, since: Date, until: Date?) async throws -> [ChewingSessionDTO] {
         let escapedDevice = deviceId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? deviceId
         let sinceIso = Self.isoFormatter.string(from: since)
@@ -228,6 +336,7 @@ final class InsForgeRemoteStore: RemoteStore {
             method: "POST",
             path: "/api/storage/buckets/\(bucket)/upload-strategy"
         )
+        req.timeoutInterval = Self.sessionUploadTimeout
         let body: [String: Any] = [
             "filename": filename,
             "contentType": contentType,
@@ -254,6 +363,7 @@ final class InsForgeRemoteStore: RemoteStore {
 
         var req = URLRequest(url: endpoint)
         req.httpMethod = isPresigned ? "POST" : "PUT"
+        req.timeoutInterval = Self.sessionUploadTimeout
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
         if !isPresigned {
             req.setValue("Bearer \(config.apiKey)", forHTTPHeaderField: "Authorization")
@@ -272,6 +382,7 @@ final class InsForgeRemoteStore: RemoteStore {
     private func confirmUpload(strategy: UploadStrategy, size: Int) async throws {
         guard let confirmPath = strategy.confirmUrl else { return }
         var req = try jsonRequest(method: "POST", path: confirmPath, allowAbsolute: true)
+        req.timeoutInterval = Self.sessionUploadTimeout
         let body: [String: Any] = ["size": size, "contentType": "text/csv"]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         _ = try await sendExpectingSuccess(req)
