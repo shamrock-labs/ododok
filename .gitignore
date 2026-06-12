@@ -34,7 +34,7 @@ OdodokWidgets/Info.plist
 .agent
 .agents
 .augment
-.claude
+.claude/settings.local.json
 .cline
 .github/copilot*
 .kilocode
