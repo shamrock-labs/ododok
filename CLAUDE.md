@@ -25,9 +25,14 @@ SwiftUI 기반 오도독 iOS 앱. AirPods IMU 신호를 신호처리(DSP)로 분
 - 브랜치: `type/odo-NN-짧은-설명` (type + Linear 키 + 설명, 소문자, 하이픈).
 - PR: `.github/PULL_REQUEST_TEMPLATE.md`를 사용한다. 제목은 Linear 키로 시작한다. 머지는 사용자가 본인 검토 후 직접 한다.
 
-## Linear (작업 상태 정본)
+## Linear · 레포 (작업 상태 정본)
 
-매번 MCP로 조회하지 않도록 ID를 박아둔다. Linear MCP 호출 시 아래 값을 바로 쓴다.
+작업은 아래 Linear 팀과 GitHub 레포를 기반으로 한다. Linear MCP는 개인 환경 설정이라 레포에 강제하지 않으니(.mcp.json 미커밋) 각자 설정해서 쓴다.
+
+- Linear: https://linear.app/shamlock/initiatives
+- GitHub: `shamrock-labs/ododok-server` (백엔드) · `shamrock-labs/ododok` (iOS)
+
+매번 MCP로 조회하지 않도록 ID를 박아둔다(MCP 설정 시 바로 사용).
 
 - 팀: `Engineering` (key `ODO`, id `bd976e28-3afe-4908-86cd-66764267807c`)
 - 프로젝트: `Spring Boot 백엔드 마이그레이션` (id `c7a821fa-60e3-4552-ac47-45249f6971bd`)
