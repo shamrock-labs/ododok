@@ -43,6 +43,10 @@ final class SpringRemoteStore: RemoteStore {
         let message: String
     }
 
+    private struct AttendanceRequest: Encodable {
+        let idempotencyKey: String
+    }
+
     init(config: SpringConfig, session: URLSession = .shared) {
         self.config = config
         self.session = session
@@ -82,9 +86,8 @@ final class SpringRemoteStore: RemoteStore {
     func fetchProfile(deviceId: String) async throws -> ProfileDTO? {
         let req = jsonRequest(method: "GET", path: "/v1/me/profile", deviceId: deviceId)
         let data = try await sendExpectingSuccess(req)
-        let envelope = try decoder.decode(BaseResponse<ProfileDTO>.self, from: data)
         // result 없음 또는 displayName == nil → 신규 디바이스, 호출처가 기대하는 "등록 전" 의미로 nil.
-        guard let dto = envelope.result, dto.displayName != nil else { return nil }
+        guard let dto = try decodeOptionalResult(ProfileDTO.self, from: data), dto.displayName != nil else { return nil }
         return dto
     }
 
@@ -99,15 +102,10 @@ final class SpringRemoteStore: RemoteStore {
     /// 404 → nil (첫 기기 등록 전 stats 없음은 정상). 200 → wrapping의 result 디코드.
     func fetchUserStats(deviceId: String) async throws -> UserStatsDTO? {
         let req = jsonRequest(method: "GET", path: "/v1/me/stats", deviceId: deviceId)
-        let (data, response) = try await session.data(for: req)
-        guard let http = response as? HTTPURLResponse else {
-            throw RemoteStoreError.http(status: -1, body: "no response")
-        }
+        let (data, http) = try await send(req)
         if http.statusCode == 404 { return nil }
-        guard (200..<300).contains(http.statusCode) else {
-            throw RemoteStoreError.http(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
-        }
-        return try decoder.decode(BaseResponse<UserStatsDTO>.self, from: data).result
+        try validateSuccess(statusCode: http.statusCode, data: data)
+        return try decodeOptionalResult(UserStatsDTO.self, from: data)
     }
 
     // MARK: - user data
@@ -144,7 +142,7 @@ final class SpringRemoteStore: RemoteStore {
 
     func earnAttendance(deviceId: String, idempotencyKey: String) async throws -> AttendanceResultDTO {
         var req = jsonRequest(method: "POST", path: "/v1/me/attendance", deviceId: deviceId)
-        req.httpBody = try JSONSerialization.data(withJSONObject: ["idempotencyKey": idempotencyKey])
+        req.httpBody = try encoder.encode(AttendanceRequest(idempotencyKey: idempotencyKey))
         let data = try await sendExpectingSuccess(req)
         return try decodeResult(AttendanceResultDTO.self, from: data)
     }
@@ -165,8 +163,7 @@ final class SpringRemoteStore: RemoteStore {
         }
         let req = jsonRequest(method: "GET", path: path, deviceId: deviceId)
         let data = try await sendExpectingSuccess(req)
-        let envelope = try decoder.decode(BaseResponse<[ChewingSessionDTO]>.self, from: data)
-        return envelope.result ?? []
+        return try decodeOptionalResult([ChewingSessionDTO].self, from: data) ?? []
     }
 
     func deleteChewingSession(id: UUID, deviceId: String) async throws {
@@ -190,11 +187,7 @@ final class SpringRemoteStore: RemoteStore {
         req.httpBody = csvData
         let data = try await sendExpectingSuccess(req)
         struct UploadResult: Decodable { let key: String }
-        let envelope = try decoder.decode(BaseResponse<UploadResult>.self, from: data)
-        guard let key = envelope.result?.key else {
-            throw RemoteStoreError.invalidUploadResponse
-        }
-        return key
+        return try decodeResult(UploadResult.self, from: data).key
     }
 
     // MARK: - Helpers
@@ -221,6 +214,12 @@ final class SpringRemoteStore: RemoteStore {
     /// 삭제도 wrapping 때문에 204가 아니라 200이라, 정확한 코드 대신 2xx 범위로 검사한다.
     @discardableResult
     private func sendExpectingSuccess(_ req: URLRequest) async throws -> Data {
+        let (data, http) = try await send(req)
+        try validateSuccess(statusCode: http.statusCode, data: data)
+        return data
+    }
+
+    private func send(_ req: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let data: Data
         let response: URLResponse
         do {
@@ -232,14 +231,28 @@ final class SpringRemoteStore: RemoteStore {
         guard let http = response as? HTTPURLResponse else {
             throw RemoteStoreError.malformed("no HTTP response")
         }
-        guard (200..<300).contains(http.statusCode) else {
-            // 서버 표준 에러 봉투({code, message})면 사유를 살려 server 에러로, 아니면 raw http.
-            if let envelope = try? decoder.decode(BaseErrorResponse.self, from: data) {
-                throw RemoteStoreError.server(status: http.statusCode, code: envelope.code, message: envelope.message)
-            }
-            throw RemoteStoreError.http(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
+        return (data, http)
+    }
+
+    private func validateSuccess(statusCode: Int, data: Data) throws {
+        guard (200..<300).contains(statusCode) else {
+            throw decodeError(statusCode: statusCode, data: data)
         }
-        return data
+    }
+
+    private func decodeError(statusCode: Int, data: Data) -> RemoteStoreError {
+        if let envelope = try? decoder.decode(BaseErrorResponse.self, from: data) {
+            return .server(status: statusCode, code: envelope.code, message: envelope.message)
+        }
+        return .http(status: statusCode, body: String(data: data, encoding: .utf8) ?? "")
+    }
+
+    private func decodeOptionalResult<T: Decodable>(_ type: T.Type, from data: Data) throws -> T? {
+        do {
+            return try decoder.decode(BaseResponse<T>.self, from: data).result
+        } catch {
+            throw RemoteStoreError.malformed("decode failed: \(error)")
+        }
     }
 
     /// BaseResponse<T> 본문을 디코드. 파싱 실패/`result` 누락은 malformed로 변환해, 2xx인데
