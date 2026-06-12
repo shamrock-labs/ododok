@@ -79,8 +79,8 @@ struct ContentView: View {
         // 성공 케이스는 SessionResultSheet 카드로 표시(PRD #3) — 실패 다이얼로그는 AppDialog로 통일.
         .appDialog(
             isPresented: failureAlertBinding,
-            title: "저장 실패",
-            message: "이번 식사를 서버에 올리지 못했어요.\n지금 재시도하지 않으면 사라져요.",
+            title: "업로드에 실패했어요",
+            message: uploadFailureMessage,
             primary: .init("다시 시도") { state.retryLastSessionUpload() },
             secondary: .init("취소", role: .cancel) { state.dismissSessionUploadStatus() }
         )
@@ -138,6 +138,12 @@ struct ContentView: View {
             get: { state.showAirPodsConnectionPrompt },
             set: { newValue in if !newValue { state.showAirPodsConnectionPrompt = false } }
         )
+    }
+
+    /// 업로드 실패 다이얼로그 본문 — 친화적 사유(서버/오프라인 카피) + 데이터 손실 경고.
+    private var uploadFailureMessage: String {
+        let reason = state.sessionUploadErrorMessage ?? "잠시 후 다시 시도해 주세요."
+        return "\(reason)\n지금 닫으면 이번 기록이 사라져요."
     }
 
     private var failureAlertBinding: Binding<Bool> {

@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// `RewardLedger`가 도토리를 적립할 때 사용자에게 표시되는 시각적 보상. PRD #8의
+/// 서버가 도토리·스트릭을 적립할 때 사용자에게 표시되는 시각적 보상. PRD #8의
 /// "토스트 + 다람이 happy"의 in-app 구현. 시스템 alert 대신 커스텀 다이얼로그 +
 /// 다람이 happy 이미지 + 적립 도토리 수 + 짧은 카피. 자동 2.5초 dismiss, 탭으로도
 /// dismiss.
