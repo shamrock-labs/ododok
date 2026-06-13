@@ -630,14 +630,19 @@ final class AppState {
     /// 홈에 표시할 "오늘 기준" 연속 출석 일수. ODO-54 전환 후 스트릭 정본은 서버다.
     /// 서버 홈 응답의 `streak`(이미 "현재 유효한" 값)을 그대로 쓰고, 서버 응답 전이면
     /// 로컬 캐시(`streak`)로 fallback.
+    /// 주의: 오프라인 cold-start에선 만료 검증을 로컬에서 못 한다(`lastSuccessDate`는 서버 소유로
+    /// 제거됨). 마지막 성공 스냅샷의 스트릭을 그대로 보여주는 건 ODO-54 Done-When "서버 실패 시
+    /// 마지막 성공 상태 보존"에 따른 의도된 동작 — 다음 서버 응답에서 즉시 정정된다.
     var currentStreak: Int {
         serverHome?.streak ?? streak
     }
 
     /// 오늘의 실제 씹기 횟수. 서버가 계산한 값(오늘 0시 이후 60초+ 세션 합)을 정본으로 쓰고,
-    /// 서버 응답 전이면 로컬 `todaySessions` 합으로 fallback.
+    /// 서버 응답 전이면 로컬 `todaySessions` 합으로 fallback. dailyGoal == 0은 "정책 없는 홈"
+    /// (InsForge 레거시 어댑터의 legacyHome)의 표지라, 그때도 로컬 합산으로 fallback —
+    /// 레거시 백엔드에서 홈 카운트/링이 0에 붙박이는 것을 막는다(todayProgress와 같은 기준).
     var todayRealChewCount: Int {
-        if let serverHome { return serverHome.todayRealChewCount }
+        if let serverHome, serverHome.dailyGoal > 0 { return serverHome.todayRealChewCount }
         return todaySessions.reduce(0) { $0 + ($1.estimatedTotalChews ?? 0) }
     }
 
@@ -916,8 +921,13 @@ final class AppState {
     /// 서버가 계산한 홈 상태를 in-memory에 반영. 도토리/스트릭/프리즈는 서버값으로 덮고,
     /// derived 프로퍼티(currentStreak/todayRealChewCount/todayProgress)는 자동으로 따라온다.
     /// 로컬 캐시도 write-through해 다음 cold-start의 fallback이 최신값을 갖게 한다.
+    /// applyHome이 일어날 때마다 증가 — 비행 중인 읽기(GET /home) 응답이 도착했을 때 그 사이
+    /// 다른 응답(출석/세션 저장 POST)이 홈을 갱신했는지 판별하는 버전 카운터.
+    @ObservationIgnored private var homeApplyVersion = 0
+
     @MainActor
     private func applyHome(_ home: HomeStateDTO) {
+        homeApplyVersion += 1
         serverHome = home
         points = home.points
         streak = home.streak
@@ -933,7 +943,11 @@ final class AppState {
     @MainActor
     func refreshFromServerHome() async {
         let deviceId = DeviceIdentity.shared
+        let versionAtRequest = homeApplyVersion
         guard let home = try? await remoteStore.fetchHome(deviceId: deviceId) else { return }
+        // 이 GET이 비행하는 동안 쓰기 응답(출석/세션 저장)이 홈을 갱신했다면 이 응답은 옛
+        // 스냅샷이다 — 적용하면 방금 반영된 적립을 화면에서 되돌리므로 버린다(쓰기 응답 우선).
+        guard versionAtRequest == homeApplyVersion else { return }
         applyHome(home)
     }
 
@@ -951,13 +965,21 @@ final class AppState {
 
     /// 앱-열기 출석 멱등키 — REQ-08 형식(`app-open-<deviceId>-<yyyyMMdd Asia/Seoul>`).
     /// iOS가 트리거 시점에 키를 만들고, 서버가 이 키로 일 1회 적립을 판정한다.
+    /// 서버(AttendanceService)가 같은 포맷으로 키를 유도하므로, 포맷 변경 시 양쪽을 함께 고쳐야
+    /// 같은 날 두 키가 갈라져 이중 적립되는 일을 막는다.
     static func attendanceKey(deviceId: String, now: Date = Date()) -> String {
+        "app-open-\(deviceId)-\(attendanceKeyFormatter.string(from: now))"
+    }
+
+    /// DateFormatter의 포맷팅은 iOS 7+에서 thread-safe지만, 현재 호출 경로는 모두 MainActor다.
+    /// 비-메인 호출자를 추가한다면 그 점을 인지하고 쓸 것.
+    private static let attendanceKeyFormatter: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.timeZone = TimeZone(identifier: "Asia/Seoul")
         f.dateFormat = "yyyyMMdd"
-        return "app-open-\(deviceId)-\(f.string(from: now))"
-    }
+        return f
+    }()
 
     /// 식사 종료 후 IMU 세션 봉인 결과 + 분석 통계를 받아 Storage 업로드 → chewing_session INSERT.
     /// 결과는 `sessionUploadStatus`로 publish되어 UI alert이 관찰한다. 실패 시 payload를
@@ -1021,7 +1043,7 @@ final class AppState {
             }
         } catch {
             sessionUploadStatus = .failure
-            // 서버 사유(예: "업로드 크기가 허용 한도를 초과했습니다") 또는 오프라인 안내를 그대로 노출.
+            // 사용자에겐 부드러운 통일 카피(userMessage)만 노출 — 서버 원문은 로그(description)로만 남는다.
             sessionUploadErrorMessage = (error as? RemoteStoreError)?.userMessage
             pendingUpload = (output: output, stats: stats)
         }
