@@ -28,6 +28,8 @@ final class SpringRemoteStore: RemoteStore {
     private let session: URLSession
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
+    /// access 만료(401) 시 토큰 재발급용. 로그인/로그아웃 자체는 LoginView가 별도 인스턴스로 호출.
+    private let authClient: SpringAuthClient
 
     /// 서버 공통 응답 wrapping. 성공 응답의 실제 데이터는 `result`에 담긴다.
     /// 본문이 없는 성공(삭제 등)은 result가 생략되므로 옵셔널로 둔다.
@@ -50,6 +52,7 @@ final class SpringRemoteStore: RemoteStore {
     init(config: SpringConfig, session: URLSession = .shared) {
         self.config = config
         self.session = session
+        self.authClient = SpringAuthClient(config: config, session: session)
 
         let enc = JSONEncoder()
         // camelCase 그대로 — convertToSnakeCase 사용 안 함.
@@ -194,6 +197,10 @@ final class SpringRemoteStore: RemoteStore {
         var req = URLRequest(url: url)
         req.httpMethod = method
         req.setValue(deviceId, forHTTPHeaderField: "X-Device-Id")
+        // ODO-47: 로그인 토큰이 있으면 Bearer 첨부(서버는 JWT 우선, 없으면 X-Device-Id 폴백).
+        if let token = TokenManager.accessToken {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
         return req
     }
 
@@ -206,7 +213,7 @@ final class SpringRemoteStore: RemoteStore {
         return data
     }
 
-    private func send(_ req: URLRequest) async throws -> (Data, HTTPURLResponse) {
+    private func send(_ req: URLRequest, retryingOn401: Bool = true) async throws -> (Data, HTTPURLResponse) {
         let data: Data
         let response: URLResponse
         do {
@@ -220,6 +227,14 @@ final class SpringRemoteStore: RemoteStore {
         }
         guard let http = response as? HTTPURLResponse else {
             throw RemoteStoreError.malformed("no HTTP response")
+        }
+        // ODO-47: access 만료(401) + refresh 보유 시 1회 재발급 후 원요청 재시도.
+        if http.statusCode == 401, retryingOn401, TokenManager.refreshToken != nil, await authClient.refresh() {
+            var retried = req
+            if let token = TokenManager.accessToken {
+                retried.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            }
+            return try await send(retried, retryingOn401: false)
         }
         return (data, http)
     }
