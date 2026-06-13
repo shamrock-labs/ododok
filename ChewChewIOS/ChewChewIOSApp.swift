@@ -1,14 +1,24 @@
 import SwiftUI
 import UserNotifications
+import GoogleSignIn
+import KakaoSDKAuth
+import KakaoSDKCommon
 
 @main
 struct ChewChewIOSApp: App {
-    @State private var appState = AppState(
-        remoteStore: ChewChewIOSApp.makeRemoteStore()
-    )
+    @State private var appState: AppState
     @Environment(\.scenePhase) private var scenePhase
 
     @UIApplicationDelegateAdaptor private var notifDelegate: NotificationDelegate
+
+    init() {
+        _appState = State(initialValue: AppState(remoteStore: ChewChewIOSApp.makeRemoteStore()))
+        // Kakao SDK 초기화(네이티브 앱키는 Info.plist 경유 Secrets.xcconfig). placeholder면 건너뜀.
+        if let kakaoKey = Bundle.main.object(forInfoDictionaryKey: "KakaoNativeAppKey") as? String,
+           !kakaoKey.isEmpty, !kakaoKey.contains("REPLACE") {
+            KakaoSDK.initSDK(appKey: kakaoKey)
+        }
+    }
 
     /// 테스트(유닛/UI) 실행 중에는 실제 백엔드 대신 `NoopRemoteStore`를 주입한다.
     /// `AppState.init`이 곧바로 원격 fetch를 트리거하므로, 이 분기가 없으면 테스트
@@ -41,6 +51,9 @@ struct ChewChewIOSApp: App {
                     notifDelegate.appState = appState
                 }
                 .onOpenURL { url in
+                    // 소셜 로그인 콜백 우선 처리(Google / Kakao), 아니면 기존 chewchew 딥링크.
+                    if GIDSignIn.sharedInstance.handle(url) { return }
+                    if AuthApi.isKakaoTalkLoginUrl(url) { _ = AuthController.handleOpenUrl(url: url); return }
                     handleOpenURL(url)
                 }
                 .task {
