@@ -44,3 +44,6 @@ OdodokWidgets/Info.plist
 .roo
 .trae
 .windsurf
+
+# 개인 MCP 설정 (레포 강제 안 함)
+.mcp.json
