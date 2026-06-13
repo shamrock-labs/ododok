@@ -222,13 +222,17 @@ final class InsForgeRemoteStore: RemoteStore {
         )
     }
 
+    // fetch 실패(오프라인 등)는 throw로 전파한다. 0짜리 홈을 "성공"으로 돌려주면 applyHome이
+    // 마지막 성공 캐시를 0으로 덮어쓰고 영속하기 때문(keep-last-good 계약 위반). 신규 디바이스의
+    // "행 없음"(nil)만 0 홈으로 변환한다.
+
     func fetchHome(deviceId: String) async throws -> HomeStateDTO {
-        let stats = try? await fetchUserStats(deviceId: deviceId)
+        let stats = try await fetchUserStats(deviceId: deviceId)
         return Self.legacyHome(deviceId: deviceId, stats: stats)
     }
 
     func earnAttendance(deviceId: String, idempotencyKey: String) async throws -> AttendanceResultDTO {
-        let stats = try? await fetchUserStats(deviceId: deviceId)
+        let stats = try await fetchUserStats(deviceId: deviceId)
         return AttendanceResultDTO(
             grantedPoints: 0,
             capped: false,

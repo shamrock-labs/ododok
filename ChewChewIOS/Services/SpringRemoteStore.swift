@@ -211,7 +211,10 @@ final class SpringRemoteStore: RemoteStore {
         let response: URLResponse
         do {
             (data, response) = try await session.data(for: req)
-        } catch is URLError {
+        } catch let error as URLError {
+            // Task 취소(화면 이탈 등)는 오프라인이 아니다. CancellationError로 전파해
+            // "인터넷 연결 확인" 오안내를 막는다.
+            if error.code == .cancelled { throw CancellationError() }
             // 응답 자체가 오지 않음(연결 실패/타임아웃) → 오프라인으로 통일. 호출처는 캐시 fallback.
             throw RemoteStoreError.offline
         }
