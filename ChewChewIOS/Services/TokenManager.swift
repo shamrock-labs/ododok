@@ -7,7 +7,9 @@ import Security
 /// refresh는 만료된 access 재발급(`/auth/refresh`)에만 쓴다. 둘 다 Keychain에
 /// 둬서 앱 재실행 후에도 로그인 세션이 유지된다(DeviceIdentity와 동일 정책).
 enum TokenManager {
-    private static let service = "com.sungho.ododok.auth"
+    // Keychain service는 번들 ID에서 파생(prefix는 Secrets.xcconfig의 ODODOK_BUNDLE_PREFIX).
+    // 하드코딩하지 않아 prefix만 바꾸면 자동으로 따라온다. fallback은 안전망(앱 타겟은 항상 non-nil).
+    private static let service = (Bundle.main.bundleIdentifier ?? "com.shamrock.ododok") + ".auth"
     private static let accessAccount = "accessToken"
     private static let refreshAccount = "refreshToken"
 
