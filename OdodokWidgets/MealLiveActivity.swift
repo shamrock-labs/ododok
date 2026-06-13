@@ -11,11 +11,35 @@ struct MealLiveActivity: Widget {
 
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: MealActivityAttributes.self) { context in
-            // 배경은 시스템 기본(반투명 머티리얼)을 그대로 둬 일반 푸시 알림과 같은 질감.
-            // 별도 배경/틴트를 씌우지 않는다.
+            // 잠금화면 기본 머티리얼은 다크 모드에서 텍스트 대비가 흔들릴 수 있다.
+            // 끼니 푸시 알림처럼 반투명 크림 카드 위에 고정 팔레트를 올려 양쪽 모드 모두 읽히게 한다.
             lockScreen(context)
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .background {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .fill(.ultraThinMaterial)
+                        .overlay {
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.94),
+                                    Color.mealGlassBase.opacity(0.94),
+                                    Color.mealGlassWarmth.opacity(0.92)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                        }
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 24, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.62), lineWidth: 1)
+                }
+                .shadow(color: Color.black.opacity(0.14), radius: 18, x: 0, y: 8)
+                .padding(.horizontal, 2)
+                .activityBackgroundTint(.clear)
+                .activitySystemActionForegroundColor(Color.mealBrown)
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
@@ -27,7 +51,7 @@ struct MealLiveActivity: Widget {
                             .clipShape(Circle())
                         Text("오도독")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(Color.mealBrown)
+                            .foregroundStyle(Color.mealIslandAccent)
                     }
                 }
                 DynamicIslandExpandedRegion(.center) {
@@ -41,7 +65,7 @@ struct MealLiveActivity: Widget {
                         Link(destination: Self.resumeURL) {
                             Text("계속")
                                 .font(.caption.weight(.bold))
-                                .foregroundStyle(Color.mealBrown)
+                                .foregroundStyle(Color.mealIslandAccent)
                         }
                     } else {
                         Text(context.attributes.startedAt, style: .timer)
@@ -71,10 +95,10 @@ struct MealLiveActivity: Widget {
                 }
             } compactLeading: {
                 Image(systemName: context.state.isPausedByCall ? "pause.fill" : "fork.knife")
-                    .foregroundStyle(Color.mealBrown)
+                    .foregroundStyle(Color.mealIslandAccent)
             } compactTrailing: {
                 if context.state.isPausedByCall {
-                    Image(systemName: "phone.down.fill").foregroundStyle(Color.mealBrown)
+                    Image(systemName: "phone.down.fill").foregroundStyle(Color.mealIslandAccent)
                 } else {
                     Text(context.attributes.startedAt, style: .timer)
                         .font(.caption2.monospacedDigit())
@@ -82,9 +106,9 @@ struct MealLiveActivity: Widget {
                 }
             } minimal: {
                 Image(systemName: context.state.isPausedByCall ? "pause.fill" : "fork.knife")
-                    .foregroundStyle(Color.mealBrown)
+                    .foregroundStyle(Color.mealIslandAccent)
             }
-            .keylineTint(Color.mealBrown)
+            .keylineTint(Color.mealIslandAccent)
             .widgetURL(Self.resumeURL)
         }
     }
@@ -150,7 +174,10 @@ struct MealLiveActivity: Widget {
                 .foregroundStyle(filled ? Color.white : Color.mealBody)
                 .padding(.horizontal, 18)
                 .padding(.vertical, 9)
-                .background(filled ? Color.mealBrown : Color.mealChip, in: Capsule())
+                .background(filled ? Color.mealBrown : Color.mealChip.opacity(0.78), in: Capsule())
+                .overlay {
+                    Capsule().stroke(Color.white.opacity(filled ? 0.16 : 0.34), lineWidth: 1)
+                }
         }
     }
 
@@ -171,17 +198,23 @@ struct MealLiveActivity: Widget {
             .scaledToFit()
             .padding(6)
             .frame(width: 48, height: 48)
-            .background(Color.mealAvatarBg, in: Circle())
+            .background(Color.mealAvatarBg.opacity(0.86), in: Circle())
+            .overlay {
+                Circle().stroke(Color.white.opacity(0.42), lineWidth: 1)
+            }
     }
 }
 
 private extension Color {
     /// 알림 카드 팔레트. 위젯 타겟엔 Colors.swift가 없어 인라인으로 두되 앱 ink/acorn 값과 정렬한다.
     /// 텍스트는 시스템 외관과 무관하게 고정 색이라 반투명 머티리얼 위에서도 또렷.
+    static let mealGlassBase = Color(red: 253/255, green: 248/255, blue: 239/255)
+    static let mealGlassWarmth = Color(red: 1, green: 251/255, blue: 244/255)
     static let mealAvatarBg = Color(red: 251/255, green: 243/255, blue: 232/255)  // acorn50
     static let mealTitle = Color(red: 45/255, green: 36/255, blue: 24/255)        // ink800
     static let mealBody = Color(red: 92/255, green: 79/255, blue: 62/255)         // ink600
     static let mealFaint = Color(red: 140/255, green: 123/255, blue: 102/255)     // ink400
     static let mealBrown = Color(red: 156/255, green: 110/255, blue: 71/255)      // acorn600
+    static let mealIslandAccent = Color(red: 214/255, green: 171/255, blue: 126/255)
     static let mealChip = Color(red: 242/255, green: 237/255, blue: 229/255)      // ink100
 }

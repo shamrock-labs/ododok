@@ -66,11 +66,9 @@ final class AppState {
     /// 한 번 우물거리는 bounce를 재생한다. 실제 씹기 횟수가 아니라 화면 연출용 카운터.
     var animKey: Int = 0
 
-    /// PRD #11 streak 상태 — 프리즈 인벤토리 (0~3) + 마지막 성공 자정 시각.
-    /// `streak`(count)과 함께 `StreakService.evaluate(_:)`가 일관 mutate.
-    /// 마일스톤 7/30/100일 도달 시 프리즈 +1 적립, 2일 공백 시 자동 소진.
+    /// 스트릭 프리즈 인벤토리(0~3). ODO-54 전환 후 정본은 서버다 — `applyHome`이 서버 홈 응답의
+    /// `freezeInventory`로 갱신하고 HomeView가 "🛡️N"으로 표시한다. 마일스톤 적립·소진 계산은 모두 서버.
     var freezeInventory: Int = 0
-    var lastSuccessDate: Date?
 
     /// 사용자가 onboarding에서 입력한 표시 이름. `profiles.displayName`과 매핑.
     /// nil이면 HomeView는 "친구" 등 fallback. didSet에서 UserDefaults 캐시 갱신.
@@ -193,16 +191,22 @@ final class AppState {
     /// 중간 상태가 winner로 굳을 수 있어, 각 작업이 이전 작업 종료를 await하는 체인으로 직렬화한다.
     @ObservationIgnored private var remoteSyncChain: Task<Void, Never> = Task {}
 
-    /// user_stats는 profiles에 FK가 걸려 있어 첫 upsert 전에 profile 행이 존재해야 한다.
-    /// 동기화 체인에서 한 번만 보장하면 되므로 플래그로 추적 — fetchUserStats 성공 또는
-    /// upsertProfile 완료 시 true.
-    @ObservationIgnored private var profileEnsured: Bool = false
-
     /// 한 끼 식사의 raw IMU 6채널을 메모리에 모으는 버퍼. 식사 종료 시 봉인 + 업로드.
     @ObservationIgnored private var imuSessionRecorder: IMUSessionRecorder?
 
     /// 식사 종료 직후 IMU 세션 업로드 결과. 화면이 alert 표시할 때 binding으로 관찰.
     var sessionUploadStatus: SessionUploadStatus = .idle
+
+    /// 업로드 실패 시 사용자에게 보여줄 사유(서버가 준 메시지 / 오프라인 안내 등).
+    /// nil이면 화면이 기본 카피를 쓴다. 성공·dismiss 시 비운다.
+    var sessionUploadErrorMessage: String?
+
+    /// 서버가 계산한 홈 상태(도토리/스트릭/오늘 진행도)의 최신 스냅샷. ODO-54 thin-client 전환 후
+    /// 도토리·스트릭·오늘완료의 정본은 서버다. 세션 저장 응답·홈 조회·출석 적립이 이 값을 갱신하고,
+    /// `points`/`streak`/`freezeInventory`와 derived 프로퍼티는 모두 여기서 흘러나온다.
+    /// nil이면 아직 서버 응답 전 — 로컬 캐시 fallback. derived 프로퍼티가 이 값을 읽으므로
+    /// 관찰 대상으로 둔다(변경 시 홈 화면 자동 갱신).
+    private(set) var serverHome: HomeStateDTO?
 
     /// "오늘의 식사 기록" 리스트 — 오늘 0시 이후 시작된 chewing_session 행들.
     /// Tracking 탭이 관찰만 하고, fetch/append는 AppState가 single source of truth.
@@ -221,9 +225,9 @@ final class AppState {
     /// 종료 시 너무 짧은 세션 확인(showShortSessionConfirm)과 메시지를 분리한다.
     var showAirPodsConnectionPrompt: Bool = false
 
-    /// 도토리 적립 시 ContentView가 overlay로 보여줄 RewardDialogView trigger.
-    /// RewardLedger가 +n🌰 반환했을 때 set, 사용자가 다이얼로그 dismiss 시 nil.
-    /// 출석 보너스(`.attendance`) + 세션 종료 적립(`.sessionComplete`) 두 종 trigger.
+    /// 도토리/스트릭 보상 시 ContentView가 overlay로 보여줄 RewardDialogView trigger.
+    /// 서버 응답(세션 적립·스트릭 이벤트·출석 적립)을 받아 set, 다이얼로그 dismiss 시 nil.
+    /// 출석(`.attendance`) + 세션 적립(`.sessionComplete`) + 스트릭 이벤트(`.streak*`) trigger.
     /// 세션 적립 trigger는 `SessionResultSheet`와 동시 표시되지 않도록 ContentView
     /// overlay가 `lastCompletedSession == nil`(=sheet 닫힘)일 때만 그려진다.
     var pendingRewardGrant: RewardGrant?
@@ -258,7 +262,7 @@ final class AppState {
         // 즉시 표시용 fallback — DB 실패 또는 응답 전에 화면 그려도 마지막 캐시값으로.
         loadPersistedSnapshot()
         Task { [weak self] in
-            await self?.syncFromRemoteUserStats()
+            await self?.refreshFromServerHome()
             await self?.fetchAndApplyDisplayName()
         }
     }
@@ -544,7 +548,7 @@ final class AppState {
             // 사용자가 보상→온보딩 순으로 마주치는 회귀를 차단. completeOnboarding()이
             // 튜토리얼 종료 직후 동일 경로를 호출해 이어준다.
             if hasCompletedOnboarding {
-                grantDailyAttendanceIfNeeded()
+                Task { await grantDailyAttendanceIfNeeded() }
             }
         }
         if wasInForeground && !toForeground {
@@ -585,7 +589,6 @@ final class AppState {
         points = 0
         animKey = 0
         freezeInventory = 0
-        lastSuccessDate = nil
         resetIMUWaveform()
         imuWaveformSource = .idle
         owned = []
@@ -616,7 +619,6 @@ final class AppState {
         displayName = nil
         hasCompletedOnboarding = false
         freezeInventory = 0
-        lastSuccessDate = nil
         // 저장된 스냅샷도 비워서 다음 실행에서 시드값이 살아남도록
         clearPersistedSnapshot()
     }
@@ -625,25 +627,32 @@ final class AppState {
 
     var status: MoodStatus { MoodStatus.from(count: todayRealChewCount) }
 
-    /// 홈에 표시할 "오늘 기준" 연속 출석 일수. 저장된 `streak`은 세션 종료/포그라운드
-    /// 평가 시점에만 갱신되므로, 표시용으로는 `lastSuccessDate`와 오늘 사이의 간격으로
-    /// 현재 유효한 스트릭을 직접 계산한다. 마지막 성공이 없거나 2일 이상 비면 0(끊김).
+    /// 홈에 표시할 "오늘 기준" 연속 출석 일수. ODO-54 전환 후 스트릭 정본은 서버다.
+    /// 서버 홈 응답의 `streak`(이미 "현재 유효한" 값)을 그대로 쓰고, 서버 응답 전이면
+    /// 로컬 캐시(`streak`)로 fallback.
+    /// 주의: 오프라인 cold-start에선 만료 검증을 로컬에서 못 한다(`lastSuccessDate`는 서버 소유로
+    /// 제거됨). 마지막 성공 스냅샷의 스트릭을 그대로 보여주는 건 ODO-54 Done-When "서버 실패 시
+    /// 마지막 성공 상태 보존"에 따른 의도된 동작 — 다음 서버 응답에서 즉시 정정된다.
     var currentStreak: Int {
-        guard let last = lastSuccessDate else { return 0 }
-        // gap 0(오늘 성공)·1(어제 성공, 오늘 유지 가능)이면 아직 살아 있음. 2일+면 끊김.
-        return StreakService.effectiveGapDays(last: last, now: Date()) <= 1 ? streak : 0
+        serverHome?.streak ?? streak
     }
 
-    /// 오늘 세션들의 실제 씹기 횟수 합. 식사 중에는 갱신되지 않고 세션이 끝나
-    /// `todaySessions`에 추가될 때만 변한다. 화면에 노출되는 "실제 씹기" 수치는
-    /// 항상 이 값을 쓴다.
+    /// 오늘의 실제 씹기 횟수. 서버가 계산한 값(오늘 0시 이후 60초+ 세션 합)을 정본으로 쓰고,
+    /// 서버 응답 전이면 로컬 `todaySessions` 합으로 fallback. dailyGoal == 0은 "정책 없는 홈"
+    /// (InsForge 레거시 어댑터의 legacyHome)의 표지라, 그때도 로컬 합산으로 fallback —
+    /// 레거시 백엔드에서 홈 카운트/링이 0에 붙박이는 것을 막는다(todayProgress와 같은 기준).
     var todayRealChewCount: Int {
-        todaySessions.reduce(0) { $0 + ($1.estimatedTotalChews ?? 0) }
+        if let serverHome, serverHome.dailyGoal > 0 { return serverHome.todayRealChewCount }
+        return todaySessions.reduce(0) { $0 + ($1.estimatedTotalChews ?? 0) }
     }
 
-    /// 실제 씹기 횟수 기반 일일 목표 진행도(0~1). 홈 다람이 둘레 링이 사용.
+    /// 일일 목표 진행도(0~1). 서버 홈 응답의 진행도를 정본으로 쓰고(분모 dailyGoal>0일 때),
+    /// 서버 응답 전이면 로컬 계산으로 fallback. 홈 다람이 둘레 링이 사용.
     var todayProgress: Double {
-        min(1.0, max(0.0, Double(todayRealChewCount) / Double(Constants.dailyGoal)))
+        if let serverHome, serverHome.dailyGoal > 0 {
+            return min(1.0, max(0.0, serverHome.todayProgress))
+        }
+        return min(1.0, max(0.0, Double(todayRealChewCount) / Double(Constants.dailyGoal)))
     }
 
     var imuWaveformStatusText: String {
@@ -833,10 +842,10 @@ final class AppState {
     private static let persistenceKey = "ChewChewIOS.AppState.snapshot.v1"
 
     /// v2 — `owned`/`equipped`/`ownedAcornPacks` 추가.
-    /// v3 — PRD #11 streak: `freezeInventory`/`lastSuccessDate` 추가. 모두 옵셔널이라
-    /// 옛 스냅샷을 디코드하면 자동으로 nil → 기본값(0/nil)으로 초기화된다.
+    /// v3 — `freezeInventory` 추가. 옵셔널이라 옛 스냅샷은 nil → 기본값(0)으로 초기화.
     /// v4 — 미사용 가짜 카운터 `chewCount`/`goalAlreadyHit` 제거. 옛 스냅샷에 남아 있어도
     /// 디코드 시 미지 키로 무시돼 하위호환 문제 없음.
+    /// v5(ODO-54) — `lastSuccessDate` 제거(스트릭 정본 서버화로 미사용). 옛 스냅샷의 잔존 키는 무시.
     private struct PersistedSnapshot: Codable {
         let streak: Int
         let points: Int
@@ -845,9 +854,14 @@ final class AppState {
         var equipped: Equipped?
         var ownedAcornPacks: [String: Int]?
         var freezeInventory: Int?
-        var lastSuccessDate: Date?
     }
 
+    /// 게임 진행 상태를 로컬 UserDefaults 캐시에 스냅샷 저장.
+    ///
+    /// ODO-54 전환 후 도토리/스트릭/오늘완료의 정본은 서버다. iOS는 더 이상 `user_stats`를
+    /// 서버로 push하지 않는다 — 옛 push는 서버가 적립한 잔액을 클라 값으로 덮어써 버리기
+    /// 때문(서버 PUT /v1/me/stats가 본문을 통째로 반영). 이 스냅샷은 cold-start 시 서버 응답
+    /// 도착 전 화면을 그리기 위한 로컬 fallback 캐시 용도로만 남긴다.
     func persistSnapshot() {
         let now = Date()
         let snapshot = PersistedSnapshot(
@@ -857,28 +871,10 @@ final class AppState {
             owned: Array(owned),
             equipped: equipped,
             ownedAcornPacks: ownedAcornPacks,
-            freezeInventory: freezeInventory,
-            lastSuccessDate: lastSuccessDate
+            freezeInventory: freezeInventory
         )
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
         UserDefaults.standard.set(data, forKey: Self.persistenceKey)
-
-        // 원격 동기화는 best-effort — 실패해도 로컬은 위에서 이미 보장됨.
-        // remoteSyncChain으로 직렬화해 짧은 시간 내 여러 mutate가 도착 순서로 뒤집히는 race를 방지.
-        // user_stats는 profiles에 FK가 걸려 있어 첫 호출 한 번은 profile upsert 선행.
-        let stats = makeUserStatsDTO(savedAt: now)
-        let deviceId = DeviceIdentity.shared
-        let store = remoteStore
-        let previous = remoteSyncChain
-        let needProfile = !profileEnsured
-        profileEnsured = true
-        remoteSyncChain = Task.detached {
-            _ = await previous.value
-            if needProfile {
-                try? await store.upsertProfile(ProfileDTO(deviceId: deviceId, displayName: nil))
-            }
-            try? await store.upsertUserStats(stats)
-        }
     }
 
     private func loadPersistedSnapshot() {
@@ -898,24 +894,20 @@ final class AppState {
         if let savedPacks = snapshot.ownedAcornPacks {
             ownedAcornPacks = savedPacks
         }
-        // v3 옵셔널 필드 — 옛 스냅샷에선 nil이라 신규 streak 상태(0/nil)로 시작
+        // v3 옵셔널 필드 — 옛 스냅샷에선 nil이라 신규 streak 상태(0)로 시작
         if let savedFreeze = snapshot.freezeInventory {
             freezeInventory = savedFreeze
-        }
-        if let savedLastSuccess = snapshot.lastSuccessDate {
-            lastSuccessDate = savedLastSuccess
         }
     }
 
     func clearPersistedSnapshot() {
         UserDefaults.standard.removeObject(forKey: Self.persistenceKey)
-        // RewardLedger도 함께 비움 — 사용자가 명시적 reset 했을 때 출석/세션 적립
-        // idempotency 키도 같이 사라져 다음 첫 진입에서 다시 적립 가능.
-        RewardLedger.resetAll()
-        // 같은 체인으로 — 직전 upsert가 끝난 뒤 delete가 나가야 결과가 결정적.
+        // 서버 홈 캐시도 비움 — reset/erase 후 화면이 옛 도토리/스트릭을 잠깐 보여주지 않도록.
+        // 적립 멱등 키는 서버 reward_events에 있고, deleteUserData가 그 행들도 함께 제거한다.
+        serverHome = nil
+        homeApplyVersion += 1   // 초기화 직전 시작된 refreshFromServerHome이 완료 후 applyHome을 실행하지 못하게.
+        // 같은 체인으로 — 직전 작업이 끝난 뒤 delete가 나가야 결과가 결정적.
         // profiles 삭제 → FK ON DELETE CASCADE로 user_stats도 자동 정리.
-        // 다음 persistSnapshot이 profile을 다시 만들 수 있도록 플래그 리셋.
-        profileEnsured = false
         let deviceId = DeviceIdentity.shared
         let store = remoteStore
         let previous = remoteSyncChain
@@ -925,71 +917,70 @@ final class AppState {
         }
     }
 
-    // MARK: - Remote sync helpers
+    // MARK: - 서버 홈 상태 동기화 (ODO-54 thin-client)
 
-    private func makeUserStatsDTO(savedAt: Date) -> UserStatsDTO {
-        UserStatsDTO(
-            deviceId: DeviceIdentity.shared,
-            streak: streak,
-            points: points,
-            owned: Array(owned),
-            equipped: UserStatsDTO.EquippedDTO(
-                hat: equipped.hat,
-                glasses: equipped.glasses,
-                acc: equipped.acc
-            ),
-            ownedAcornPacks: ownedAcornPacks,
-            savedAt: savedAt
-        )
-    }
+    /// 서버가 계산한 홈 상태를 in-memory에 반영. 도토리/스트릭/프리즈는 서버값으로 덮고,
+    /// derived 프로퍼티(currentStreak/todayRealChewCount/todayProgress)는 자동으로 따라온다.
+    /// 로컬 캐시도 write-through해 다음 cold-start의 fallback이 최신값을 갖게 한다.
+    /// applyHome이 일어날 때마다 증가 — 비행 중인 읽기(GET /home) 응답이 도착했을 때 그 사이
+    /// 다른 응답(출석/세션 저장 POST)이 홈을 갱신했는지 판별하는 버전 카운터.
+    @ObservationIgnored private var homeApplyVersion = 0
 
-    /// 앱 시작 시 한 번 호출. DB(`user_stats`)를 source of truth로 삼아 무조건 덮어쓴다.
-    /// fetch 성공 → DB값으로 in-memory + UserDefaults write-through.
-    /// fetch nil(신규 디바이스) → 현재 상태(시드값 0) 유지.
-    /// 네트워크 실패 → loadPersistedSnapshot이 채운 fallback 유지 (silent).
     @MainActor
-    private func syncFromRemoteUserStats() async {
+    private func applyHome(_ home: HomeStateDTO) {
+        homeApplyVersion += 1
+        serverHome = home
+        points = home.points
+        streak = home.streak
+        freezeInventory = home.freezeInventory
+        if let name = home.displayName, !name.isEmpty, name != displayName {
+            displayName = name
+        }
+        persistSnapshot()
+    }
+
+    /// 서버 홈 상태를 조회해 반영. 실패(네트워크 끊김 등)는 silent — loadPersistedSnapshot이
+    /// 채운 로컬 캐시를 그대로 유지한다(서버 실패 시 마지막 성공 상태 보존, ODO-54 Done-When).
+    @MainActor
+    func refreshFromServerHome() async {
         let deviceId = DeviceIdentity.shared
-        do {
-            if let remote = try await remoteStore.fetchUserStats(deviceId: deviceId) {
-                // user_stats 존재 = profiles도 존재 (FK 보장). profile 재호출 생략.
-                profileEnsured = true
-                applyRemoteSnapshot(remote)
-                writeSnapshotToUserDefaults(savedAt: remote.savedAt)
-            }
-            // remote == nil → 신규 디바이스: 현재 시드값(0) 유지.
-        } catch {
-            // 네트워크 실패 → loadPersistedSnapshot이 채운 fallback 유지. silent.
+        let versionAtRequest = homeApplyVersion
+        guard let home = try? await remoteStore.fetchHome(deviceId: deviceId) else { return }
+        // 이 GET이 비행하는 동안 쓰기 응답(출석/세션 저장)이 홈을 갱신했다면 이 응답은 옛
+        // 스냅샷이다 — 적용하면 방금 반영된 적립을 화면에서 되돌리므로 버린다(쓰기 응답 우선).
+        guard versionAtRequest == homeApplyVersion else { return }
+        applyHome(home)
+    }
+
+    /// 서버 스트릭 이벤트 → 보상 다이얼로그 매핑. 계산은 서버가 끝냈고 iOS는 표시만 한다.
+    /// NONE/INCREMENTED는 알림 없음(nil). 서버가 한 번에 한 이벤트만 주므로 단순 매핑으로 충분.
+    private func rewardGrant(forStreak streak: SessionStreakDTO) -> RewardGrant? {
+        switch streak.event {
+        case "MILESTONE":       return RewardGrant(amount: 1, kind: .streakMilestone(streakCount: streak.current))
+        case "SAVED_BY_FREEZE": return RewardGrant(amount: streak.freezeInventory, kind: .streakSaved)
+        case "RESET":           return RewardGrant(amount: 0, kind: .streakReset)
+        case "FIRST_DAY":       return RewardGrant(amount: 0, kind: .streakFirstDay)
+        default:                return nil
         }
     }
 
-    /// DB에서 받은 UserStatsDTO를 in-memory 상태에 적용.
-    /// freezeInventory / lastSuccessDate는 DTO에 없어 건드리지 않음 (DTO 확장은 별도 PR).
-    private func applyRemoteSnapshot(_ remote: UserStatsDTO) {
-        streak = remote.streak
-        points = remote.points
-        owned = Set(remote.owned)
-        equipped = Equipped(hat: remote.equipped.hat, glasses: remote.equipped.glasses, acc: remote.equipped.acc)
-        ownedAcornPacks = remote.ownedAcornPacks
+    /// 앱-열기 출석 멱등키 — REQ-08 형식(`app-open-<deviceId>-<yyyyMMdd Asia/Seoul>`).
+    /// iOS가 트리거 시점에 키를 만들고, 서버가 이 키로 일 1회 적립을 판정한다.
+    /// 서버(AttendanceService)가 같은 포맷으로 키를 유도하므로, 포맷 변경 시 양쪽을 함께 고쳐야
+    /// 같은 날 두 키가 갈라져 이중 적립되는 일을 막는다.
+    static func attendanceKey(deviceId: String, now: Date = Date()) -> String {
+        "app-open-\(deviceId)-\(attendanceKeyFormatter.string(from: now))"
     }
 
-    /// 현재 in-memory 상태를 UserDefaults에 write-through. savedAt은 DB row의 값을 그대로 사용.
-    /// freezeInventory / lastSuccessDate는 현재 in-memory 값을 그대로 유지.
-    private func writeSnapshotToUserDefaults(savedAt: Date) {
-        let snapshot = PersistedSnapshot(
-            streak: streak,
-            points: points,
-            savedAt: savedAt,
-            owned: Array(owned),
-            equipped: equipped,
-            ownedAcornPacks: ownedAcornPacks,
-            freezeInventory: freezeInventory,
-            lastSuccessDate: lastSuccessDate
-        )
-        if let data = try? JSONEncoder().encode(snapshot) {
-            UserDefaults.standard.set(data, forKey: Self.persistenceKey)
-        }
-    }
+    /// DateFormatter의 포맷팅은 iOS 7+에서 thread-safe지만, 현재 호출 경로는 모두 MainActor다.
+    /// 비-메인 호출자를 추가한다면 그 점을 인지하고 쓸 것.
+    private static let attendanceKeyFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "Asia/Seoul")
+        f.dateFormat = "yyyyMMdd"
+        return f
+    }()
 
     /// 식사 종료 후 IMU 세션 봉인 결과 + 분석 통계를 받아 Storage 업로드 → chewing_session INSERT.
     /// 결과는 `sessionUploadStatus`로 publish되어 UI alert이 관찰한다. 실패 시 payload를
@@ -1022,44 +1013,39 @@ final class AppState {
                 estimatedTotalChews: stats?.estimatedTotalChews,
                 modelVersion: stats?.modelVersion
             )
-            try await remoteStore.insertSession(dto)
+            // 정책 엔드포인트로 저장 — 서버가 적립/스트릭/오늘완료/홈을 계산해 함께 돌려준다.
+            let result = try await remoteStore.createChewingSession(dto)
             sessionUploadStatus = .success
+            sessionUploadErrorMessage = nil
             pendingUpload = nil
-            // 리포트가 생성될 수 없는 세션(durationSec < 60 또는 분석 5필드 nil)은
-            // 결과·도토리·스트릭 어디에도 반영하지 않는다 — 결과를 못 보여주는 만큼 보상도 없음.
+            // 서버가 계산한 도토리/스트릭/오늘 상태를 화면에 반영(정본). iOS는 재계산하지 않는다.
+            applyHome(result.userStats)
+            // 리포트가 생성될 수 없는 세션(durationSec < 60 또는 분석 5필드 nil)은 결과·보상
+            // 다이얼로그 어디에도 반영하지 않는다 — 서버도 rewardEligible=false로 보상 0.
             // 알림 '그만하기'로 끝낸 너무 짧은 세션도 홈 '그만두기'(discard)와 동일하게 무보상.
-            // (이전엔 streak이 canRender와 무관하게 적용되던 버그.) raw IMU는 이미 업로드됐고,
-            // fetchTodaySessions가 reload 시 이런 세션을 필터한다.
+            // raw IMU는 이미 업로드됐고, fetchTodaySessions가 reload 시 이런 세션을 필터한다.
             guard ReportCardModel.from(dto) != nil else { return }
 
-            // 방금 INSERT한 행을 즉시 리스트에 반영 — GET 라운드트립 생략.
+            // 방금 저장한 행을 즉시 리스트에 반영 — GET 라운드트립 생략.
             // started_at 오름차순 정렬을 유지하기 위해 append (방금 종료된 세션이 가장 최신).
             todaySessions.append(dto)
             // 식사 종료 직후 ReportCardView를 sheet로 띄울 trigger. 사용자가 닫으면 nil.
             lastCompletedSession = dto
-            // PRD #8: 세션 종료 적립 = estimatedTotalChews × 0.05. RewardLedger가
-            // idempotency(같은 sessionId 중복 차단) + 일일 상한 enforcement.
-            let granted = RewardLedger.accrue(forSession: dto.id, chewCount: dto.estimatedTotalChews)
-            if granted > 0 {
-                points += granted
-            }
-            // PRD #11 streak — 세션 종료 시 카운트 평가 + 마일스톤 프리즈 적립.
-            let streakEvents = StreakService.evaluate(self)
-            if granted > 0 || !streakEvents.isEmpty {
-                persistSnapshot()
-            }
-            // 우선순위: streak event(milestone/saved/reset) > 세션 종료 도토리.
-            // 같은 시점에 둘 다 발생할 수 있어도 dialog는 1개만 — milestone이 더 임팩트.
-            if let streakGrant = StreakService.noticeGrant(from: streakEvents) {
+            // 우선순위: 스트릭 이벤트(마일스톤/프리즈/리셋/첫날) > 세션 적립 도토리. 둘 다
+            // 발생해도 다이얼로그는 1개만 — milestone이 더 임팩트. 모두 서버 응답값으로 표시만 한다.
+            // 멱등 재전송(idempotentReplay)이면 적립 0이므로 도토리 다이얼로그를 띄우지 않는다.
+            if let streakGrant = rewardGrant(forStreak: result.streak) {
                 pendingRewardGrant = streakGrant
-            } else if granted > 0 {
+            } else if result.reward.grantedPoints > 0 && !result.reward.idempotentReplay {
                 // SessionResultSheet가 먼저 떠 있는 상태 — ContentView overlay는
                 // sheet 닫힌 후(`lastCompletedSession == nil`)에만 그려져, 다이얼로그가
                 // sheet에 가려지지 않고 순차로 등장한다.
-                pendingRewardGrant = RewardGrant(amount: granted, kind: .sessionComplete)
+                pendingRewardGrant = RewardGrant(amount: result.reward.grantedPoints, kind: .sessionComplete)
             }
         } catch {
             sessionUploadStatus = .failure
+            // 사용자에겐 부드러운 통일 카피(userMessage)만 노출 — 서버 원문은 로그(description)로만 남는다.
+            sessionUploadErrorMessage = (error as? RemoteStoreError)?.userMessage
             pendingUpload = (output: output, stats: stats)
         }
     }
@@ -1090,7 +1076,7 @@ final class AppState {
         // 재설치한 기존 사용자(위에서 hasCompletedOnboarding을 막 true로 올린 경우): foreground
         // 진입 시점엔 아직 false라 attendance를 건너뛰었으므로, 여기서 이어서 트리거한다.
         if isInForeground && hasCompletedOnboarding {
-            grantDailyAttendanceIfNeeded()
+            await grantDailyAttendanceIfNeeded()
         }
     }
 
@@ -1100,7 +1086,6 @@ final class AppState {
         let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         displayName = trimmed
-        profileEnsured = true
         // 출석 보상은 여기서 트리거하지 않는다 — 이름 저장 뒤엔 사용법 튜토리얼이 이어지므로,
         // 보상은 튜토리얼이 끝나는 completeOnboarding()에서 띄운다(보상이 튜토리얼 위로
         // 떠버리는 회귀 방지). 이름 저장 시점엔 DB upsert만 수행.
@@ -1114,26 +1099,27 @@ final class AppState {
     func completeOnboarding() {
         guard !hasCompletedOnboarding else { return }
         hasCompletedOnboarding = true
-        grantDailyAttendanceIfNeeded()
+        Task { await grantDailyAttendanceIfNeeded() }
     }
 
-    /// 일일 출석 보상 + 스트릭 foreground 자동 방어를 한 번에 평가한다. RewardLedger와
-    /// StreakService 양쪽 다 같은 날 중복 호출에 idempotent하므로 여러 진입점에서 안전.
+    /// 앱-열기 출석 적립을 서버에 요청한다. iOS는 멱등키로 트리거만 하고, 일 1회 적립 판정과
+    /// 잔액은 서버가 정본으로 정한다. 같은 날 이미 받았으면 서버가 idempotentReplay=true(적립 0)로
+    /// 응답해 다이얼로그가 뜨지 않는다(여러 진입점에서 중복 호출해도 안전). 응답으로 홈 상태를
+    /// 갱신해 foreground 진입 때 화면도 최신화된다. 실패(네트워크 등)는 silent — 다음 진입에서 재시도.
+    ///
+    /// foreground 스트릭 자동 방어는 ODO-54에서 드롭했다. 방어는 다음 세션 저장 응답의
+    /// SAVED_BY_FREEZE 이벤트로 흡수되며, 서버 홈 조회(GET /v1/me/home)는 readOnly라 스트릭을
+    /// 건드리지 않는다.
     @MainActor
-    private func grantDailyAttendanceIfNeeded() {
-        let granted = RewardLedger.claimDailyAttendance()
-        if granted > 0 {
-            points += granted
+    private func grantDailyAttendanceIfNeeded() async {
+        let deviceId = DeviceIdentity.shared
+        let key = Self.attendanceKey(deviceId: deviceId)
+        guard let result = try? await remoteStore.earnAttendance(deviceId: deviceId, idempotencyKey: key) else {
+            return
         }
-        let streakEvents = StreakService.evaluateForegroundDefense(self)
-        if !streakEvents.isEmpty || granted > 0 {
-            persistSnapshot()
-        }
-        // dialog 우선순위: streak event(savedByFreeze/reset) > 출석 보너스.
-        if let streakGrant = StreakService.noticeGrant(from: streakEvents) {
-            pendingRewardGrant = streakGrant
-        } else if granted > 0 {
-            pendingRewardGrant = RewardGrant(amount: granted, kind: .attendance)
+        applyHome(result.userStats)
+        if result.grantedPoints > 0 && !result.idempotentReplay {
+            pendingRewardGrant = RewardGrant(amount: result.grantedPoints, kind: .attendance)
         }
     }
 
@@ -1148,6 +1134,8 @@ final class AppState {
         }
         // 리포트가 가능한 세션만 노출. DB엔 남아 있어도 앱에선 없는 것처럼 처리.
         todaySessions = rows.filter { ReportCardModel.from($0) != nil }
+        // 오늘 씹기 수·진행도·완료 여부는 서버가 정본 — 세션 리스트 동기화와 함께 홈도 갱신한다.
+        await refreshFromServerHome()
     }
 
     /// 단일 세션 삭제 — 캘린더 DaySessionsView에서 swipe로 호출. todaySessions에서도
@@ -1158,6 +1146,8 @@ final class AppState {
         do {
             try await remoteStore.deleteChewingSession(id: session.id, deviceId: deviceId)
             todaySessions.removeAll { $0.id == session.id }
+            // 오늘 씹기 수·진행도가 줄었을 수 있으므로 서버 홈을 다시 받아 반영.
+            await refreshFromServerHome()
         } catch {
             return
         }
@@ -1171,6 +1161,8 @@ final class AppState {
         do {
             try await remoteStore.deleteAllChewingSessions(deviceId: deviceId)
             todaySessions = []
+            // 오늘 씹기 수·진행도가 0으로 바뀌므로 서버 홈을 다시 받아 반영.
+            await refreshFromServerHome()
         } catch {
             return
         }
@@ -1199,6 +1191,7 @@ final class AppState {
             pendingUpload = nil
         }
         sessionUploadStatus = .idle
+        sessionUploadErrorMessage = nil
     }
 
     private static let appVersion: String? = {

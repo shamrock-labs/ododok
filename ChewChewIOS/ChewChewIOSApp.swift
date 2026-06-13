@@ -10,22 +10,24 @@ struct ChewChewIOSApp: App {
 
     @UIApplicationDelegateAdaptor private var notifDelegate: NotificationDelegate
 
-    /// 테스트(유닛/UI) 실행 중에는 실제 InsForge 백엔드 대신 `NoopRemoteStore`를 주입한다.
-    /// `AppState.init`이 곧바로 원격 fetch/upsert를 트리거하므로, 이 분기가 없으면 테스트
-    /// 런마다 새 `device_id`로 profiles/user_stats row가 실 DB에 쌓인다(누적 오염).
+    /// 테스트(유닛/UI) 실행 중에는 실제 백엔드 대신 `NoopRemoteStore`를 주입한다.
+    /// `AppState.init`이 곧바로 원격 fetch를 트리거하므로, 이 분기가 없으면 테스트
+    /// 런마다 새 `device_id`로 서버에 row가 쌓인다(누적 오염).
     ///   - 유닛 테스트: 앱이 TEST_HOST라 `XCTestConfigurationFilePath` env가 세팅됨.
     ///   - UI 테스트: 앱이 별도 프로세스로 launch되므로 위 env가 없음 → `-useNoopRemote` arg로 감지.
+    ///
+    /// ODO-54 전면 전환: 기본 백엔드는 Spring(staging)이다. 레거시 InsForge는 `-useInsForge`
+    /// 오버라이드로만 사용한다. 환경(바라보는 백엔드 URL) 분리는 config 주입 영역으로 별도.
     private static func makeRemoteStore() -> RemoteStore {
         let pi = ProcessInfo.processInfo
         let underTest = pi.environment["XCTestConfigurationFilePath"] != nil
             || pi.arguments.contains("-useNoopRemote")
         if underTest { return NoopRemoteStore() }
-        // ODO-53 연결 테스트: `-useSpringBackend` arg일 때 Spring staging 백엔드로 전환.
-        // 기본은 InsForge 유지 — arg를 빼면 즉시 원복된다.
-        if pi.arguments.contains("-useSpringBackend") {
-            return SpringRemoteStore(config: .stagingDefault)
+        // 레거시 InsForge는 명시적 오버라이드일 때만 — 기본은 Spring.
+        if pi.arguments.contains("-useInsForge") {
+            return InsForgeRemoteStore(config: .default)
         }
-        return InsForgeRemoteStore(config: .default)
+        return SpringRemoteStore(config: .stagingDefault)
     }
 
     var body: some Scene {
@@ -80,7 +82,7 @@ struct ChewChewIOSApp: App {
     /// - `-autoStartEating`: 앱 진입 즉시 식사 시작.
     /// - `-autoStopAfter <seconds>`: 자동 시작 후 N초 뒤 식사 종료 (→ snapshot persist).
     /// - `-equipShowcase`: 모자/안경/액세서리 1개씩 미리 구매·장착 (꾸미기 검증용).
-    /// - `-resetState`: XCUITest용 — UserDefaults/RewardLedger/AppState 전체 초기화.
+    /// - `-resetState`: XCUITest용 — UserDefaults/AppState 전체 초기화.
     /// - `-skipOnboarding`: XCUITest용 — displayName="테스터" + 온보딩 완료 처리로 onboarding sheet 우회.
     /// - `-useNoopRemote`: XCUITest용 — 실 백엔드 대신 NoopRemoteStore 주입(`makeRemoteStore`에서 처리).
     /// - `-highlightStart`: XCUITest용 — 앱 진입 즉시 startButtonHighlighted=true (강조 UI 검증).
@@ -90,9 +92,9 @@ struct ChewChewIOSApp: App {
 
         if args.contains("-resetState") {
             if let bundleID = Bundle.main.bundleIdentifier {
+                // 번들 전체 UserDefaults 도메인을 비우므로 적립 캐시 키도 함께 사라진다.
                 UserDefaults.standard.removePersistentDomain(forName: bundleID)
             }
-            RewardLedger.resetAll()
             appState.reset()
         }
 

@@ -7,10 +7,24 @@ final class SpyRemoteStore: RemoteStore {
 
     func upsertProfile(_ profile: ProfileDTO) async throws {}
     func fetchProfile(deviceId: String) async throws -> ProfileDTO? { nil }
-    func upsertUserStats(_ stats: UserStatsDTO) async throws {}
     func fetchUserStats(deviceId: String) async throws -> UserStatsDTO? { nil }
     func deleteUserData(deviceId: String) async throws { deleteUserDataCallCount += 1 }
-    func insertSession(_ session: ChewingSessionDTO) async throws {}
+    func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO {
+        CreateSessionResultDTO(
+            chewingSession: session,
+            chewingSessionAccepted: true,
+            rewardEligible: false,
+            ineligibleReason: nil,
+            reward: SessionRewardDTO(grantedPoints: 0, capped: false, idempotentReplay: false),
+            streak: SessionStreakDTO(current: 0, event: "NONE", freezeInventory: 0),
+            today: SessionTodayDTO(completed: false),
+            userStats: .empty(deviceId: session.deviceId)
+        )
+    }
+    func fetchHome(deviceId: String) async throws -> HomeStateDTO { .empty(deviceId: deviceId) }
+    func earnAttendance(deviceId: String, idempotencyKey: String) async throws -> AttendanceResultDTO {
+        AttendanceResultDTO(grantedPoints: 0, capped: false, idempotentReplay: false, userStats: .empty(deviceId: deviceId))
+    }
     func fetchChewingSessions(deviceId: String, since: Date, until: Date?) async throws -> [ChewingSessionDTO] { [] }
     func deleteChewingSession(id: UUID, deviceId: String) async throws {}
     func deleteAllChewingSessions(deviceId: String) async throws {}
