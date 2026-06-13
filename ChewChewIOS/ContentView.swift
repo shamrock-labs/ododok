@@ -107,6 +107,10 @@ struct ContentView: View {
         .sheet(isPresented: onboardingBinding) {
             OnboardingFlowView()
         }
+        // ODO-47: 로그인 게이트 — 토큰 없으면 LoginView를 전체화면으로 띄운다(온보딩보다 우선).
+        .fullScreenCover(isPresented: loginBinding) {
+            LoginView(onLoggedIn: { state.completeLogin() })
+        }
         // RewardDialogView는 overlay라 SessionResultSheet에 가려진다. sheet가 떠 있는 동안엔
         // 그리지 않고 대기 — sheet 닫히는 순간 자연스럽게 등장하고 그때부터 2.5s 자동 dismiss
         // 타이머가 시작되어, 세션 종료 보상 다이얼로그가 가려진 채 사라지는 회귀를 차단.
@@ -191,6 +195,10 @@ struct ContentView: View {
             get: { state.didLoadProfile && !state.hasCompletedOnboarding },
             set: { _ in }
         )
+    }
+
+    private var loginBinding: Binding<Bool> {
+        Binding(get: { !state.isLoggedIn }, set: { _ in })
     }
 
     private func tabPage<Content: View>(@ViewBuilder content: @escaping () -> Content) -> some View {

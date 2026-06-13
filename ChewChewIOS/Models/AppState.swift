@@ -87,6 +87,10 @@ final class AppState {
     /// 처음 fetch가 끝나면 true로 마크 — 그 시점에 displayName nil이면 진짜 신규 디바이스.
     var didLoadProfile: Bool = false
 
+    /// 서버 OAuth 로그인 여부(ODO-47). 토큰이 Keychain에 있으면 로그인 상태로 시작.
+    /// false인 동안 ContentView가 LoginView를 fullScreenCover로 띄운다.
+    var isLoggedIn: Bool = TokenManager.isLoggedIn
+
     /// 온보딩(이름 입력 + 사용법 튜토리얼)을 끝까지 마쳤는지. false인 동안 ContentView가
     /// onboarding sheet를 띄운다. 튜토리얼 마지막 "시작하기"/"건너뛰기"의 `completeOnboarding()`
     /// 에서 true로. 출석/스트릭 보상은 이 값이 true가 되기 전엔 트리거하지 않아, 보상이 온보딩
@@ -619,8 +623,20 @@ final class AppState {
         displayName = nil
         hasCompletedOnboarding = false
         freezeInventory = 0
+        TokenManager.clear()
+        isLoggedIn = false
         // 저장된 스냅샷도 비워서 다음 실행에서 시드값이 살아남도록
         clearPersistedSnapshot()
+    }
+
+    /// 로그인 + 서버 토큰 발급 성공 후 호출(LoginView). 로그인 상태로 전환하고
+    /// 로그인 계정 기준으로 홈/프로필을 다시 적재한다.
+    func completeLogin() {
+        isLoggedIn = true
+        Task { [weak self] in
+            await self?.refreshFromServerHome()
+            await self?.fetchAndApplyDisplayName()
+        }
     }
 
     // MARK: - Derived
