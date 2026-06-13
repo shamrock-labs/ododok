@@ -2,7 +2,6 @@ import Foundation
 
 enum Constants {
     static let dailyGoal: Int = 400
-    static let pointsPerChew: Double = 0.15
 }
 
 extension Int {

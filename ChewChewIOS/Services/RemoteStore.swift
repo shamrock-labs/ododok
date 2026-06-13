@@ -3,19 +3,19 @@ import Foundation
 /// 원격 영속화 추상화. AppState는 이 프로토콜에만 의존해서, 시뮬레이터/유닛테스트에서
 /// `NoopRemoteStore`로 갈아끼울 수 있다.
 ///
-/// 게임 상태는 두 테이블로 분리되어 있다 (`profiles` + `user_stats`).
+/// ODO-54 이후 도토리/스트릭/오늘완료/출석 정본은 서버 정책 엔드포인트다
+/// (`createChewingSession`·`fetchHome`·`earnAttendance`). 아래 profiles/user_stats 접근은
+/// 신원 보장과 레거시 읽기용이다.
 ///   profiles: 디바이스 신원 — `upsertProfile`로 최초 1회 보장.
-///   user_stats: 게임 진행 상태 — 매 mutate 시 `upsertUserStats`로 동기화.
+///   user_stats: 도토리/스트릭 정본은 서버. iOS는 푸시하지 않고 `fetchUserStats`로 읽기만 한다.
 /// 삭제는 `deleteUserData` 한 번 (profiles → user_stats FK ON DELETE CASCADE).
 protocol RemoteStore {
     func upsertProfile(_ profile: ProfileDTO) async throws
     /// 디바이스 식별자에 매칭되는 profile 행 1개 조회. 신규 디바이스면 nil.
     /// `displayName` 등 사용자 식별 정보 로딩에 사용.
     func fetchProfile(deviceId: String) async throws -> ProfileDTO?
-    func upsertUserStats(_ stats: UserStatsDTO) async throws
     func fetchUserStats(deviceId: String) async throws -> UserStatsDTO?
     func deleteUserData(deviceId: String) async throws
-    func insertSession(_ session: ChewingSessionDTO) async throws
     /// 정책 세션 저장 — 세션을 저장하고 서버가 계산한 적립/스트릭/오늘/홈을 함께 받는다.
     /// 도토리·스트릭·오늘완료 정본은 서버이므로 iOS는 응답값을 표시만 한다(재계산 금지).
     func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO
@@ -46,10 +46,8 @@ extension RemoteStore {
 struct NoopRemoteStore: RemoteStore {
     func upsertProfile(_ profile: ProfileDTO) async throws {}
     func fetchProfile(deviceId: String) async throws -> ProfileDTO? { nil }
-    func upsertUserStats(_ stats: UserStatsDTO) async throws {}
     func fetchUserStats(deviceId: String) async throws -> UserStatsDTO? { nil }
     func deleteUserData(deviceId: String) async throws {}
-    func insertSession(_ session: ChewingSessionDTO) async throws {}
     func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO {
         CreateSessionResultDTO(
             chewingSession: session,
@@ -174,13 +172,6 @@ final class InsForgeRemoteStore: RemoteStore {
         return rows.first
     }
 
-    func upsertUserStats(_ stats: UserStatsDTO) async throws {
-        var req = try jsonRequest(method: "POST", path: "/api/database/records/user_stats")
-        req.setValue("resolution=merge-duplicates", forHTTPHeaderField: "Prefer")
-        req.httpBody = try encoder.encode([stats])
-        _ = try await sendExpectingSuccess(req)
-    }
-
     func fetchUserStats(deviceId: String) async throws -> UserStatsDTO? {
         let escaped = deviceId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? deviceId
         let req = try jsonRequest(
@@ -204,7 +195,7 @@ final class InsForgeRemoteStore: RemoteStore {
 
     // MARK: - chewing_session
 
-    func insertSession(_ session: ChewingSessionDTO) async throws {
+    private func insertSession(_ session: ChewingSessionDTO) async throws {
         var req = try jsonRequest(method: "POST", path: "/api/database/records/chewing_session")
         req.httpBody = try encoder.encode([session])
         _ = try await sendExpectingSuccess(req)

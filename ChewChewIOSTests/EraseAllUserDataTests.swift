@@ -7,10 +7,8 @@ final class SpyRemoteStore: RemoteStore {
 
     func upsertProfile(_ profile: ProfileDTO) async throws {}
     func fetchProfile(deviceId: String) async throws -> ProfileDTO? { nil }
-    func upsertUserStats(_ stats: UserStatsDTO) async throws {}
     func fetchUserStats(deviceId: String) async throws -> UserStatsDTO? { nil }
     func deleteUserData(deviceId: String) async throws { deleteUserDataCallCount += 1 }
-    func insertSession(_ session: ChewingSessionDTO) async throws {}
     func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO {
         CreateSessionResultDTO(
             chewingSession: session,

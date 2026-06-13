@@ -93,12 +93,6 @@ final class SpringRemoteStore: RemoteStore {
 
     // MARK: - user_stats
 
-    func upsertUserStats(_ stats: UserStatsDTO) async throws {
-        var req = jsonRequest(method: "PUT", path: "/v1/me/stats", deviceId: stats.deviceId)
-        req.httpBody = try encoder.encode(stats)
-        _ = try await sendExpectingSuccess(req)
-    }
-
     /// 404 → nil (첫 기기 등록 전 stats 없음은 정상). 200 → wrapping의 result 디코드.
     func fetchUserStats(deviceId: String) async throws -> UserStatsDTO? {
         let req = jsonRequest(method: "GET", path: "/v1/me/stats", deviceId: deviceId)
@@ -116,13 +110,6 @@ final class SpringRemoteStore: RemoteStore {
     }
 
     // MARK: - chewing_session
-
-    func insertSession(_ session: ChewingSessionDTO) async throws {
-        var req = jsonRequest(method: "POST", path: "/v1/me/sessions", deviceId: session.deviceId)
-        req.httpBody = try encoder.encode(session)
-        // 신규 저장은 201, 같은 id 재전송(멱등)은 200 — 둘 다 성공으로 처리.
-        _ = try await sendExpectingSuccess(req)
-    }
 
     /// 정책 엔드포인트 — 세션 저장 + 서버 계산 적립/스트릭/오늘/홈을 한 번에 받는다.
     /// 같은 id 재전송은 서버가 멱등 처리(reward는 idempotentReplay=true).
