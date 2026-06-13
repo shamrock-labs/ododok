@@ -13,6 +13,14 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     DEVELOPMENT_TEAM: ""
 
+packages:
+  GoogleSignIn:
+    url: https://github.com/google/GoogleSignIn-iOS
+    from: "7.1.0"
+  KakaoOpenSDK:
+    url: https://github.com/kakao/kakao-ios-sdk
+    from: "2.0.0"
+
 targets:
   ChewChewIOS:
     type: application
@@ -24,6 +32,19 @@ targets:
         embed: true
       - target: OdodokNotificationContent
         embed: true
+      - package: GoogleSignIn
+        product: GoogleSignIn
+      - package: KakaoOpenSDK
+        product: KakaoSDKCommon
+      - package: KakaoOpenSDK
+        product: KakaoSDKAuth
+      - package: KakaoOpenSDK
+        product: KakaoSDKUser
+    entitlements:
+      path: ChewChewIOS/ChewChewIOS.entitlements
+      properties:
+        com.apple.developer.applesignin:
+          - Default
     configFiles:
       Debug: Config/Secrets.xcconfig
       Release: Config/Secrets.xcconfig
@@ -48,9 +69,18 @@ targets:
           - Pretendard-SemiBold.otf
           - Pretendard-Bold.otf
           - Pretendard-Black.otf
+        GIDClientID: "$(GOOGLE_CLIENT_ID)"
+        KakaoNativeAppKey: "$(KAKAO_NATIVE_APP_KEY)"
+        LSApplicationQueriesSchemes:
+          - kakaokompassauth
+          - kakaotalk
         CFBundleURLTypes:
           - CFBundleURLSchemes:
               - chewchew
+          - CFBundleURLSchemes:
+              - "$(GOOGLE_REVERSED_CLIENT_ID)"
+          - CFBundleURLSchemes:
+              - "kakao$(KAKAO_NATIVE_APP_KEY)"
         UILaunchScreen: {}
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
