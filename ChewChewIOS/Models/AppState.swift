@@ -905,6 +905,7 @@ final class AppState {
         // 서버 홈 캐시도 비움 — reset/erase 후 화면이 옛 도토리/스트릭을 잠깐 보여주지 않도록.
         // 적립 멱등 키는 서버 reward_events에 있고, deleteUserData가 그 행들도 함께 제거한다.
         serverHome = nil
+        homeApplyVersion += 1   // 초기화 직전 시작된 refreshFromServerHome이 완료 후 applyHome을 실행하지 못하게.
         // 같은 체인으로 — 직전 작업이 끝난 뒤 delete가 나가야 결과가 결정적.
         // profiles 삭제 → FK ON DELETE CASCADE로 user_stats도 자동 정리.
         let deviceId = DeviceIdentity.shared
