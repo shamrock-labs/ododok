@@ -37,7 +37,7 @@ struct ChewChewIOSApp: App {
         if pi.arguments.contains("-useInsForge") {
             return InsForgeRemoteStore(config: .default)
         }
-        return SpringRemoteStore(config: .stagingDefault)
+        return SpringRemoteStore(config: .current)
     }
 
     var body: some Scene {

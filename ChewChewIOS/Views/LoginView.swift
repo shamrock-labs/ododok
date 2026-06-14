@@ -9,7 +9,7 @@ struct LoginView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
 
-    private let authClient = SpringAuthClient(config: .stagingDefault)
+    private let authClient = SpringAuthClient(config: .current)
 
     var body: some View {
         VStack(spacing: 16) {
