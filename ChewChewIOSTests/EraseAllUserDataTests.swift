@@ -33,6 +33,11 @@ final class SpyRemoteStore: RemoteStore {
 
 @MainActor
 final class EraseAllUserDataTests: XCTestCase {
+    override func tearDown() {
+        TokenManager.clear()
+        super.tearDown()
+    }
+
     func testEraseAllUserData_callsDeleteUserDataOnce() async {
         let spy = SpyRemoteStore()
         let state = AppState(remoteStore: spy)
@@ -95,5 +100,33 @@ final class EraseAllUserDataTests: XCTestCase {
         await state.eraseAllUserData()
 
         XCTAssertEqual(state.streak, 0, "삭제 후 streak은 0이어야 한다")
+    }
+
+    func testLogoutClearsLocalAccountCacheWithoutDeletingRemoteData() {
+        TokenManager.save(access: "access-token", refresh: "refresh-token")
+        let spy = SpyRemoteStore()
+        let state = AppState(remoteStore: spy)
+
+        state.displayName = "이전계정"
+        state.hasCompletedOnboarding = true
+        state.points = 42
+        state.streak = 3
+        state.freezeInventory = 2
+        state.owned = ["hat-basic"]
+        state.ownedAcornPacks = ["starter": 1]
+        state.persistSnapshot()
+
+        state.logout()
+
+        XCTAssertFalse(state.isLoggedIn)
+        XCTAssertNil(TokenManager.accessToken)
+        XCTAssertNil(state.displayName)
+        XCTAssertFalse(state.hasCompletedOnboarding)
+        XCTAssertEqual(state.points, 0)
+        XCTAssertEqual(state.streak, 0)
+        XCTAssertEqual(state.freezeInventory, 0)
+        XCTAssertTrue(state.owned.isEmpty)
+        XCTAssertTrue(state.ownedAcornPacks.isEmpty)
+        XCTAssertEqual(spy.deleteUserDataCallCount, 0, "로그아웃은 원격 데이터를 삭제하면 안 된다")
     }
 }

@@ -632,6 +632,7 @@ final class AppState {
     /// 로그인 + 서버 토큰 발급 성공 후 호출(LoginView). 로그인 상태로 전환하고
     /// 로그인 계정 기준으로 홈/프로필을 다시 적재한다.
     func completeLogin() {
+        clearLocalSessionCache()
         isLoggedIn = true
         Task { [weak self] in
             await self?.refreshFromServerHome()
@@ -643,6 +644,7 @@ final class AppState {
     func logout() {
         TokenManager.clear()
         isLoggedIn = false
+        clearLocalSessionCache()
     }
 
     // MARK: - Derived
@@ -920,6 +922,29 @@ final class AppState {
         if let savedFreeze = snapshot.freezeInventory {
             freezeInventory = savedFreeze
         }
+    }
+
+    /// 로그아웃/계정 전환 시 iOS에 남은 계정별 화면 캐시만 제거한다.
+    /// 원격 데이터 삭제는 `eraseAllUserData` 전용이며 여기서는 호출하지 않는다.
+    private func clearLocalSessionCache() {
+        streak = 0
+        points = 0
+        freezeInventory = 0
+        owned = []
+        equipped = Equipped()
+        ownedAcornPacks = [:]
+        todaySessions = []
+        lastCompletedSession = nil
+        pendingRewardGrant = nil
+        sessionUploadStatus = .idle
+        sessionUploadErrorMessage = nil
+        pendingUpload = nil
+        displayName = nil
+        didLoadProfile = false
+        hasCompletedOnboarding = false
+        serverHome = nil
+        homeApplyVersion += 1
+        UserDefaults.standard.removeObject(forKey: Self.persistenceKey)
     }
 
     func clearPersistedSnapshot() {

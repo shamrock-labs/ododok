@@ -37,6 +37,14 @@ struct ContentView: View {
     }
 
     var body: some View {
+        if state.isLoggedIn {
+            mainTabs
+        } else {
+            LoginView(onLoggedIn: { state.completeLogin() })
+        }
+    }
+
+    private var mainTabs: some View {
         TabView(selection: $tab) {
             tabPage {
                 HomeView()
@@ -106,10 +114,6 @@ struct ContentView: View {
         }
         .sheet(isPresented: onboardingBinding) {
             OnboardingFlowView()
-        }
-        // ODO-47: 로그인 게이트 — 토큰 없으면 LoginView를 전체화면으로 띄운다(온보딩보다 우선).
-        .fullScreenCover(isPresented: loginBinding) {
-            LoginView(onLoggedIn: { state.completeLogin() })
         }
         // RewardDialogView는 overlay라 SessionResultSheet에 가려진다. sheet가 떠 있는 동안엔
         // 그리지 않고 대기 — sheet 닫히는 순간 자연스럽게 등장하고 그때부터 2.5s 자동 dismiss
@@ -192,15 +196,9 @@ struct ContentView: View {
     /// `hasCompletedOnboarding`이 true가 되면 binding이 false가 되어 자동 dismiss.
     private var onboardingBinding: Binding<Bool> {
         Binding(
-            // 로그인 게이트 우선: 미로그인 상태에선 온보딩을 띄우지 않는다(로그인 cover와의 동시
-            // presentation 충돌 방지). 로그인 완료 후에야 온보딩이 후보가 된다.
-            get: { state.isLoggedIn && state.didLoadProfile && !state.hasCompletedOnboarding },
+            get: { state.didLoadProfile && !state.hasCompletedOnboarding },
             set: { _ in }
         )
-    }
-
-    private var loginBinding: Binding<Bool> {
-        Binding(get: { !state.isLoggedIn }, set: { _ in })
     }
 
     private func tabPage<Content: View>(@ViewBuilder content: @escaping () -> Content) -> some View {
