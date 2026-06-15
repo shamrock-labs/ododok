@@ -59,6 +59,26 @@ struct OnboardingNameView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.cream.ignoresSafeArea())
+        // 좌상단: 잘못된 계정으로 로그인했을 때 빠져나가는 출구. 서버 refresh 토큰 폐기 후
+        // 로컬 세션 종료 → isLoggedIn=false라 ContentView가 LoginView로 돌아간다.
+        .overlay(alignment: .topLeading) {
+            Button {
+                Task { await state.logoutFromServer() }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 11, weight: .bold))
+                    Text("다른 계정으로 로그인")
+                }
+                .font(.appFont(.semibold, size: 13))
+                .foregroundStyle(Color.ink600)
+                .padding(.vertical, 6)
+                .padding(.horizontal, 10)
+            }
+            .padding(.leading, 12)
+            .padding(.top, 8)
+            .accessibilityIdentifier("OnboardingSwitchAccount")
+        }
         .interactiveDismissDisabled()
         .onAppear { isFocused = true }
     }
