@@ -76,7 +76,7 @@ struct OnboardingNameView: View {
                 .padding(.horizontal, 10)
             }
             .padding(.leading, 12)
-            .padding(.top, 8)
+            .padding(.top, 22)
             .accessibilityIdentifier("OnboardingSwitchAccount")
         }
         .interactiveDismissDisabled()
