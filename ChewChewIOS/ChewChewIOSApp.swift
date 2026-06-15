@@ -12,7 +12,11 @@ struct ChewChewIOSApp: App {
     @UIApplicationDelegateAdaptor private var notifDelegate: NotificationDelegate
 
     init() {
-        _appState = State(initialValue: AppState(remoteStore: ChewChewIOSApp.makeRemoteStore()))
+        let dependencies = ChewChewIOSApp.makeDependencies()
+        _appState = State(initialValue: AppState(
+            remoteStore: dependencies.remoteStore,
+            authSessionManager: dependencies.authSessionManager
+        ))
         // Kakao SDK 초기화(네이티브 앱키는 Info.plist 경유 Secrets.xcconfig). placeholder면 건너뜀.
         if let kakaoKey = Bundle.main.object(forInfoDictionaryKey: "KakaoNativeAppKey") as? String,
            !kakaoKey.isEmpty, !kakaoKey.contains("REPLACE") {
@@ -28,16 +32,17 @@ struct ChewChewIOSApp: App {
     ///
     /// ODO-54 전면 전환: 기본 백엔드는 Spring(staging)이다. 레거시 InsForge는 `-useInsForge`
     /// 오버라이드로만 사용한다. 환경(바라보는 백엔드 URL) 분리는 config 주입 영역으로 별도.
-    private static func makeRemoteStore() -> RemoteStore {
+    private static func makeDependencies() -> (remoteStore: RemoteStore, authSessionManager: AuthSessionManaging) {
         let pi = ProcessInfo.processInfo
         let underTest = pi.environment["XCTestConfigurationFilePath"] != nil
             || pi.arguments.contains("-useNoopRemote")
-        if underTest { return NoopRemoteStore() }
+        if underTest { return (NoopRemoteStore(), NoopAuthSessionManager()) }
         // 레거시 InsForge는 명시적 오버라이드일 때만 — 기본은 Spring.
         if pi.arguments.contains("-useInsForge") {
-            return InsForgeRemoteStore(config: .default)
+            return (InsForgeRemoteStore(config: .default), NoopAuthSessionManager())
         }
-        return SpringRemoteStore(config: .current)
+        let springConfig = SpringConfig.current
+        return (SpringRemoteStore(config: springConfig), SpringAuthClient(config: springConfig))
     }
 
     var body: some Scene {

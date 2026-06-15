@@ -4,6 +4,7 @@ import XCTest
 final class SpringRemoteStoreAttendanceTests: XCTestCase {
     override func tearDown() {
         MockURLProtocol.handler = nil
+        TokenManager.clear()
         super.tearDown()
     }
 
@@ -67,6 +68,30 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
             XCTAssertEqual(code, 4004)
             XCTAssertEqual(message, "유효하지 않은 디바이스 식별자입니다.")
         }
+    }
+
+    func testEarnAttendanceThrowsAuthExpiredWhenRefreshFails() async throws {
+        TokenManager.save(access: "expired-access", refresh: "expired-refresh")
+        let store = makeStore()
+
+        MockURLProtocol.handler = { request in
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!,
+                Data(#"{"code":5000,"message":"인증이 필요합니다."}"#.utf8)
+            )
+        }
+
+        do {
+            _ = try await store.earnAttendance(deviceId: "device-1", idempotencyKey: "key")
+            XCTFail("Expected RemoteStoreError.authExpired")
+        } catch let error as RemoteStoreError {
+            guard case .authExpired = error else {
+                return XCTFail("Expected authExpired, got \(error)")
+            }
+        }
+
+        XCTAssertNil(TokenManager.accessToken)
+        XCTAssertNil(TokenManager.refreshToken)
     }
 
     private func makeStore() -> SpringRemoteStore {

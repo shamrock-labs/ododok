@@ -229,7 +229,9 @@ final class SpringRemoteStore: RemoteStore {
             throw RemoteStoreError.malformed("no HTTP response")
         }
         // ODO-47: access 만료(401) + refresh 보유 시 1회 재발급 후 원요청 재시도.
-        if http.statusCode == 401, retryingOn401, TokenManager.refreshToken != nil, await authClient.refresh() {
+        if http.statusCode == 401, retryingOn401 {
+            guard TokenManager.refreshToken != nil else { throw RemoteStoreError.authExpired }
+            guard await authClient.refresh() else { throw RemoteStoreError.authExpired }
             var retried = req
             if let token = TokenManager.accessToken {
                 retried.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

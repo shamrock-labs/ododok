@@ -76,6 +76,8 @@ struct InsForgeConfig {
 }
 
 enum RemoteStoreError: Error, CustomStringConvertible {
+    /// access 만료 후 refresh까지 실패한 상태. 로컬 세션을 종료하고 로그인 게이트로 내려야 한다.
+    case authExpired
     /// 서버 표준 에러 봉투(`{code, message}`) 응답. message는 서버가 준 한국어 사유.
     case server(status: Int, code: Int, message: String)
     /// 응답 자체가 오지 않음 — 연결 실패/타임아웃(오프라인).
@@ -88,6 +90,7 @@ enum RemoteStoreError: Error, CustomStringConvertible {
 
     var description: String {
         switch self {
+        case .authExpired: return "RemoteStoreError.authExpired"
         case .server(let s, let c, let m): return "RemoteStoreError.server(http=\(s), code=\(c)): \(m)"
         case .offline: return "RemoteStoreError.offline"
         case .malformed(let d): return "RemoteStoreError.malformed: \(d)"
@@ -100,6 +103,8 @@ enum RemoteStoreError: Error, CustomStringConvertible {
     /// 노출하지 않고(로그는 `description`에 남음), 사용자에겐 부드러운 카피로 통일한다.
     var userMessage: String {
         switch self {
+        case .authExpired:
+            return "다시 로그인해 주세요."
         case .offline:
             return "인터넷 연결을 확인해 주세요."
         case .server, .http, .malformed, .invalidUploadResponse:
@@ -111,6 +116,8 @@ enum RemoteStoreError: Error, CustomStringConvertible {
     /// 잘못된 요청(4xx)은 재시도해도 똑같이 실패하므로 false.
     var isRetriable: Bool {
         switch self {
+        case .authExpired:
+            return false
         case .offline, .malformed, .invalidUploadResponse:
             return true
         case .server(let status, _, _), .http(let status, _):

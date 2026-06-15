@@ -1,9 +1,19 @@
 import Foundation
 
+protocol AuthSessionManaging {
+    func logout() async
+}
+
+struct NoopAuthSessionManager: AuthSessionManaging {
+    func logout() async {
+        TokenManager.clear()
+    }
+}
+
 /// Spring `/auth/*` 클라이언트 — 소셜 로그인 토큰 교환 + 갱신/로그아웃. (ODO-47 OAuth)
 /// 발급된 access/refresh는 TokenManager(Keychain)에 저장한다.
 /// 서버 응답은 `{code, message, result}` wrapping(SpringRemoteStore와 동일).
-final class SpringAuthClient {
+final class SpringAuthClient: AuthSessionManaging {
     private let config: SpringConfig
     private let session: URLSession
     private let encoder = JSONEncoder()

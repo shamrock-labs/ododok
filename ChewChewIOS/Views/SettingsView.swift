@@ -127,8 +127,10 @@ struct SettingsView: View {
             .accessibilityIdentifier("DeleteMyData")
 
             Button {
-                state.logout()
-                dismiss()
+                Task {
+                    await state.logoutFromServer()
+                    dismiss()
+                }
             } label: {
                 HStack {
                     Image(systemName: "rectangle.portrait.and.arrow.right")

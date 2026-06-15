@@ -190,6 +190,8 @@ final class AppState {
     /// 원격 백엔드(InsForge)에 대한 추상화. 테스트/시뮬레이터에선 NoopRemoteStore 주입 가능.
     @ObservationIgnored let remoteStore: RemoteStore
 
+    @ObservationIgnored private let authSessionManager: AuthSessionManaging
+
     /// 게임 상태 원격 동기화(upsert/delete) 직렬화 큐.
     /// 짧은 시간에 여러 mutate가 일어나면 detached Task들의 네트워크 도착 순서가 뒤집혀
     /// 중간 상태가 winner로 굳을 수 있어, 각 작업이 이전 작업 종료를 await하는 체인으로 직렬화한다.
@@ -250,8 +252,12 @@ final class AppState {
 
     // MARK: - Init
 
-    init(remoteStore: RemoteStore = NoopRemoteStore()) {
+    init(
+        remoteStore: RemoteStore = NoopRemoteStore(),
+        authSessionManager: AuthSessionManaging = NoopAuthSessionManager()
+    ) {
         self.remoteStore = remoteStore
+        self.authSessionManager = authSessionManager
         // displayName은 game state(`PersistedSnapshot`)과 다른 별도 캐시 키 — cold-start
         // 시 UserDefaults에서 즉시 read해 HomeView가 빈 이름으로 깜빡이지 않도록.
         displayName = UserDefaults.standard.string(forKey: Self.displayNameKey)
@@ -642,9 +648,28 @@ final class AppState {
 
     /// 로그아웃 — 로컬 토큰 제거 후 로그인 게이트로 복귀. 게임 데이터는 보존('내 데이터 삭제'와 구분).
     func logout() {
+        expireSession()
+    }
+
+    /// 사용자가 누른 로그아웃 — 서버 refresh token 폐기 후 로컬 세션을 종료한다.
+    @MainActor
+    func logoutFromServer() async {
+        await authSessionManager.logout()
+        expireSession()
+    }
+
+    /// refresh 만료/폐기 등으로 인증 세션을 더 쓸 수 없을 때 로그인 게이트로 복귀한다.
+    private func expireSession() {
         TokenManager.clear()
         isLoggedIn = false
         clearLocalSessionCache()
+    }
+
+    @MainActor
+    private func handleRemoteError(_ error: Error) {
+        if case RemoteStoreError.authExpired = error {
+            expireSession()
+        }
     }
 
     // MARK: - Derived
@@ -992,11 +1017,15 @@ final class AppState {
     func refreshFromServerHome() async {
         let deviceId = DeviceIdentity.shared
         let versionAtRequest = homeApplyVersion
-        guard let home = try? await remoteStore.fetchHome(deviceId: deviceId) else { return }
-        // 이 GET이 비행하는 동안 쓰기 응답(출석/세션 저장)이 홈을 갱신했다면 이 응답은 옛
-        // 스냅샷이다 — 적용하면 방금 반영된 적립을 화면에서 되돌리므로 버린다(쓰기 응답 우선).
-        guard versionAtRequest == homeApplyVersion else { return }
-        applyHome(home)
+        do {
+            let home = try await remoteStore.fetchHome(deviceId: deviceId)
+            // 이 GET이 비행하는 동안 쓰기 응답(출석/세션 저장)이 홈을 갱신했다면 이 응답은 옛
+            // 스냅샷이다 — 적용하면 방금 반영된 적립을 화면에서 되돌리므로 버린다(쓰기 응답 우선).
+            guard versionAtRequest == homeApplyVersion else { return }
+            applyHome(home)
+        } catch {
+            handleRemoteError(error)
+        }
     }
 
     /// 서버 스트릭 이벤트 → 보상 다이얼로그 매핑. 계산은 서버가 끝냈고 iOS는 표시만 한다.
@@ -1090,6 +1119,8 @@ final class AppState {
                 pendingRewardGrant = RewardGrant(amount: result.reward.grantedPoints, kind: .sessionComplete)
             }
         } catch {
+            handleRemoteError(error)
+            if case RemoteStoreError.authExpired = error { return }
             sessionUploadStatus = .failure
             // 사용자에겐 부드러운 통일 카피(userMessage)만 노출 — 서버 원문은 로그(description)로만 남는다.
             sessionUploadErrorMessage = (error as? RemoteStoreError)?.userMessage
@@ -1104,7 +1135,14 @@ final class AppState {
     @MainActor
     private func fetchAndApplyDisplayName() async {
         let deviceId = DeviceIdentity.shared
-        let profile = try? await remoteStore.fetchProfile(deviceId: deviceId)
+        let profile: ProfileDTO?
+        do {
+            profile = try await remoteStore.fetchProfile(deviceId: deviceId)
+        } catch {
+            handleRemoteError(error)
+            didLoadProfile = true
+            return
+        }
         if let name = profile?.displayName, !name.isEmpty {
             if name != displayName {
                 displayName = name
@@ -1137,7 +1175,11 @@ final class AppState {
         // 보상은 튜토리얼이 끝나는 completeOnboarding()에서 띄운다(보상이 튜토리얼 위로
         // 떠버리는 회귀 방지). 이름 저장 시점엔 DB upsert만 수행.
         let deviceId = DeviceIdentity.shared
-        try? await remoteStore.upsertProfile(ProfileDTO(deviceId: deviceId, displayName: trimmed))
+        do {
+            try await remoteStore.upsertProfile(ProfileDTO(deviceId: deviceId, displayName: trimmed))
+        } catch {
+            handleRemoteError(error)
+        }
     }
 
     /// 사용법 튜토리얼의 마지막 "시작하기"(또는 우상단 "건너뛰기")에서 호출. 온보딩 완료를
@@ -1161,7 +1203,11 @@ final class AppState {
     private func grantDailyAttendanceIfNeeded() async {
         let deviceId = DeviceIdentity.shared
         let key = Self.attendanceKey(deviceId: deviceId)
-        guard let result = try? await remoteStore.earnAttendance(deviceId: deviceId, idempotencyKey: key) else {
+        let result: AttendanceResultDTO
+        do {
+            result = try await remoteStore.earnAttendance(deviceId: deviceId, idempotencyKey: key)
+        } catch {
+            handleRemoteError(error)
             return
         }
         applyHome(result.userStats)
@@ -1176,7 +1222,11 @@ final class AppState {
     func fetchTodaySessions() async {
         let startOfDay = Calendar.current.startOfDay(for: Date())
         let deviceId = DeviceIdentity.shared
-        guard let rows = try? await remoteStore.fetchChewingSessions(deviceId: deviceId, since: startOfDay) else {
+        let rows: [ChewingSessionDTO]
+        do {
+            rows = try await remoteStore.fetchChewingSessions(deviceId: deviceId, since: startOfDay)
+        } catch {
+            handleRemoteError(error)
             return
         }
         // 리포트가 가능한 세션만 노출. DB엔 남아 있어도 앱에선 없는 것처럼 처리.
@@ -1196,6 +1246,7 @@ final class AppState {
             // 오늘 씹기 수·진행도가 줄었을 수 있으므로 서버 홈을 다시 받아 반영.
             await refreshFromServerHome()
         } catch {
+            handleRemoteError(error)
             return
         }
     }
@@ -1211,6 +1262,7 @@ final class AppState {
             // 오늘 씹기 수·진행도가 0으로 바뀌므로 서버 홈을 다시 받아 반영.
             await refreshFromServerHome()
         } catch {
+            handleRemoteError(error)
             return
         }
     }
