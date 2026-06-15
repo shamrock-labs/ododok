@@ -19,7 +19,8 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
 
             XCTAssertEqual(request.httpMethod, "POST")
             XCTAssertEqual(request.url?.path, "/v1/me/attendance")
-            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Device-Id"), "device-1")
+            // `/v1/me/*`는 JWT(user_id)로만 스코프 — device 헤더는 더 이상 보내지 않는다.
+            XCTAssertNil(request.value(forHTTPHeaderField: "X-Device-Id"))
             XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
             XCTAssertEqual(json?["idempotencyKey"], "app-open-device-1-20260612")
 
@@ -212,7 +213,8 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
             "expiresIn": 3600,
             "user": {
               "id": "11111111-1111-1111-1111-111111111111",
-              "displayName": null
+              "displayName": null,
+              "onboardingCompleted": false
             }
           }
         }

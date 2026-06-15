@@ -40,7 +40,7 @@ struct ContentView: View {
         if state.isLoggedIn {
             mainTabs
         } else {
-            LoginView(onLoggedIn: { state.completeLogin() })
+            LoginView(onLoggedIn: { state.completeLogin(onboardingCompleted: $0) })
         }
     }
 

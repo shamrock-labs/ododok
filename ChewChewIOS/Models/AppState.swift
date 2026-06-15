@@ -637,8 +637,13 @@ final class AppState {
 
     /// 로그인 + 서버 토큰 발급 성공 후 호출(LoginView). 로그인 상태로 전환하고
     /// 로그인 계정 기준으로 홈/프로필을 다시 적재한다.
-    func completeLogin() {
+    /// `onboardingCompleted`는 로그인 응답(`/auth/login`)의 정본 — true면 즉시 온보딩을
+    /// 스킵해, 재로그인 시 온보딩이 다시 뜨던 회귀를 막는다.
+    func completeLogin(onboardingCompleted: Bool) {
         clearLocalSessionCache()
+        // clearLocalSessionCache가 hasCompletedOnboarding을 false로 리셋하므로 그 뒤에 세팅한다.
+        // 서버 응답이 완료라고 하면 즉시 온보딩 sheet을 스킵 — 재로그인 시 재노출 회귀 차단.
+        if onboardingCompleted { hasCompletedOnboarding = true }
         isLoggedIn = true
         Task { [weak self] in
             await self?.refreshFromServerHome()
@@ -980,12 +985,11 @@ final class AppState {
         homeApplyVersion += 1   // 초기화 직전 시작된 refreshFromServerHome이 완료 후 applyHome을 실행하지 못하게.
         // 같은 체인으로 — 직전 작업이 끝난 뒤 delete가 나가야 결과가 결정적.
         // profiles 삭제 → FK ON DELETE CASCADE로 user_stats도 자동 정리.
-        let deviceId = DeviceIdentity.shared
         let store = remoteStore
         let previous = remoteSyncChain
         remoteSyncChain = Task.detached {
             _ = await previous.value
-            try? await store.deleteUserData(deviceId: deviceId)
+            try? await store.deleteUserData()
         }
     }
 
@@ -1128,28 +1132,51 @@ final class AppState {
         }
     }
 
-    /// DB의 `profiles.displayName`을 가져와 in-memory + UserDefaults 갱신.
-    /// 신규 디바이스(profile 없음)거나 displayName이 nil/빈 문자열이면 그대로 둠.
-    /// 종료 시 `didLoadProfile = true`로 마크 — ContentView가 onboarding sheet 띄울지
-    /// 결정할 때 참조.
+    /// 콜드 스타트·포그라운드 진입 시 서버에서 displayName + onboardingCompleted를 가져와
+    /// in-memory + UserDefaults 갱신.
+    ///
+    /// 1) 로그인 상태면 `/auth/me`(정본 엔드포인트)로 onboardingCompleted를 권위 있게 설정.
+    ///    성공 시 true/false 모두 반영 — 서버가 완료라고 해도, 미완료라고 해도 그대로 따른다.
+    ///    me() 실패(오프라인·토큰 만료 등)면 step2의 profile 기반 레거시 폴백으로 내려간다.
+    /// 2) profiles 테이블에서 displayName 로드(표시 이름 표시용 + me() 실패 시 온보딩 폴백).
+    ///    displayName nil/빈 문자열이면 신규 사용자로 간주, profile fetch 실패도 silent 처리.
+    /// 종료 시 `didLoadProfile = true` — ContentView가 onboarding sheet 표시 여부 결정에 사용.
     @MainActor
     private func fetchAndApplyDisplayName() async {
-        let deviceId = DeviceIdentity.shared
+        // Step 1: /auth/me — onboardingCompleted 정본. 로그인 상태일 때만 시도.
+        var meSucceeded = false
+        if isLoggedIn {
+            if let result = try? await authSessionManager.me() {
+                // 서버 값이 정본 — true/false 모두 기존 로컬 값에 우선한다.
+                hasCompletedOnboarding = result.onboardingCompleted
+                // displayName도 함께 갱신(있을 때만).
+                if let name = result.displayName, !name.isEmpty, name != displayName {
+                    displayName = name
+                }
+                meSucceeded = true
+            }
+        }
+
+        // Step 2: profiles 테이블 — displayName 로드 + me() 실패 시 온보딩 폴백.
         let profile: ProfileDTO?
         do {
-            profile = try await remoteStore.fetchProfile(deviceId: deviceId)
+            profile = try await remoteStore.fetchProfile()
         } catch {
             handleRemoteError(error)
+            // profile fetch 실패해도 me()가 성공했으면 onboarding 판정은 이미 완료.
             didLoadProfile = true
+            if isInForeground && hasCompletedOnboarding {
+                await grantDailyAttendanceIfNeeded()
+            }
             return
         }
         if let name = profile?.displayName, !name.isEmpty {
             if name != displayName {
                 displayName = name
             }
-            // DB에 이름이 있다 = 이전에 온보딩을 마친 기존 사용자. 재설치로 로컬 플래그가
-            // 비었어도 사용법 튜토리얼을 다시 띄우지 않도록 완료로 마크한다.
-            if !hasCompletedOnboarding {
+            // me() 실패(오프라인 등) 폴백: DB에 이름이 있다 = 이전에 온보딩을 마친 기존 사용자.
+            // 재설치로 로컬 플래그가 비었어도 사용법 튜토리얼을 다시 띄우지 않도록 완료로 마크.
+            if !meSucceeded && !hasCompletedOnboarding {
                 hasCompletedOnboarding = true
             }
         }
@@ -1158,8 +1185,9 @@ final class AppState {
         // 일관된 두 값으로 수행돼, "didLoadProfile만 true + displayName 아직 nil" 중간
         // 상태에서 sheet이 열리는 race를 피한다.
         didLoadProfile = true
-        // 재설치한 기존 사용자(위에서 hasCompletedOnboarding을 막 true로 올린 경우): foreground
-        // 진입 시점엔 아직 false라 attendance를 건너뛰었으므로, 여기서 이어서 트리거한다.
+        // 재설치한 기존 사용자(위에서 hasCompletedOnboarding을 막 true로 올린 경우) 또는
+        // me()로 온보딩 완료를 확인한 경우: foreground 진입 시점엔 아직 false였을 수 있으므로,
+        // 여기서 이어서 출석 적립을 트리거한다.
         if isInForeground && hasCompletedOnboarding {
             await grantDailyAttendanceIfNeeded()
         }

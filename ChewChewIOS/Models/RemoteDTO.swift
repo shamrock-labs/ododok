@@ -1,7 +1,8 @@
 import Foundation
 
-/// `profiles` row와 1:1 매핑되는 DTO. 디바이스 신원 메타.
-/// display_name은 향후 사용을 위해 비워둠.
+/// `profiles` row와 1:1 매핑되는 DTO. 디바이스 신원 + 표시 이름.
+/// displayName은 온보딩에서 입력한 값으로, `/auth/me` 응답의 onboardingCompleted 판정과 함께
+/// JWT(user_id) 스코프로 관리된다.
 struct ProfileDTO: Codable, Equatable {
     var deviceId: String
     var userId: String? = nil

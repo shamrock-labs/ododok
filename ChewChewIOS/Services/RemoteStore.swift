@@ -11,11 +11,11 @@ import Foundation
 /// 삭제는 `deleteUserData` 한 번 (profiles → user_stats FK ON DELETE CASCADE).
 protocol RemoteStore {
     func upsertProfile(_ profile: ProfileDTO) async throws
-    /// 디바이스 식별자에 매칭되는 profile 행 1개 조회. 신규 디바이스면 nil.
-    /// `displayName` 등 사용자 식별 정보 로딩에 사용.
-    func fetchProfile(deviceId: String) async throws -> ProfileDTO?
-    func fetchUserStats(deviceId: String) async throws -> UserStatsDTO?
-    func deleteUserData(deviceId: String) async throws
+    /// 로그인 계정(JWT)에 매칭되는 profile 행 1개 조회. 신규 사용자면 nil.
+    /// `displayName` 등 사용자 식별 정보 로딩에 사용. 서버는 JWT(user_id)로만 스코프한다.
+    func fetchProfile() async throws -> ProfileDTO?
+    func fetchUserStats() async throws -> UserStatsDTO?
+    func deleteUserData() async throws
     /// 정책 세션 저장 — 세션을 저장하고 서버가 계산한 적립/스트릭/오늘/홈을 함께 받는다.
     /// 도토리·스트릭·오늘완료 정본은 서버이므로 iOS는 응답값을 표시만 한다(재계산 금지).
     func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO
@@ -45,9 +45,9 @@ extension RemoteStore {
 
 struct NoopRemoteStore: RemoteStore {
     func upsertProfile(_ profile: ProfileDTO) async throws {}
-    func fetchProfile(deviceId: String) async throws -> ProfileDTO? { nil }
-    func fetchUserStats(deviceId: String) async throws -> UserStatsDTO? { nil }
-    func deleteUserData(deviceId: String) async throws {}
+    func fetchProfile() async throws -> ProfileDTO? { nil }
+    func fetchUserStats() async throws -> UserStatsDTO? { nil }
+    func deleteUserData() async throws {}
     func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO {
         CreateSessionResultDTO(
             chewingSession: session,
@@ -168,7 +168,8 @@ final class InsForgeRemoteStore: RemoteStore {
         _ = try await sendExpectingSuccess(req)
     }
 
-    func fetchProfile(deviceId: String) async throws -> ProfileDTO? {
+    func fetchProfile() async throws -> ProfileDTO? {
+        let deviceId = DeviceIdentity.shared
         let escaped = deviceId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? deviceId
         let req = try jsonRequest(
             method: "GET",
@@ -179,7 +180,8 @@ final class InsForgeRemoteStore: RemoteStore {
         return rows.first
     }
 
-    func fetchUserStats(deviceId: String) async throws -> UserStatsDTO? {
+    func fetchUserStats() async throws -> UserStatsDTO? {
+        let deviceId = DeviceIdentity.shared
         let escaped = deviceId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? deviceId
         let req = try jsonRequest(
             method: "GET",
@@ -191,7 +193,8 @@ final class InsForgeRemoteStore: RemoteStore {
     }
 
     /// profiles 삭제 → FK ON DELETE CASCADE로 user_stats도 함께 제거.
-    func deleteUserData(deviceId: String) async throws {
+    func deleteUserData() async throws {
+        let deviceId = DeviceIdentity.shared
         let escaped = deviceId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? deviceId
         let req = try jsonRequest(
             method: "DELETE",
@@ -216,7 +219,7 @@ final class InsForgeRemoteStore: RemoteStore {
 
     func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO {
         try await insertSession(session)
-        let stats = try? await fetchUserStats(deviceId: session.deviceId)
+        let stats = try? await fetchUserStats()
         return CreateSessionResultDTO(
             chewingSession: session,
             chewingSessionAccepted: true,
@@ -234,12 +237,12 @@ final class InsForgeRemoteStore: RemoteStore {
     // "행 없음"(nil)만 0 홈으로 변환한다.
 
     func fetchHome(deviceId: String) async throws -> HomeStateDTO {
-        let stats = try await fetchUserStats(deviceId: deviceId)
+        let stats = try await fetchUserStats()
         return Self.legacyHome(deviceId: deviceId, stats: stats)
     }
 
     func earnAttendance(deviceId: String, idempotencyKey: String) async throws -> AttendanceResultDTO {
-        let stats = try await fetchUserStats(deviceId: deviceId)
+        let stats = try await fetchUserStats()
         return AttendanceResultDTO(
             grantedPoints: 0,
             capped: false,

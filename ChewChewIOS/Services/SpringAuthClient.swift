@@ -2,11 +2,16 @@ import Foundation
 
 protocol AuthSessionManaging {
     func logout() async
+    /// `/auth/me` 조회 — displayName + onboardingCompleted. 오프라인 등 실패 시 throw.
+    func me() async throws -> (displayName: String?, onboardingCompleted: Bool)
 }
 
 struct NoopAuthSessionManager: AuthSessionManaging {
     func logout() async {
         TokenManager.clear()
+    }
+    func me() async throws -> (displayName: String?, onboardingCompleted: Bool) {
+        (displayName: nil, onboardingCompleted: false)
     }
 }
 
@@ -27,6 +32,7 @@ final class SpringAuthClient: AuthSessionManaging {
     struct LoginResult {
         let userId: String
         let displayName: String?
+        let onboardingCompleted: Bool
     }
 
     private struct LoginRequest: Encodable {
@@ -37,7 +43,7 @@ final class SpringAuthClient: AuthSessionManaging {
     }
     private struct RefreshRequest: Encodable { let refreshToken: String }
     private struct LogoutRequest: Encodable { let refreshToken: String }
-    private struct UserDTO: Decodable { let id: String; let displayName: String? }
+    private struct UserDTO: Decodable { let id: String; let displayName: String?; let onboardingCompleted: Bool? }
     private struct TokenResult: Decodable {
         let accessToken: String
         let refreshToken: String
@@ -58,7 +64,7 @@ final class SpringAuthClient: AuthSessionManaging {
         let body = LoginRequest(provider: provider, idToken: idToken, deviceId: deviceId, name: name)
         let token = try await post("/auth/login", body: body, as: TokenResult.self)
         TokenManager.save(access: token.accessToken, refresh: token.refreshToken)
-        return LoginResult(userId: token.user?.id ?? "", displayName: token.user?.displayName)
+        return LoginResult(userId: token.user?.id ?? "", displayName: token.user?.displayName, onboardingCompleted: token.user?.onboardingCompleted ?? false)
     }
 
     /// access 만료 시 refresh로 재발급. 성공하면 새 토큰 저장 후 true,
@@ -73,6 +79,39 @@ final class SpringAuthClient: AuthSessionManaging {
             TokenManager.clear()
             return false
         }
+    }
+
+    /// `/auth/me` 조회 — 현재 로그인 계정의 displayName + onboardingCompleted 반환.
+    /// 콜드 스타트에서 onboardingCompleted 정본을 가져올 때 사용한다.
+    /// 실패(오프라인·401 등)는 throw로 전파 — 호출처가 silent fallback 처리.
+    func me() async throws -> (displayName: String?, onboardingCompleted: Bool) {
+        var base = config.baseURL.absoluteString
+        if base.hasSuffix("/") { base.removeLast() }
+        var req = URLRequest(url: URL(string: base + "/auth/me")!)
+        req.httpMethod = "GET"
+        if let token = TokenManager.accessToken {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        let (data, response): (Data, URLResponse)
+        do {
+            (data, response) = try await session.data(for: req)
+        } catch let error as URLError {
+            if error.code == .cancelled { throw CancellationError() }
+            throw RemoteStoreError.offline
+        }
+        guard let http = response as? HTTPURLResponse else {
+            throw RemoteStoreError.malformed("no HTTP response")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            if let env = try? decoder.decode(BaseResponse<EmptyResult>.self, from: data) {
+                throw RemoteStoreError.server(status: http.statusCode, code: env.code, message: env.message)
+            }
+            throw RemoteStoreError.http(status: http.statusCode, body: String(data: data, encoding: .utf8) ?? "")
+        }
+        guard let user = try? decoder.decode(BaseResponse<UserDTO>.self, from: data).result else {
+            throw RemoteStoreError.malformed("empty result")
+        }
+        return (displayName: user.displayName, onboardingCompleted: user.onboardingCompleted ?? false)
     }
 
     /// 서버 refresh 폐기 + 로컬 토큰 제거. 네트워크 실패해도 로컬은 비운다.

@@ -2,7 +2,7 @@ import Foundation
 
 /// Spring 백엔드(Tailscale staging) 접속 설정.
 /// baseURL 예: http://100.99.252.124:8080
-/// 토큰이 있으면 Authorization Bearer를 붙이고, 없으면 X-Device-Id 폴백으로 호출한다.
+/// `/v1/me/*`는 JWT(user_id)로만 스코프하므로 Authorization Bearer만 첨부한다.
 struct SpringConfig {
     let baseURL: URL
 }
@@ -14,7 +14,7 @@ struct SpringConfig {
 ///     `result`에 들어 있다. 조회 메서드는 `BaseResponse<T>`로 디코드한 뒤 `result`를 꺼낸다.
 ///     에러는 `{code, message}` wrapping + 4xx/5xx 상태코드로 내려온다.
 ///   - JSON key 변환 없음 — DTO 필드명(camelCase)이 wire format 그대로.
-///   - 인증: JWT 우선, 로그인 전/테스트 환경은 X-Device-Id 폴백.
+///   - 인증: JWT(Authorization Bearer)로만 스코프. device 헤더는 보내지 않는다.
 ///   - GET retry 없음 — Tailscale IP 직접 접속이라 IPv6 cold-start 회피 불필요.
 ///   - fetchProfile: Spring은 신규 디바이스에도 200 + displayName=null 반환.
 ///     displayName이 null이면 nil을 반환 — 호출처(AppState.fetchAndApplyDisplayName)는
@@ -77,7 +77,7 @@ final class SpringRemoteStore: RemoteStore {
     // MARK: - profile
 
     func upsertProfile(_ profile: ProfileDTO) async throws {
-        var req = jsonRequest(method: "PUT", path: "/v1/me/profile", deviceId: profile.deviceId)
+        var req = jsonRequest(method: "PUT", path: "/v1/me/profile")
         req.httpBody = try encoder.encode(profile)
         _ = try await sendExpectingSuccess(req)
     }
@@ -86,8 +86,8 @@ final class SpringRemoteStore: RemoteStore {
     /// displayName이 null(nil)인 경우 nil을 돌려줘 InsForge의 "row 없음 = nil" 계약을 유지한다.
     /// AppState.fetchAndApplyDisplayName은 nil/빈 문자열 모두 온보딩 미완료로 간주하므로
     /// 동작이 동일하다.
-    func fetchProfile(deviceId: String) async throws -> ProfileDTO? {
-        let req = jsonRequest(method: "GET", path: "/v1/me/profile", deviceId: deviceId)
+    func fetchProfile() async throws -> ProfileDTO? {
+        let req = jsonRequest(method: "GET", path: "/v1/me/profile")
         let data = try await sendExpectingSuccess(req)
         // result 없음 또는 displayName == nil → 신규 디바이스, 호출처가 기대하는 "등록 전" 의미로 nil.
         guard let dto = try decodeOptionalResult(ProfileDTO.self, from: data), dto.displayName != nil else { return nil }
@@ -97,8 +97,8 @@ final class SpringRemoteStore: RemoteStore {
     // MARK: - user_stats
 
     /// 404 → nil (첫 기기 등록 전 stats 없음은 정상). 200 → wrapping의 result 디코드.
-    func fetchUserStats(deviceId: String) async throws -> UserStatsDTO? {
-        let req = jsonRequest(method: "GET", path: "/v1/me/stats", deviceId: deviceId)
+    func fetchUserStats() async throws -> UserStatsDTO? {
+        let req = jsonRequest(method: "GET", path: "/v1/me/stats")
         let (data, http) = try await send(req)
         if http.statusCode == 404 { return nil }
         try validateSuccess(statusCode: http.statusCode, data: data)
@@ -107,8 +107,8 @@ final class SpringRemoteStore: RemoteStore {
 
     // MARK: - user data
 
-    func deleteUserData(deviceId: String) async throws {
-        let req = jsonRequest(method: "DELETE", path: "/v1/me", deviceId: deviceId)
+    func deleteUserData() async throws {
+        let req = jsonRequest(method: "DELETE", path: "/v1/me")
         _ = try await sendExpectingSuccess(req)
     }
 
@@ -117,7 +117,7 @@ final class SpringRemoteStore: RemoteStore {
     /// 정책 엔드포인트 — 세션 저장 + 서버 계산 적립/스트릭/오늘/홈을 한 번에 받는다.
     /// 같은 id 재전송은 서버가 멱등 처리(reward는 idempotentReplay=true).
     func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO {
-        var req = jsonRequest(method: "POST", path: "/v1/me/chewing-sessions", deviceId: session.deviceId)
+        var req = jsonRequest(method: "POST", path: "/v1/me/chewing-sessions")
         req.timeoutInterval = Self.sessionUploadTimeout
         req.httpBody = try encoder.encode(session)
         let data = try await sendExpectingSuccess(req)
@@ -125,13 +125,13 @@ final class SpringRemoteStore: RemoteStore {
     }
 
     func fetchHome(deviceId: String) async throws -> HomeStateDTO {
-        let req = jsonRequest(method: "GET", path: "/v1/me/home", deviceId: deviceId)
+        let req = jsonRequest(method: "GET", path: "/v1/me/home")
         let data = try await sendExpectingSuccess(req)
         return try decodeResult(HomeStateDTO.self, from: data)
     }
 
     func earnAttendance(deviceId: String, idempotencyKey: String) async throws -> AttendanceResultDTO {
-        var req = jsonRequest(method: "POST", path: "/v1/me/attendance", deviceId: deviceId)
+        var req = jsonRequest(method: "POST", path: "/v1/me/attendance")
         req.httpBody = try encoder.encode(AttendanceRequest(idempotencyKey: idempotencyKey))
         let data = try await sendExpectingSuccess(req)
         return try decodeResult(AttendanceResultDTO.self, from: data)
@@ -151,19 +151,19 @@ final class SpringRemoteStore: RemoteStore {
             }
             path += "&until=\(encodedUntil)"
         }
-        let req = jsonRequest(method: "GET", path: path, deviceId: deviceId)
+        let req = jsonRequest(method: "GET", path: path)
         let data = try await sendExpectingSuccess(req)
         return try decodeOptionalResult([ChewingSessionDTO].self, from: data) ?? []
     }
 
     func deleteChewingSession(id: UUID, deviceId: String) async throws {
-        let req = jsonRequest(method: "DELETE", path: "/v1/me/sessions/\(id.uuidString.lowercased())", deviceId: deviceId)
+        let req = jsonRequest(method: "DELETE", path: "/v1/me/sessions/\(id.uuidString.lowercased())")
         // device 불일치도 성공(204→200) 반환 — 멱등 설계.
         _ = try await sendExpectingSuccess(req)
     }
 
     func deleteAllChewingSessions(deviceId: String) async throws {
-        let req = jsonRequest(method: "DELETE", path: "/v1/me/sessions", deviceId: deviceId)
+        let req = jsonRequest(method: "DELETE", path: "/v1/me/sessions")
         _ = try await sendExpectingSuccess(req)
     }
 
@@ -171,7 +171,7 @@ final class SpringRemoteStore: RemoteStore {
 
     func uploadIMUCSV(sessionId: UUID, deviceId: String, csvData: Data) async throws -> String {
         let path = "/v1/me/sessions/\(sessionId.uuidString.lowercased())/imu"
-        var req = baseRequest(method: "POST", path: path, deviceId: deviceId)
+        var req = baseRequest(method: "POST", path: path)
         req.timeoutInterval = Self.sessionUploadTimeout
         req.setValue("text/csv", forHTTPHeaderField: "Content-Type")
         req.httpBody = csvData
@@ -183,21 +183,20 @@ final class SpringRemoteStore: RemoteStore {
     // MARK: - Helpers
 
     /// JSON Content-Type 포함 요청 빌더.
-    private func jsonRequest(method: String, path: String, deviceId: String) -> URLRequest {
-        var req = baseRequest(method: method, path: path, deviceId: deviceId)
+    private func jsonRequest(method: String, path: String) -> URLRequest {
+        var req = baseRequest(method: method, path: path)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         return req
     }
 
-    /// 공통 요청 빌더 — X-Device-Id 헤더 첨부.
-    private func baseRequest(method: String, path: String, deviceId: String) -> URLRequest {
+    /// 공통 요청 빌더 — JWT Bearer 첨부. `/v1/me/*`는 user_id로만 스코프하므로 device 헤더는 보내지 않는다.
+    private func baseRequest(method: String, path: String) -> URLRequest {
         var base = config.baseURL.absoluteString
         if base.hasSuffix("/") { base.removeLast() }
         let url = URL(string: base + path)!
         var req = URLRequest(url: url)
         req.httpMethod = method
-        req.setValue(deviceId, forHTTPHeaderField: "X-Device-Id")
-        // ODO-47: 로그인 토큰이 있으면 Bearer 첨부(서버는 JWT 우선, 없으면 X-Device-Id 폴백).
+        // ODO-47: 로그인 토큰이 있으면 Bearer 첨부.
         if let token = TokenManager.accessToken {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }

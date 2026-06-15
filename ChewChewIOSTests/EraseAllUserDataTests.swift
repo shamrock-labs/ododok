@@ -7,9 +7,9 @@ final class SpyRemoteStore: RemoteStore {
     var fetchHomeError: Error?
 
     func upsertProfile(_ profile: ProfileDTO) async throws {}
-    func fetchProfile(deviceId: String) async throws -> ProfileDTO? { nil }
-    func fetchUserStats(deviceId: String) async throws -> UserStatsDTO? { nil }
-    func deleteUserData(deviceId: String) async throws { deleteUserDataCallCount += 1 }
+    func fetchProfile() async throws -> ProfileDTO? { nil }
+    func fetchUserStats() async throws -> UserStatsDTO? { nil }
+    func deleteUserData() async throws { deleteUserDataCallCount += 1 }
     func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO {
         CreateSessionResultDTO(
             chewingSession: session,
@@ -37,10 +37,16 @@ final class SpyRemoteStore: RemoteStore {
 
 final class SpyAuthSessionManager: AuthSessionManaging {
     private(set) var logoutCallCount = 0
+    /// me() 가 반환할 값. nil이면 throw(오프라인 시뮬레이션).
+    var meResult: (displayName: String?, onboardingCompleted: Bool)? = nil
 
     func logout() async {
         logoutCallCount += 1
         TokenManager.clear()
+    }
+    func me() async throws -> (displayName: String?, onboardingCompleted: Bool) {
+        guard let result = meResult else { throw RemoteStoreError.offline }
+        return result
     }
 }
 
