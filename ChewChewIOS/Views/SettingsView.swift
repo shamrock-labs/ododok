@@ -125,6 +125,31 @@ struct SettingsView: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("DeleteMyData")
+
+            Button {
+                state.logout()
+                dismiss()
+            } label: {
+                HStack {
+                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                        .font(.appFont(.medium, size: 16))
+                        .foregroundStyle(Color.ink600)
+                        .frame(width: 36, height: 36)
+                        .background(Color.ink100, in: RoundedRectangle(cornerRadius: 10))
+
+                    Text("로그아웃")
+                        .font(.appFont(.medium, size: 16))
+                        .foregroundStyle(Color.ink800)
+
+                    Spacer()
+                }
+                .padding(16)
+                .background(Color.white, in: RoundedRectangle(cornerRadius: 18))
+                .neuoShadow(.sm)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 10)
+            .accessibilityIdentifier("Logout")
         }
     }
 
