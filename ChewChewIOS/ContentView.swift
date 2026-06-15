@@ -37,6 +37,14 @@ struct ContentView: View {
     }
 
     var body: some View {
+        if state.isLoggedIn {
+            mainTabs
+        } else {
+            LoginView(onLoggedIn: { state.completeLogin(onboardingCompleted: $0) })
+        }
+    }
+
+    private var mainTabs: some View {
         TabView(selection: $tab) {
             tabPage {
                 HomeView()
@@ -188,7 +196,8 @@ struct ContentView: View {
     /// `hasCompletedOnboarding`이 true가 되면 binding이 false가 되어 자동 dismiss.
     private var onboardingBinding: Binding<Bool> {
         Binding(
-            get: { state.didLoadProfile && !state.hasCompletedOnboarding },
+            // isLoggedIn 가드: 온보딩 중 "다른 계정으로 로그인"으로 로그아웃하면 sheet도 즉시 닫힌다.
+            get: { state.isLoggedIn && state.didLoadProfile && !state.hasCompletedOnboarding },
             set: { _ in }
         )
     }

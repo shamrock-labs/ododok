@@ -17,7 +17,9 @@ import Security
 ///
 /// InsForge `profiles` / `user_stats` / `chewing_session`의 `device_id` 컬럼과 1:1 매칭.
 enum DeviceIdentity {
-    private static let service = "com.sungho.ododok"
+    // Keychain service는 번들 ID에서 파생(ODODOK_BUNDLE_PREFIX). 값 자체(deviceId)는 UserDefaults
+    // 백업으로 복구되므로 service 문자열이 바뀌어도 기존 설치의 식별자는 유지된다.
+    private static let service = Bundle.main.bundleIdentifier ?? "com.shamrock.ododok"
     private static let account = "deviceId"
     private static let userDefaultsKey = "ChewChewIOS.DeviceIdentity.deviceId"
 

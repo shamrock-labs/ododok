@@ -11,11 +11,11 @@ import Foundation
 /// 삭제는 `deleteUserData` 한 번 (profiles → user_stats FK ON DELETE CASCADE).
 protocol RemoteStore {
     func upsertProfile(_ profile: ProfileDTO) async throws
-    /// 디바이스 식별자에 매칭되는 profile 행 1개 조회. 신규 디바이스면 nil.
-    /// `displayName` 등 사용자 식별 정보 로딩에 사용.
-    func fetchProfile(deviceId: String) async throws -> ProfileDTO?
-    func fetchUserStats(deviceId: String) async throws -> UserStatsDTO?
-    func deleteUserData(deviceId: String) async throws
+    /// 로그인 계정(JWT)에 매칭되는 profile 행 1개 조회. 신규 사용자면 nil.
+    /// `displayName` 등 사용자 식별 정보 로딩에 사용. 서버는 JWT(user_id)로만 스코프한다.
+    func fetchProfile() async throws -> ProfileDTO?
+    func fetchUserStats() async throws -> UserStatsDTO?
+    func deleteUserData() async throws
     /// 정책 세션 저장 — 세션을 저장하고 서버가 계산한 적립/스트릭/오늘/홈을 함께 받는다.
     /// 도토리·스트릭·오늘완료 정본은 서버이므로 iOS는 응답값을 표시만 한다(재계산 금지).
     func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO
@@ -45,9 +45,9 @@ extension RemoteStore {
 
 struct NoopRemoteStore: RemoteStore {
     func upsertProfile(_ profile: ProfileDTO) async throws {}
-    func fetchProfile(deviceId: String) async throws -> ProfileDTO? { nil }
-    func fetchUserStats(deviceId: String) async throws -> UserStatsDTO? { nil }
-    func deleteUserData(deviceId: String) async throws {}
+    func fetchProfile() async throws -> ProfileDTO? { nil }
+    func fetchUserStats() async throws -> UserStatsDTO? { nil }
+    func deleteUserData() async throws {}
     func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO {
         CreateSessionResultDTO(
             chewingSession: session,
@@ -76,6 +76,8 @@ struct InsForgeConfig {
 }
 
 enum RemoteStoreError: Error, CustomStringConvertible {
+    /// access 만료 후 refresh까지 실패한 상태. 로컬 세션을 종료하고 로그인 게이트로 내려야 한다.
+    case authExpired
     /// 서버 표준 에러 봉투(`{code, message}`) 응답. message는 서버가 준 한국어 사유.
     case server(status: Int, code: Int, message: String)
     /// 응답 자체가 오지 않음 — 연결 실패/타임아웃(오프라인).
@@ -88,6 +90,7 @@ enum RemoteStoreError: Error, CustomStringConvertible {
 
     var description: String {
         switch self {
+        case .authExpired: return "RemoteStoreError.authExpired"
         case .server(let s, let c, let m): return "RemoteStoreError.server(http=\(s), code=\(c)): \(m)"
         case .offline: return "RemoteStoreError.offline"
         case .malformed(let d): return "RemoteStoreError.malformed: \(d)"
@@ -100,6 +103,8 @@ enum RemoteStoreError: Error, CustomStringConvertible {
     /// 노출하지 않고(로그는 `description`에 남음), 사용자에겐 부드러운 카피로 통일한다.
     var userMessage: String {
         switch self {
+        case .authExpired:
+            return "다시 로그인해 주세요."
         case .offline:
             return "인터넷 연결을 확인해 주세요."
         case .server, .http, .malformed, .invalidUploadResponse:
@@ -111,6 +116,8 @@ enum RemoteStoreError: Error, CustomStringConvertible {
     /// 잘못된 요청(4xx)은 재시도해도 똑같이 실패하므로 false.
     var isRetriable: Bool {
         switch self {
+        case .authExpired:
+            return false
         case .offline, .malformed, .invalidUploadResponse:
             return true
         case .server(let status, _, _), .http(let status, _):
@@ -161,7 +168,8 @@ final class InsForgeRemoteStore: RemoteStore {
         _ = try await sendExpectingSuccess(req)
     }
 
-    func fetchProfile(deviceId: String) async throws -> ProfileDTO? {
+    func fetchProfile() async throws -> ProfileDTO? {
+        let deviceId = DeviceIdentity.shared
         let escaped = deviceId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? deviceId
         let req = try jsonRequest(
             method: "GET",
@@ -172,7 +180,8 @@ final class InsForgeRemoteStore: RemoteStore {
         return rows.first
     }
 
-    func fetchUserStats(deviceId: String) async throws -> UserStatsDTO? {
+    func fetchUserStats() async throws -> UserStatsDTO? {
+        let deviceId = DeviceIdentity.shared
         let escaped = deviceId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? deviceId
         let req = try jsonRequest(
             method: "GET",
@@ -184,7 +193,8 @@ final class InsForgeRemoteStore: RemoteStore {
     }
 
     /// profiles 삭제 → FK ON DELETE CASCADE로 user_stats도 함께 제거.
-    func deleteUserData(deviceId: String) async throws {
+    func deleteUserData() async throws {
+        let deviceId = DeviceIdentity.shared
         let escaped = deviceId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? deviceId
         let req = try jsonRequest(
             method: "DELETE",
@@ -209,7 +219,7 @@ final class InsForgeRemoteStore: RemoteStore {
 
     func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO {
         try await insertSession(session)
-        let stats = try? await fetchUserStats(deviceId: session.deviceId)
+        let stats = try? await fetchUserStats()
         return CreateSessionResultDTO(
             chewingSession: session,
             chewingSessionAccepted: true,
@@ -227,12 +237,12 @@ final class InsForgeRemoteStore: RemoteStore {
     // "행 없음"(nil)만 0 홈으로 변환한다.
 
     func fetchHome(deviceId: String) async throws -> HomeStateDTO {
-        let stats = try await fetchUserStats(deviceId: deviceId)
+        let stats = try await fetchUserStats()
         return Self.legacyHome(deviceId: deviceId, stats: stats)
     }
 
     func earnAttendance(deviceId: String, idempotencyKey: String) async throws -> AttendanceResultDTO {
-        let stats = try await fetchUserStats(deviceId: deviceId)
+        let stats = try await fetchUserStats()
         return AttendanceResultDTO(
             grantedPoints: 0,
             capped: false,

@@ -4,6 +4,7 @@ import XCTest
 final class SpringRemoteStoreAttendanceTests: XCTestCase {
     override func tearDown() {
         MockURLProtocol.handler = nil
+        TokenManager.clear()
         super.tearDown()
     }
 
@@ -18,7 +19,8 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
 
             XCTAssertEqual(request.httpMethod, "POST")
             XCTAssertEqual(request.url?.path, "/v1/me/attendance")
-            XCTAssertEqual(request.value(forHTTPHeaderField: "X-Device-Id"), "device-1")
+            // `/v1/me/*`는 JWT(user_id)로만 스코프 — device 헤더는 더 이상 보내지 않는다.
+            XCTAssertNil(request.value(forHTTPHeaderField: "X-Device-Id"))
             XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
             XCTAssertEqual(json?["idempotencyKey"], "app-open-device-1-20260612")
 
@@ -42,6 +44,8 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
         XCTAssertEqual(result.grantedPoints, 10)
         XCTAssertFalse(result.capped)
         XCTAssertFalse(result.idempotentReplay)
+        XCTAssertEqual(result.userStats.deviceId, "11111111-1111-1111-1111-111111111111")
+        XCTAssertEqual(result.userStats.userId, "11111111-1111-1111-1111-111111111111")
         XCTAssertEqual(result.userStats.points, 10)
     }
 
@@ -65,6 +69,74 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
             XCTAssertEqual(code, 4004)
             XCTAssertEqual(message, "유효하지 않은 디바이스 식별자입니다.")
         }
+    }
+
+    func testEarnAttendanceThrowsAuthExpiredWhenRefreshFails() async throws {
+        TokenManager.save(access: "expired-access", refresh: "expired-refresh")
+        let store = makeStore()
+
+        MockURLProtocol.handler = { request in
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!,
+                Data(#"{"code":5000,"message":"인증이 필요합니다."}"#.utf8)
+            )
+        }
+
+        do {
+            _ = try await store.earnAttendance(deviceId: "device-1", idempotencyKey: "key")
+            XCTFail("Expected RemoteStoreError.authExpired")
+        } catch let error as RemoteStoreError {
+            guard case .authExpired = error else {
+                return XCTFail("Expected authExpired, got \(error)")
+            }
+        }
+
+        XCTAssertNil(TokenManager.accessToken)
+        XCTAssertNil(TokenManager.refreshToken)
+    }
+
+    /// refresh는 성공했지만 재발급 후 재시도한 요청이 다시 401이면, 최종 401을 authExpired로
+    /// 승격해 만료 세션 처리 경로(AppState.expireSession)로 이어지게 한다.
+    func testEarnAttendance_throwsAuthExpired_whenRetriedRequestStill401AfterRefresh() async throws {
+        TokenManager.save(access: "stale-access", refresh: "valid-refresh")
+        let store = makeStore()
+
+        var refreshCount = 0
+        var attendanceCount = 0
+        MockURLProtocol.handler = { request in
+            if request.url?.path == "/auth/refresh" {
+                refreshCount += 1
+                return (
+                    HTTPURLResponse(
+                        url: request.url!,
+                        statusCode: 200,
+                        httpVersion: nil,
+                        headerFields: ["Content-Type": "application/json"]
+                    )!,
+                    Self.refreshSuccessBody
+                )
+            }
+            attendanceCount += 1
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!,
+                Data(#"{"code":5000,"message":"인증이 필요합니다."}"#.utf8)
+            )
+        }
+
+        do {
+            _ = try await store.earnAttendance(deviceId: "device-1", idempotencyKey: "key")
+            XCTFail("Expected RemoteStoreError.authExpired")
+        } catch let error as RemoteStoreError {
+            guard case .authExpired = error else {
+                return XCTFail("Expected authExpired, got \(error)")
+            }
+        }
+
+        // refresh 1회 + attendance 2회(최초 + 재시도)만 발생 — 무한 재시도 없음.
+        XCTAssertEqual(refreshCount, 1)
+        XCTAssertEqual(attendanceCount, 2)
+        // refresh 성공으로 새 토큰이 저장됐음 — 재발급 경로를 실제로 탔다는 증거.
+        XCTAssertEqual(TokenManager.accessToken, "new-access")
     }
 
     private func makeStore() -> SpringRemoteStore {
@@ -115,7 +187,7 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
             "capped": false,
             "idempotentReplay": false,
             "userStats": {
-              "deviceId": "device-1",
+              "userId": "11111111-1111-1111-1111-111111111111",
               "displayName": null,
               "points": 10,
               "streak": 0,
@@ -124,6 +196,25 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
               "dailyGoal": 400,
               "todayProgress": 0.0,
               "todayCompleted": false
+            }
+          }
+        }
+        """.utf8
+    )
+
+    private static let refreshSuccessBody = Data(
+        """
+        {
+          "code": 1000,
+          "message": "요청에 성공하였습니다.",
+          "result": {
+            "accessToken": "new-access",
+            "refreshToken": "new-refresh",
+            "expiresIn": 3600,
+            "user": {
+              "id": "11111111-1111-1111-1111-111111111111",
+              "displayName": null,
+              "onboardingCompleted": false
             }
           }
         }

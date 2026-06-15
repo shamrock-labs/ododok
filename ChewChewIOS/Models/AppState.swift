@@ -87,6 +87,10 @@ final class AppState {
     /// 처음 fetch가 끝나면 true로 마크 — 그 시점에 displayName nil이면 진짜 신규 디바이스.
     var didLoadProfile: Bool = false
 
+    /// 서버 OAuth 로그인 여부(ODO-47). 토큰이 Keychain에 있으면 로그인 상태로 시작.
+    /// false인 동안 ContentView가 LoginView를 fullScreenCover로 띄운다.
+    var isLoggedIn: Bool = TokenManager.isLoggedIn
+
     /// 온보딩(이름 입력 + 사용법 튜토리얼)을 끝까지 마쳤는지. false인 동안 ContentView가
     /// onboarding sheet를 띄운다. 튜토리얼 마지막 "시작하기"/"건너뛰기"의 `completeOnboarding()`
     /// 에서 true로. 출석/스트릭 보상은 이 값이 true가 되기 전엔 트리거하지 않아, 보상이 온보딩
@@ -186,6 +190,8 @@ final class AppState {
     /// 원격 백엔드(InsForge)에 대한 추상화. 테스트/시뮬레이터에선 NoopRemoteStore 주입 가능.
     @ObservationIgnored let remoteStore: RemoteStore
 
+    @ObservationIgnored private let authSessionManager: AuthSessionManaging
+
     /// 게임 상태 원격 동기화(upsert/delete) 직렬화 큐.
     /// 짧은 시간에 여러 mutate가 일어나면 detached Task들의 네트워크 도착 순서가 뒤집혀
     /// 중간 상태가 winner로 굳을 수 있어, 각 작업이 이전 작업 종료를 await하는 체인으로 직렬화한다.
@@ -246,8 +252,12 @@ final class AppState {
 
     // MARK: - Init
 
-    init(remoteStore: RemoteStore = NoopRemoteStore()) {
+    init(
+        remoteStore: RemoteStore = NoopRemoteStore(),
+        authSessionManager: AuthSessionManaging = NoopAuthSessionManager()
+    ) {
         self.remoteStore = remoteStore
+        self.authSessionManager = authSessionManager
         // displayName은 game state(`PersistedSnapshot`)과 다른 별도 캐시 키 — cold-start
         // 시 UserDefaults에서 즉시 read해 HomeView가 빈 이름으로 깜빡이지 않도록.
         displayName = UserDefaults.standard.string(forKey: Self.displayNameKey)
@@ -619,8 +629,52 @@ final class AppState {
         displayName = nil
         hasCompletedOnboarding = false
         freezeInventory = 0
+        TokenManager.clear()
+        isLoggedIn = false
         // 저장된 스냅샷도 비워서 다음 실행에서 시드값이 살아남도록
         clearPersistedSnapshot()
+    }
+
+    /// 로그인 + 서버 토큰 발급 성공 후 호출(LoginView). 로그인 상태로 전환하고
+    /// 로그인 계정 기준으로 홈/프로필을 다시 적재한다.
+    /// `onboardingCompleted`는 로그인 응답(`/auth/login`)의 정본 — true면 즉시 온보딩을
+    /// 스킵해, 재로그인 시 온보딩이 다시 뜨던 회귀를 막는다.
+    func completeLogin(onboardingCompleted: Bool) {
+        clearLocalSessionCache()
+        // clearLocalSessionCache가 hasCompletedOnboarding을 false로 리셋하므로 그 뒤에 세팅한다.
+        // 서버 응답이 완료라고 하면 즉시 온보딩 sheet을 스킵 — 재로그인 시 재노출 회귀 차단.
+        if onboardingCompleted { hasCompletedOnboarding = true }
+        isLoggedIn = true
+        Task { [weak self] in
+            await self?.refreshFromServerHome()
+            await self?.fetchAndApplyDisplayName()
+        }
+    }
+
+    /// 로그아웃 — 로컬 토큰 제거 후 로그인 게이트로 복귀. 게임 데이터는 보존('내 데이터 삭제'와 구분).
+    func logout() {
+        expireSession()
+    }
+
+    /// 사용자가 누른 로그아웃 — 서버 refresh token 폐기 후 로컬 세션을 종료한다.
+    @MainActor
+    func logoutFromServer() async {
+        await authSessionManager.logout()
+        expireSession()
+    }
+
+    /// refresh 만료/폐기 등으로 인증 세션을 더 쓸 수 없을 때 로그인 게이트로 복귀한다.
+    private func expireSession() {
+        TokenManager.clear()
+        isLoggedIn = false
+        clearLocalSessionCache()
+    }
+
+    @MainActor
+    private func handleRemoteError(_ error: Error) {
+        if case RemoteStoreError.authExpired = error {
+            expireSession()
+        }
     }
 
     // MARK: - Derived
@@ -900,6 +954,29 @@ final class AppState {
         }
     }
 
+    /// 로그아웃/계정 전환 시 iOS에 남은 계정별 화면 캐시만 제거한다.
+    /// 원격 데이터 삭제는 `eraseAllUserData` 전용이며 여기서는 호출하지 않는다.
+    private func clearLocalSessionCache() {
+        streak = 0
+        points = 0
+        freezeInventory = 0
+        owned = []
+        equipped = Equipped()
+        ownedAcornPacks = [:]
+        todaySessions = []
+        lastCompletedSession = nil
+        pendingRewardGrant = nil
+        sessionUploadStatus = .idle
+        sessionUploadErrorMessage = nil
+        pendingUpload = nil
+        displayName = nil
+        didLoadProfile = false
+        hasCompletedOnboarding = false
+        serverHome = nil
+        homeApplyVersion += 1
+        UserDefaults.standard.removeObject(forKey: Self.persistenceKey)
+    }
+
     func clearPersistedSnapshot() {
         UserDefaults.standard.removeObject(forKey: Self.persistenceKey)
         // 서버 홈 캐시도 비움 — reset/erase 후 화면이 옛 도토리/스트릭을 잠깐 보여주지 않도록.
@@ -908,12 +985,11 @@ final class AppState {
         homeApplyVersion += 1   // 초기화 직전 시작된 refreshFromServerHome이 완료 후 applyHome을 실행하지 못하게.
         // 같은 체인으로 — 직전 작업이 끝난 뒤 delete가 나가야 결과가 결정적.
         // profiles 삭제 → FK ON DELETE CASCADE로 user_stats도 자동 정리.
-        let deviceId = DeviceIdentity.shared
         let store = remoteStore
         let previous = remoteSyncChain
         remoteSyncChain = Task.detached {
             _ = await previous.value
-            try? await store.deleteUserData(deviceId: deviceId)
+            try? await store.deleteUserData()
         }
     }
 
@@ -945,11 +1021,15 @@ final class AppState {
     func refreshFromServerHome() async {
         let deviceId = DeviceIdentity.shared
         let versionAtRequest = homeApplyVersion
-        guard let home = try? await remoteStore.fetchHome(deviceId: deviceId) else { return }
-        // 이 GET이 비행하는 동안 쓰기 응답(출석/세션 저장)이 홈을 갱신했다면 이 응답은 옛
-        // 스냅샷이다 — 적용하면 방금 반영된 적립을 화면에서 되돌리므로 버린다(쓰기 응답 우선).
-        guard versionAtRequest == homeApplyVersion else { return }
-        applyHome(home)
+        do {
+            let home = try await remoteStore.fetchHome(deviceId: deviceId)
+            // 이 GET이 비행하는 동안 쓰기 응답(출석/세션 저장)이 홈을 갱신했다면 이 응답은 옛
+            // 스냅샷이다 — 적용하면 방금 반영된 적립을 화면에서 되돌리므로 버린다(쓰기 응답 우선).
+            guard versionAtRequest == homeApplyVersion else { return }
+            applyHome(home)
+        } catch {
+            handleRemoteError(error)
+        }
     }
 
     /// 서버 스트릭 이벤트 → 보상 다이얼로그 매핑. 계산은 서버가 끝냈고 iOS는 표시만 한다.
@@ -1043,6 +1123,8 @@ final class AppState {
                 pendingRewardGrant = RewardGrant(amount: result.reward.grantedPoints, kind: .sessionComplete)
             }
         } catch {
+            handleRemoteError(error)
+            if case RemoteStoreError.authExpired = error { return }
             sessionUploadStatus = .failure
             // 사용자에겐 부드러운 통일 카피(userMessage)만 노출 — 서버 원문은 로그(description)로만 남는다.
             sessionUploadErrorMessage = (error as? RemoteStoreError)?.userMessage
@@ -1050,21 +1132,51 @@ final class AppState {
         }
     }
 
-    /// DB의 `profiles.displayName`을 가져와 in-memory + UserDefaults 갱신.
-    /// 신규 디바이스(profile 없음)거나 displayName이 nil/빈 문자열이면 그대로 둠.
-    /// 종료 시 `didLoadProfile = true`로 마크 — ContentView가 onboarding sheet 띄울지
-    /// 결정할 때 참조.
+    /// 콜드 스타트·포그라운드 진입 시 서버에서 displayName + onboardingCompleted를 가져와
+    /// in-memory + UserDefaults 갱신.
+    ///
+    /// 1) 로그인 상태면 `/auth/me`(정본 엔드포인트)로 onboardingCompleted를 권위 있게 설정.
+    ///    성공 시 true/false 모두 반영 — 서버가 완료라고 해도, 미완료라고 해도 그대로 따른다.
+    ///    me() 실패(오프라인·토큰 만료 등)면 step2의 profile 기반 레거시 폴백으로 내려간다.
+    /// 2) profiles 테이블에서 displayName 로드(표시 이름 표시용 + me() 실패 시 온보딩 폴백).
+    ///    displayName nil/빈 문자열이면 신규 사용자로 간주, profile fetch 실패도 silent 처리.
+    /// 종료 시 `didLoadProfile = true` — ContentView가 onboarding sheet 표시 여부 결정에 사용.
     @MainActor
     private func fetchAndApplyDisplayName() async {
-        let deviceId = DeviceIdentity.shared
-        let profile = try? await remoteStore.fetchProfile(deviceId: deviceId)
+        // Step 1: /auth/me — onboardingCompleted 정본. 로그인 상태일 때만 시도.
+        var meSucceeded = false
+        if isLoggedIn {
+            if let result = try? await authSessionManager.me() {
+                // 서버 값이 정본 — true/false 모두 기존 로컬 값에 우선한다.
+                hasCompletedOnboarding = result.onboardingCompleted
+                // displayName도 함께 갱신(있을 때만).
+                if let name = result.displayName, !name.isEmpty, name != displayName {
+                    displayName = name
+                }
+                meSucceeded = true
+            }
+        }
+
+        // Step 2: profiles 테이블 — displayName 로드 + me() 실패 시 온보딩 폴백.
+        let profile: ProfileDTO?
+        do {
+            profile = try await remoteStore.fetchProfile()
+        } catch {
+            handleRemoteError(error)
+            // profile fetch 실패해도 me()가 성공했으면 onboarding 판정은 이미 완료.
+            didLoadProfile = true
+            if isInForeground && hasCompletedOnboarding {
+                await grantDailyAttendanceIfNeeded()
+            }
+            return
+        }
         if let name = profile?.displayName, !name.isEmpty {
             if name != displayName {
                 displayName = name
             }
-            // DB에 이름이 있다 = 이전에 온보딩을 마친 기존 사용자. 재설치로 로컬 플래그가
-            // 비었어도 사용법 튜토리얼을 다시 띄우지 않도록 완료로 마크한다.
-            if !hasCompletedOnboarding {
+            // me() 실패(오프라인 등) 폴백: DB에 이름이 있다 = 이전에 온보딩을 마친 기존 사용자.
+            // 재설치로 로컬 플래그가 비었어도 사용법 튜토리얼을 다시 띄우지 않도록 완료로 마크.
+            if !meSucceeded && !hasCompletedOnboarding {
                 hasCompletedOnboarding = true
             }
         }
@@ -1073,8 +1185,9 @@ final class AppState {
         // 일관된 두 값으로 수행돼, "didLoadProfile만 true + displayName 아직 nil" 중간
         // 상태에서 sheet이 열리는 race를 피한다.
         didLoadProfile = true
-        // 재설치한 기존 사용자(위에서 hasCompletedOnboarding을 막 true로 올린 경우): foreground
-        // 진입 시점엔 아직 false라 attendance를 건너뛰었으므로, 여기서 이어서 트리거한다.
+        // 재설치한 기존 사용자(위에서 hasCompletedOnboarding을 막 true로 올린 경우) 또는
+        // me()로 온보딩 완료를 확인한 경우: foreground 진입 시점엔 아직 false였을 수 있으므로,
+        // 여기서 이어서 출석 적립을 트리거한다.
         if isInForeground && hasCompletedOnboarding {
             await grantDailyAttendanceIfNeeded()
         }
@@ -1090,7 +1203,11 @@ final class AppState {
         // 보상은 튜토리얼이 끝나는 completeOnboarding()에서 띄운다(보상이 튜토리얼 위로
         // 떠버리는 회귀 방지). 이름 저장 시점엔 DB upsert만 수행.
         let deviceId = DeviceIdentity.shared
-        try? await remoteStore.upsertProfile(ProfileDTO(deviceId: deviceId, displayName: trimmed))
+        do {
+            try await remoteStore.upsertProfile(ProfileDTO(deviceId: deviceId, displayName: trimmed))
+        } catch {
+            handleRemoteError(error)
+        }
     }
 
     /// 사용법 튜토리얼의 마지막 "시작하기"(또는 우상단 "건너뛰기")에서 호출. 온보딩 완료를
@@ -1114,7 +1231,11 @@ final class AppState {
     private func grantDailyAttendanceIfNeeded() async {
         let deviceId = DeviceIdentity.shared
         let key = Self.attendanceKey(deviceId: deviceId)
-        guard let result = try? await remoteStore.earnAttendance(deviceId: deviceId, idempotencyKey: key) else {
+        let result: AttendanceResultDTO
+        do {
+            result = try await remoteStore.earnAttendance(deviceId: deviceId, idempotencyKey: key)
+        } catch {
+            handleRemoteError(error)
             return
         }
         applyHome(result.userStats)
@@ -1129,7 +1250,11 @@ final class AppState {
     func fetchTodaySessions() async {
         let startOfDay = Calendar.current.startOfDay(for: Date())
         let deviceId = DeviceIdentity.shared
-        guard let rows = try? await remoteStore.fetchChewingSessions(deviceId: deviceId, since: startOfDay) else {
+        let rows: [ChewingSessionDTO]
+        do {
+            rows = try await remoteStore.fetchChewingSessions(deviceId: deviceId, since: startOfDay)
+        } catch {
+            handleRemoteError(error)
             return
         }
         // 리포트가 가능한 세션만 노출. DB엔 남아 있어도 앱에선 없는 것처럼 처리.
@@ -1149,6 +1274,7 @@ final class AppState {
             // 오늘 씹기 수·진행도가 줄었을 수 있으므로 서버 홈을 다시 받아 반영.
             await refreshFromServerHome()
         } catch {
+            handleRemoteError(error)
             return
         }
     }
@@ -1164,6 +1290,7 @@ final class AppState {
             // 오늘 씹기 수·진행도가 0으로 바뀌므로 서버 홈을 다시 받아 반영.
             await refreshFromServerHome()
         } catch {
+            handleRemoteError(error)
             return
         }
     }

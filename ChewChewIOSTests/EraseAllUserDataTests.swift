@@ -4,11 +4,12 @@ import XCTest
 /// `deleteUserData`가 실제로 한 번 호출되는지 추적하는 테스트용 Spy.
 final class SpyRemoteStore: RemoteStore {
     private(set) var deleteUserDataCallCount = 0
+    var fetchHomeError: Error?
 
     func upsertProfile(_ profile: ProfileDTO) async throws {}
-    func fetchProfile(deviceId: String) async throws -> ProfileDTO? { nil }
-    func fetchUserStats(deviceId: String) async throws -> UserStatsDTO? { nil }
-    func deleteUserData(deviceId: String) async throws { deleteUserDataCallCount += 1 }
+    func fetchProfile() async throws -> ProfileDTO? { nil }
+    func fetchUserStats() async throws -> UserStatsDTO? { nil }
+    func deleteUserData() async throws { deleteUserDataCallCount += 1 }
     func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO {
         CreateSessionResultDTO(
             chewingSession: session,
@@ -21,7 +22,10 @@ final class SpyRemoteStore: RemoteStore {
             userStats: .empty(deviceId: session.deviceId)
         )
     }
-    func fetchHome(deviceId: String) async throws -> HomeStateDTO { .empty(deviceId: deviceId) }
+    func fetchHome(deviceId: String) async throws -> HomeStateDTO {
+        if let fetchHomeError { throw fetchHomeError }
+        return .empty(deviceId: deviceId)
+    }
     func earnAttendance(deviceId: String, idempotencyKey: String) async throws -> AttendanceResultDTO {
         AttendanceResultDTO(grantedPoints: 0, capped: false, idempotentReplay: false, userStats: .empty(deviceId: deviceId))
     }
@@ -31,8 +35,28 @@ final class SpyRemoteStore: RemoteStore {
     func uploadIMUCSV(sessionId: UUID, deviceId: String, csvData: Data) async throws -> String { "" }
 }
 
+final class SpyAuthSessionManager: AuthSessionManaging {
+    private(set) var logoutCallCount = 0
+    /// me() 가 반환할 값. nil이면 throw(오프라인 시뮬레이션).
+    var meResult: (displayName: String?, onboardingCompleted: Bool)? = nil
+
+    func logout() async {
+        logoutCallCount += 1
+        TokenManager.clear()
+    }
+    func me() async throws -> (displayName: String?, onboardingCompleted: Bool) {
+        guard let result = meResult else { throw RemoteStoreError.offline }
+        return result
+    }
+}
+
 @MainActor
 final class EraseAllUserDataTests: XCTestCase {
+    override func tearDown() {
+        TokenManager.clear()
+        super.tearDown()
+    }
+
     func testEraseAllUserData_callsDeleteUserDataOnce() async {
         let spy = SpyRemoteStore()
         let state = AppState(remoteStore: spy)
@@ -95,5 +119,69 @@ final class EraseAllUserDataTests: XCTestCase {
         await state.eraseAllUserData()
 
         XCTAssertEqual(state.streak, 0, "삭제 후 streak은 0이어야 한다")
+    }
+
+    func testLogoutClearsLocalAccountCacheWithoutDeletingRemoteData() {
+        TokenManager.save(access: "access-token", refresh: "refresh-token")
+        let spy = SpyRemoteStore()
+        let state = AppState(remoteStore: spy)
+
+        state.displayName = "이전계정"
+        state.hasCompletedOnboarding = true
+        state.points = 42
+        state.streak = 3
+        state.freezeInventory = 2
+        state.owned = ["hat-basic"]
+        state.ownedAcornPacks = ["starter": 1]
+        state.persistSnapshot()
+
+        state.logout()
+
+        XCTAssertFalse(state.isLoggedIn)
+        XCTAssertNil(TokenManager.accessToken)
+        XCTAssertNil(state.displayName)
+        XCTAssertFalse(state.hasCompletedOnboarding)
+        XCTAssertEqual(state.points, 0)
+        XCTAssertEqual(state.streak, 0)
+        XCTAssertEqual(state.freezeInventory, 0)
+        XCTAssertTrue(state.owned.isEmpty)
+        XCTAssertTrue(state.ownedAcornPacks.isEmpty)
+        XCTAssertEqual(spy.deleteUserDataCallCount, 0, "로그아웃은 원격 데이터를 삭제하면 안 된다")
+    }
+
+    func testLogoutFromServerRevokesRefreshThenClearsLocalSession() async {
+        TokenManager.save(access: "access-token", refresh: "refresh-token")
+        let remote = SpyRemoteStore()
+        let auth = SpyAuthSessionManager()
+        let state = AppState(remoteStore: remote, authSessionManager: auth)
+        state.displayName = "이전계정"
+        state.hasCompletedOnboarding = true
+        state.points = 42
+
+        await state.logoutFromServer()
+
+        XCTAssertEqual(auth.logoutCallCount, 1)
+        XCTAssertFalse(state.isLoggedIn)
+        XCTAssertNil(TokenManager.accessToken)
+        XCTAssertNil(state.displayName)
+        XCTAssertFalse(state.hasCompletedOnboarding)
+        XCTAssertEqual(state.points, 0)
+        XCTAssertEqual(remote.deleteUserDataCallCount, 0)
+    }
+
+    func testAuthExpiredDuringHomeRefreshReturnsToLoginGate() async {
+        TokenManager.save(access: "access-token", refresh: "refresh-token")
+        let remote = SpyRemoteStore()
+        remote.fetchHomeError = RemoteStoreError.authExpired
+        let state = AppState(remoteStore: remote)
+        state.displayName = "이전계정"
+        state.hasCompletedOnboarding = true
+
+        await state.refreshFromServerHome()
+
+        XCTAssertFalse(state.isLoggedIn)
+        XCTAssertNil(TokenManager.accessToken)
+        XCTAssertNil(state.displayName)
+        XCTAssertFalse(state.hasCompletedOnboarding)
     }
 }
