@@ -228,8 +228,10 @@ final class SpringRemoteStore: RemoteStore {
         guard let http = response as? HTTPURLResponse else {
             throw RemoteStoreError.malformed("no HTTP response")
         }
-        // ODO-47: access 만료(401) + refresh 보유 시 1회 재발급 후 원요청 재시도.
-        if http.statusCode == 401, retryingOn401 {
+        // ODO-47: access 만료(401) 처리. refresh 보유 시 1회 재발급 후 원요청 재시도하고,
+        // 재시도 후에도 401이면 만료로 확정해 authExpired를 던진다(AppState가 로그인 게이트로 내려보냄).
+        if http.statusCode == 401 {
+            guard retryingOn401 else { throw RemoteStoreError.authExpired }
             guard TokenManager.refreshToken != nil else { throw RemoteStoreError.authExpired }
             guard await authClient.refresh() else { throw RemoteStoreError.authExpired }
             var retried = req

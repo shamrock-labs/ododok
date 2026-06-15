@@ -94,6 +94,50 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
         XCTAssertNil(TokenManager.refreshToken)
     }
 
+    /// refresh는 성공했지만 재발급 후 재시도한 요청이 다시 401이면, 최종 401을 authExpired로
+    /// 승격해 만료 세션 처리 경로(AppState.expireSession)로 이어지게 한다.
+    func testEarnAttendance_throwsAuthExpired_whenRetriedRequestStill401AfterRefresh() async throws {
+        TokenManager.save(access: "stale-access", refresh: "valid-refresh")
+        let store = makeStore()
+
+        var refreshCount = 0
+        var attendanceCount = 0
+        MockURLProtocol.handler = { request in
+            if request.url?.path == "/auth/refresh" {
+                refreshCount += 1
+                return (
+                    HTTPURLResponse(
+                        url: request.url!,
+                        statusCode: 200,
+                        httpVersion: nil,
+                        headerFields: ["Content-Type": "application/json"]
+                    )!,
+                    Self.refreshSuccessBody
+                )
+            }
+            attendanceCount += 1
+            return (
+                HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!,
+                Data(#"{"code":5000,"message":"인증이 필요합니다."}"#.utf8)
+            )
+        }
+
+        do {
+            _ = try await store.earnAttendance(deviceId: "device-1", idempotencyKey: "key")
+            XCTFail("Expected RemoteStoreError.authExpired")
+        } catch let error as RemoteStoreError {
+            guard case .authExpired = error else {
+                return XCTFail("Expected authExpired, got \(error)")
+            }
+        }
+
+        // refresh 1회 + attendance 2회(최초 + 재시도)만 발생 — 무한 재시도 없음.
+        XCTAssertEqual(refreshCount, 1)
+        XCTAssertEqual(attendanceCount, 2)
+        // refresh 성공으로 새 토큰이 저장됐음 — 재발급 경로를 실제로 탔다는 증거.
+        XCTAssertEqual(TokenManager.accessToken, "new-access")
+    }
+
     private func makeStore() -> SpringRemoteStore {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [MockURLProtocol.self]
@@ -151,6 +195,24 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
               "dailyGoal": 400,
               "todayProgress": 0.0,
               "todayCompleted": false
+            }
+          }
+        }
+        """.utf8
+    )
+
+    private static let refreshSuccessBody = Data(
+        """
+        {
+          "code": 1000,
+          "message": "요청에 성공하였습니다.",
+          "result": {
+            "accessToken": "new-access",
+            "refreshToken": "new-refresh",
+            "expiresIn": 3600,
+            "user": {
+              "id": "11111111-1111-1111-1111-111111111111",
+              "displayName": null
             }
           }
         }
