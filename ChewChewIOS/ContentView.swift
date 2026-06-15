@@ -192,7 +192,9 @@ struct ContentView: View {
     /// `hasCompletedOnboarding`이 true가 되면 binding이 false가 되어 자동 dismiss.
     private var onboardingBinding: Binding<Bool> {
         Binding(
-            get: { state.didLoadProfile && !state.hasCompletedOnboarding },
+            // 로그인 게이트 우선: 미로그인 상태에선 온보딩을 띄우지 않는다(로그인 cover와의 동시
+            // presentation 충돌 방지). 로그인 완료 후에야 온보딩이 후보가 된다.
+            get: { state.isLoggedIn && state.didLoadProfile && !state.hasCompletedOnboarding },
             set: { _ in }
         )
     }
