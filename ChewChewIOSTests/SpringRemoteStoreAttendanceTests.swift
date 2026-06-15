@@ -42,6 +42,8 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
         XCTAssertEqual(result.grantedPoints, 10)
         XCTAssertFalse(result.capped)
         XCTAssertFalse(result.idempotentReplay)
+        XCTAssertEqual(result.userStats.deviceId, "11111111-1111-1111-1111-111111111111")
+        XCTAssertEqual(result.userStats.userId, "11111111-1111-1111-1111-111111111111")
         XCTAssertEqual(result.userStats.points, 10)
     }
 
@@ -115,7 +117,7 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
             "capped": false,
             "idempotentReplay": false,
             "userStats": {
-              "deviceId": "device-1",
+              "userId": "11111111-1111-1111-1111-111111111111",
               "displayName": null,
               "points": 10,
               "streak": 0,

@@ -4,7 +4,33 @@ import Foundation
 /// display_name은 향후 사용을 위해 비워둠.
 struct ProfileDTO: Codable, Equatable {
     var deviceId: String
+    var userId: String? = nil
     var displayName: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case deviceId
+        case userId
+        case displayName
+    }
+
+    init(deviceId: String, displayName: String?, userId: String? = nil) {
+        self.deviceId = deviceId
+        self.userId = userId
+        self.displayName = displayName
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        userId = try container.decodeIfPresent(String.self, forKey: .userId)
+        deviceId = try container.decodeIfPresent(String.self, forKey: .deviceId) ?? userId ?? ""
+        displayName = try container.decodeIfPresent(String.self, forKey: .displayName)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(deviceId, forKey: .deviceId)
+        try container.encodeIfPresent(displayName, forKey: .displayName)
+    }
 }
 
 /// `user_stats` row와 1:1 매핑되는 DTO. 게임 진행 상태(카운터 + 인벤토리 + 플래그)를 보관.
@@ -13,6 +39,7 @@ struct ProfileDTO: Codable, Equatable {
 /// snake_case ↔ camelCase 매핑은 PostgREST 호출부에서 keyEncodingStrategy로 처리한다.
 struct UserStatsDTO: Codable, Equatable {
     var deviceId: String
+    var userId: String? = nil
     var streak: Int
     var points: Int
     var owned: [String]
@@ -20,10 +47,64 @@ struct UserStatsDTO: Codable, Equatable {
     var ownedAcornPacks: [String: Int]
     var savedAt: Date
 
+    private enum CodingKeys: String, CodingKey {
+        case deviceId
+        case userId
+        case streak
+        case points
+        case owned
+        case equipped
+        case ownedAcornPacks
+        case savedAt
+    }
+
     struct EquippedDTO: Codable, Equatable {
         var hat: String?
         var glasses: String?
         var acc: String?
+    }
+
+    init(
+        deviceId: String,
+        streak: Int,
+        points: Int,
+        owned: [String],
+        equipped: EquippedDTO,
+        ownedAcornPacks: [String: Int],
+        savedAt: Date,
+        userId: String? = nil
+    ) {
+        self.deviceId = deviceId
+        self.userId = userId
+        self.streak = streak
+        self.points = points
+        self.owned = owned
+        self.equipped = equipped
+        self.ownedAcornPacks = ownedAcornPacks
+        self.savedAt = savedAt
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        userId = try container.decodeIfPresent(String.self, forKey: .userId)
+        deviceId = try container.decodeIfPresent(String.self, forKey: .deviceId) ?? userId ?? ""
+        streak = try container.decode(Int.self, forKey: .streak)
+        points = try container.decode(Int.self, forKey: .points)
+        owned = try container.decode([String].self, forKey: .owned)
+        equipped = try container.decode(EquippedDTO.self, forKey: .equipped)
+        ownedAcornPacks = try container.decode([String: Int].self, forKey: .ownedAcornPacks)
+        savedAt = try container.decode(Date.self, forKey: .savedAt)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(deviceId, forKey: .deviceId)
+        try container.encode(streak, forKey: .streak)
+        try container.encode(points, forKey: .points)
+        try container.encode(owned, forKey: .owned)
+        try container.encode(equipped, forKey: .equipped)
+        try container.encode(ownedAcornPacks, forKey: .ownedAcornPacks)
+        try container.encode(savedAt, forKey: .savedAt)
     }
 }
 
@@ -36,6 +117,7 @@ struct UserStatsDTO: Codable, Equatable {
 struct ChewingSessionDTO: Codable, Equatable, Identifiable {
     var id: UUID
     var deviceId: String
+    var userId: String? = nil
     var startedAt: Date
     var endedAt: Date
     var durationSec: Double
@@ -49,6 +131,100 @@ struct ChewingSessionDTO: Codable, Equatable, Identifiable {
     var chewingFraction: Double?
     var estimatedTotalChews: Int?
     var modelVersion: String?
+
+    private enum CodingKeys: String, CodingKey {
+        case id
+        case deviceId
+        case userId
+        case startedAt
+        case endedAt
+        case durationSec
+        case sensorLocation
+        case sampleCount
+        case sampleRateHz
+        case storagePath
+        case appVersion
+        case chewingSeconds
+        case restSeconds
+        case chewingFraction
+        case estimatedTotalChews
+        case modelVersion
+    }
+
+    init(
+        id: UUID,
+        deviceId: String,
+        startedAt: Date,
+        endedAt: Date,
+        durationSec: Double,
+        sensorLocation: String,
+        sampleCount: Int,
+        sampleRateHz: Int,
+        storagePath: String?,
+        appVersion: String?,
+        chewingSeconds: Double?,
+        restSeconds: Double?,
+        chewingFraction: Double?,
+        estimatedTotalChews: Int?,
+        modelVersion: String?,
+        userId: String? = nil
+    ) {
+        self.id = id
+        self.deviceId = deviceId
+        self.userId = userId
+        self.startedAt = startedAt
+        self.endedAt = endedAt
+        self.durationSec = durationSec
+        self.sensorLocation = sensorLocation
+        self.sampleCount = sampleCount
+        self.sampleRateHz = sampleRateHz
+        self.storagePath = storagePath
+        self.appVersion = appVersion
+        self.chewingSeconds = chewingSeconds
+        self.restSeconds = restSeconds
+        self.chewingFraction = chewingFraction
+        self.estimatedTotalChews = estimatedTotalChews
+        self.modelVersion = modelVersion
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        userId = try container.decodeIfPresent(String.self, forKey: .userId)
+        deviceId = try container.decodeIfPresent(String.self, forKey: .deviceId) ?? userId ?? ""
+        startedAt = try container.decode(Date.self, forKey: .startedAt)
+        endedAt = try container.decode(Date.self, forKey: .endedAt)
+        durationSec = try container.decode(Double.self, forKey: .durationSec)
+        sensorLocation = try container.decode(String.self, forKey: .sensorLocation)
+        sampleCount = try container.decode(Int.self, forKey: .sampleCount)
+        sampleRateHz = try container.decode(Int.self, forKey: .sampleRateHz)
+        storagePath = try container.decodeIfPresent(String.self, forKey: .storagePath)
+        appVersion = try container.decodeIfPresent(String.self, forKey: .appVersion)
+        chewingSeconds = try container.decodeIfPresent(Double.self, forKey: .chewingSeconds)
+        restSeconds = try container.decodeIfPresent(Double.self, forKey: .restSeconds)
+        chewingFraction = try container.decodeIfPresent(Double.self, forKey: .chewingFraction)
+        estimatedTotalChews = try container.decodeIfPresent(Int.self, forKey: .estimatedTotalChews)
+        modelVersion = try container.decodeIfPresent(String.self, forKey: .modelVersion)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(deviceId, forKey: .deviceId)
+        try container.encode(startedAt, forKey: .startedAt)
+        try container.encode(endedAt, forKey: .endedAt)
+        try container.encode(durationSec, forKey: .durationSec)
+        try container.encode(sensorLocation, forKey: .sensorLocation)
+        try container.encode(sampleCount, forKey: .sampleCount)
+        try container.encode(sampleRateHz, forKey: .sampleRateHz)
+        try container.encodeIfPresent(storagePath, forKey: .storagePath)
+        try container.encodeIfPresent(appVersion, forKey: .appVersion)
+        try container.encodeIfPresent(chewingSeconds, forKey: .chewingSeconds)
+        try container.encodeIfPresent(restSeconds, forKey: .restSeconds)
+        try container.encodeIfPresent(chewingFraction, forKey: .chewingFraction)
+        try container.encodeIfPresent(estimatedTotalChews, forKey: .estimatedTotalChews)
+        try container.encodeIfPresent(modelVersion, forKey: .modelVersion)
+    }
 }
 
 /// AirPods CMDeviceMotion에서 받은 한 샘플. 학습 레포의 18컬럼 CSV와 컬럼 1:1 매칭.
@@ -99,6 +275,7 @@ struct IMURow {
 /// 홈 상태 응답(`GET /v1/me/home`, 세션 저장 응답의 `userStats`). 서버가 계산한 화면 정본.
 struct HomeStateDTO: Codable, Equatable {
     var deviceId: String
+    var userId: String? = nil
     var displayName: String?
     var points: Int
     var streak: Int
@@ -107,6 +284,70 @@ struct HomeStateDTO: Codable, Equatable {
     var dailyGoal: Int
     var todayProgress: Double
     var todayCompleted: Bool
+
+    private enum CodingKeys: String, CodingKey {
+        case deviceId
+        case userId
+        case displayName
+        case points
+        case streak
+        case freezeInventory
+        case todayRealChewCount
+        case dailyGoal
+        case todayProgress
+        case todayCompleted
+    }
+
+    init(
+        deviceId: String,
+        displayName: String?,
+        points: Int,
+        streak: Int,
+        freezeInventory: Int,
+        todayRealChewCount: Int,
+        dailyGoal: Int,
+        todayProgress: Double,
+        todayCompleted: Bool,
+        userId: String? = nil
+    ) {
+        self.deviceId = deviceId
+        self.userId = userId
+        self.displayName = displayName
+        self.points = points
+        self.streak = streak
+        self.freezeInventory = freezeInventory
+        self.todayRealChewCount = todayRealChewCount
+        self.dailyGoal = dailyGoal
+        self.todayProgress = todayProgress
+        self.todayCompleted = todayCompleted
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        userId = try container.decodeIfPresent(String.self, forKey: .userId)
+        deviceId = try container.decodeIfPresent(String.self, forKey: .deviceId) ?? userId ?? ""
+        displayName = try container.decodeIfPresent(String.self, forKey: .displayName)
+        points = try container.decode(Int.self, forKey: .points)
+        streak = try container.decode(Int.self, forKey: .streak)
+        freezeInventory = try container.decode(Int.self, forKey: .freezeInventory)
+        todayRealChewCount = try container.decode(Int.self, forKey: .todayRealChewCount)
+        dailyGoal = try container.decode(Int.self, forKey: .dailyGoal)
+        todayProgress = try container.decode(Double.self, forKey: .todayProgress)
+        todayCompleted = try container.decode(Bool.self, forKey: .todayCompleted)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(deviceId, forKey: .deviceId)
+        try container.encodeIfPresent(displayName, forKey: .displayName)
+        try container.encode(points, forKey: .points)
+        try container.encode(streak, forKey: .streak)
+        try container.encode(freezeInventory, forKey: .freezeInventory)
+        try container.encode(todayRealChewCount, forKey: .todayRealChewCount)
+        try container.encode(dailyGoal, forKey: .dailyGoal)
+        try container.encode(todayProgress, forKey: .todayProgress)
+        try container.encode(todayCompleted, forKey: .todayCompleted)
+    }
 }
 
 /// 세션 적립 결과(`reward`). 멱등 재전송이면 `idempotentReplay=true` — 알림 억제 신호.

@@ -2,7 +2,7 @@ import Foundation
 
 /// Spring 백엔드(Tailscale staging) 접속 설정.
 /// baseURL 예: http://100.99.252.124:8080
-/// 인증 없음 — OAuth/JWT 는 ODO-44에서 추가 예정.
+/// 토큰이 있으면 Authorization Bearer를 붙이고, 없으면 X-Device-Id 폴백으로 호출한다.
 struct SpringConfig {
     let baseURL: URL
 }
@@ -14,7 +14,7 @@ struct SpringConfig {
 ///     `result`에 들어 있다. 조회 메서드는 `BaseResponse<T>`로 디코드한 뒤 `result`를 꺼낸다.
 ///     에러는 `{code, message}` wrapping + 4xx/5xx 상태코드로 내려온다.
 ///   - JSON key 변환 없음 — DTO 필드명(camelCase)이 wire format 그대로.
-///   - 인증 헤더 없음 — 모든 요청에 X-Device-Id 헤더만 첨부.
+///   - 인증: JWT 우선, 로그인 전/테스트 환경은 X-Device-Id 폴백.
 ///   - GET retry 없음 — Tailscale IP 직접 접속이라 IPv6 cold-start 회피 불필요.
 ///   - fetchProfile: Spring은 신규 디바이스에도 200 + displayName=null 반환.
 ///     displayName이 null이면 nil을 반환 — 호출처(AppState.fetchAndApplyDisplayName)는
