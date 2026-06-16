@@ -9,13 +9,28 @@ enum MealNotificationService {
         case breakfast, lunch, dinner, extra1, extra2
 
         var identifier: String { "meal.\(rawValue)" }
+
+        /// 끼니별 알림 제목(디자인: "🕐 곧 {끼니} 식사 시간이에요!"). 서버 푸시 제목과 일치시킨다.
+        var reminderTitle: String {
+            switch self {
+            case .breakfast: return "🕐 곧 아침 식사 시간이에요!"
+            case .lunch:     return "🕐 곧 점심 식사 시간이에요!"
+            case .dinner:    return "🕐 곧 저녁 식사 시간이에요!"
+            case .extra1, .extra2: return "🕐 곧 식사 시간이에요!"
+            }
+        }
     }
 
-    private static let titleText = "주인님 밥주세요"
     private static let center = UNUserNotificationCenter.current()
 
     static func authorizationStatus() async -> UNAuthorizationStatus {
         await center.notificationSettings().authorizationStatus
+    }
+
+    /// 알림 발송 가능 여부(.authorized / .provisional).
+    static func isAuthorized() async -> Bool {
+        let status = await authorizationStatus()
+        return status == .authorized || status == .provisional
     }
 
     /// `.notDetermined`이면 다이얼로그를 띄우고, 이미 결정된 상태면 즉시 현재 권한 반영.
@@ -39,11 +54,15 @@ enum MealNotificationService {
         }
     }
 
+    /// 끼니 알림 5개 pending 제거. 서버 발송으로 전환할 때 로컬 예약을 취소하는 용도로도 쓴다.
+    static func cancelMealReminders() {
+        center.removePendingNotificationRequests(withIdentifiers: Meal.allCases.map(\.identifier))
+    }
+
     /// 5개 identifier 모두 pending 제거 후, enabled인 슬롯만 daily 반복으로 add.
     /// 권한 없음/거부 상태면 add 없이 remove만.
     static func reschedule(_ settings: MealReminderSettings) async {
-        let allIds = Meal.allCases.map(\.identifier)
-        center.removePendingNotificationRequests(withIdentifiers: allIds)
+        cancelMealReminders()
 
         let status = await authorizationStatus()
         guard status == .authorized || status == .provisional else {
@@ -60,7 +79,7 @@ enum MealNotificationService {
 
         for (meal, slot) in slots where slot.enabled {
             let content = UNMutableNotificationContent()
-            content.title = titleText
+            content.title = meal.reminderTitle
             content.body  = CaptionPool.random(from: CaptionPool.mealReminder)
             content.sound = .default
             content.userInfo = [
@@ -124,7 +143,7 @@ enum MealNotificationService {
         // 끼니 리마인더 — 알림에서 바로 측정을 시작하는 "식사 시작" 버튼.
         let start = UNNotificationAction(
             identifier: startActionId,
-            title: "식사 시작하기",
+            title: "기록하러 가기",
             options: [.foreground]
         )
         let reminder = UNNotificationCategory(

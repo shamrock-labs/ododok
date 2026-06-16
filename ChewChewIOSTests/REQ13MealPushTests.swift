@@ -22,13 +22,44 @@ final class REQ13MealPushTests: XCTestCase {
         XCTAssertGreaterThanOrEqual(CaptionPool.mealReminder.count, 8)
     }
 
-    func testMealReminderPool_allCaptionsWithin32Chars() {
+    // 디자인 개편(ODO-56): 끼니 알림 본문이 길어졌다. 푸시 표시 한도(≤80자) 안인지만 확인한다.
+    func testMealReminderPool_captionsWithinDisplayLimit() {
         for caption in CaptionPool.mealReminder {
             XCTAssertLessThanOrEqual(
-                caption.count, 32,
-                "문장이 32자를 초과합니다: \"\(caption)\" (\(caption.count)자)"
+                caption.count, 80,
+                "문장이 너무 깁니다: \"\(caption)\" (\(caption.count)자)"
             )
         }
+    }
+
+    // MARK: - 끼니별 제목 (ODO-56 디자인)
+
+    func testReminderTitle_perSlot() {
+        XCTAssertEqual(MealNotificationService.Meal.breakfast.reminderTitle, "🕐 곧 아침 식사 시간이에요!")
+        XCTAssertEqual(MealNotificationService.Meal.lunch.reminderTitle, "🕐 곧 점심 식사 시간이에요!")
+        XCTAssertEqual(MealNotificationService.Meal.dinner.reminderTitle, "🕐 곧 저녁 식사 시간이에요!")
+        XCTAssertEqual(MealNotificationService.Meal.extra1.reminderTitle, "🕐 곧 식사 시간이에요!")
+        XCTAssertEqual(MealNotificationService.Meal.extra2.reminderTitle, "🕐 곧 식사 시간이에요!")
+    }
+
+    // MARK: - 서버 슬롯 변환 (ODO-56)
+
+    func testServerSlotRoundTrip_preservesEnabledAndTime() {
+        var settings = MealReminderSettings.default
+        settings.breakfast = MealSlot(enabled: true, hour: 8, minute: 5)
+        settings.lunch = MealSlot(enabled: false, hour: 12, minute: 30)
+        settings.dinner = MealSlot(enabled: true, hour: 19, minute: 0)
+
+        let slots = settings.toServerSlots()
+        XCTAssertEqual(slots.count, 5)
+        XCTAssertEqual(slots[0].slotIndex, 0)
+        XCTAssertEqual(slots[0].timeOfDay, "08:05")
+        XCTAssertTrue(slots[0].enabled)
+        XCTAssertEqual(slots[1].timeOfDay, "12:30")
+        XCTAssertFalse(slots[1].enabled)
+
+        let restored = MealReminderSettings(serverSlots: slots)
+        XCTAssertEqual(restored, settings)
     }
 
     // MARK: - deepLink userInfo

@@ -5,6 +5,7 @@ import UserNotifications
 /// 변경 시마다 UserDefaults save + UNUserNotificationCenter 재스케줄.
 struct MealReminderSettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(AppState.self) private var appState
     @State private var settings: MealReminderSettings = .default
     @State private var permissionStatus: UNAuthorizationStatus = .notDetermined
 
@@ -43,7 +44,8 @@ struct MealReminderSettingsView: View {
         }
         .onChange(of: settings) { _, new in
             new.save()
-            Task { await MealNotificationService.reschedule(new) }
+            // 서버/로컬 전환은 조정자가 정책에 맞게 처리(로그인·권한·토큰 상태 기준).
+            Task { await appState.mealPushCoordinator.apply(new) }
         }
     }
 
@@ -65,7 +67,7 @@ struct MealReminderSettingsView: View {
     }
 
     private var footerHint: some View {
-        Text("설정한 시각에 \"주인님 밥주세요\" 알림이 와요.\n끄면 해당 끼니는 알림이 안 와요.")
+        Text("설정한 시각에 다람이가 식사 알림을 보내줘요.\n끄면 해당 끼니는 알림이 안 와요.")
             .font(.appFont(.semibold, size: 14))
             .foregroundStyle(Color.ink600)
             .multilineTextAlignment(.center)

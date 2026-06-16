@@ -19,6 +19,24 @@ final class NotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotific
         return true
     }
 
+    /// APNs device token 수신 — 서버 식사 푸시 등록(ODO-56). 조정자가 서버 등록 + 로컬→서버 전환을 처리.
+    func application(
+        _ application: UIApplication,
+        didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+    ) {
+        let coordinator = appState?.mealPushCoordinator
+        Task { await coordinator?.didRegister(deviceToken: deviceToken) }
+    }
+
+    /// APNs 등록 실패 — 서버 발송 불가로 보고 로컬 알림을 유지한다.
+    func application(
+        _ application: UIApplication,
+        didFailToRegisterForRemoteNotificationsWithError error: Error
+    ) {
+        let coordinator = appState?.mealPushCoordinator
+        Task { await coordinator?.didFailToRegister() }
+    }
+
     /// 앱 foreground 상태에서 알림이 도착했을 때 banner 표시.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
