@@ -57,16 +57,33 @@ actor MealPushCoordinator {
             registeredToken = nil
             return
         }
+        // 1) 토큰 등록. 실패하면 로컬로.
         do {
             try await remoteStore.registerPushToken(hex, environment: Self.apnsEnvironment)
-            registeredToken = hex
-            try await remoteStore.upsertMealNotifications(.load(), timeZone: TimeZone.current.identifier)
         } catch RemoteStoreError.authExpired {
             registeredToken = nil
             return
         } catch {
-            registeredToken = nil   // 등록·동기화 실패 → 로컬 유지
+            registeredToken = nil
+            await reconcileDelivery(.load())
+            return
         }
+        // 2) 설정 동기화. 토큰은 등록됐지만 여기서 실패하면 "서버 토큰 활성 + 로컬 ON"의 중복 발송을 막기 위해
+        //    토큰을 best-effort 해제하고 로컬로 내려간다(서버가 stale/빈 설정으로 잘못 보내지 않게).
+        do {
+            try await remoteStore.upsertMealNotifications(.load(), timeZone: TimeZone.current.identifier)
+        } catch RemoteStoreError.authExpired {
+            registeredToken = nil
+            try? await remoteStore.deactivatePushToken(hex)
+            return
+        } catch {
+            registeredToken = nil
+            try? await remoteStore.deactivatePushToken(hex)
+            await reconcileDelivery(.load())
+            return
+        }
+        // 둘 다 성공 → 서버 발송 가능. reconcile이 로컬 예약을 취소한다.
+        registeredToken = hex
         await reconcileDelivery(.load())
     }
 

@@ -652,6 +652,9 @@ final class AppState {
         Task { [weak self] in
             await self?.refreshFromServerHome()
             await self?.fetchAndApplyDisplayName()
+            // 로그인 직후 끼니 알림 재적용 — 서버 토큰 등록/설정 PUT 또는 로컬 fallback을 재개한다.
+            // (.task는 앱 시작 시 1회뿐이라, 앱 실행 중 로그인하면 여기서 다시 걸어줘야 알림이 재등록된다.)
+            await self?.mealPushCoordinator.apply(.load())
         }
     }
 
