@@ -51,6 +51,11 @@ final class MealPushCoordinatorTests: XCTestCase {
         }
     }
 
+    /// @Sendable 클로저에서 변경 가능한 플래그 캡처용(테스트 한정).
+    final class CallFlag: @unchecked Sendable {
+        var value = false
+    }
+
     /// [0xab,0xcd,0x01,0x02] → "abcd0102"
     private let fakeToken = Data([0xAB, 0xCD, 0x01, 0x02])
 
@@ -83,6 +88,18 @@ final class MealPushCoordinatorTests: XCTestCase {
         await coordinator.handleLogout()
 
         XCTAssertEqual(spy.deactivateCalls, ["abcd0102"])
+    }
+
+    func testDidRegister_authExpired_triggersAuthExpiredHandler() async {
+        let spy = SpyRemoteStore()
+        spy.registerError = RemoteStoreError.authExpired
+        let expired = CallFlag()
+        let coordinator = MealPushCoordinator(
+            remoteStore: spy, isLoggedIn: { true }, onAuthExpired: { expired.value = true })
+
+        await coordinator.didRegister(deviceToken: fakeToken)
+
+        XCTAssertTrue(expired.value, "authExpired는 세션 만료 핸들러로 연결돼야 한다")
     }
 
     func testDidRegister_registerFailure_doesNotRetainToken() async {

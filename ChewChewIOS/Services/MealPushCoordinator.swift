@@ -16,12 +16,25 @@ actor MealPushCoordinator {
     private let remoteStore: RemoteStore
     /// 로그인 여부 제공자. 기본은 TokenManager.isLoggedIn(Keychain) — 테스트에서 주입해 결정적으로 만든다.
     private let isLoggedIn: @Sendable () -> Bool
+    /// 서버 호출이 인증 만료(authExpired)를 던졌을 때 호출 — AppState가 세션을 만료시켜 로그인 게이트로 보낸다.
+    /// (다른 원격 경로의 handleRemoteError와 동일 정책. push 경로만 만료를 삼키지 않도록.)
+    private var onAuthExpired: @Sendable () -> Void
     /// APNs 등록에 성공해 서버에 올린 토큰(hex). nil이면 서버 수신 불가로 본다.
     private var registeredToken: String?
 
-    init(remoteStore: RemoteStore, isLoggedIn: @escaping @Sendable () -> Bool = { TokenManager.isLoggedIn }) {
+    init(
+        remoteStore: RemoteStore,
+        isLoggedIn: @escaping @Sendable () -> Bool = { TokenManager.isLoggedIn },
+        onAuthExpired: @escaping @Sendable () -> Void = {}
+    ) {
         self.remoteStore = remoteStore
         self.isLoggedIn = isLoggedIn
+        self.onAuthExpired = onAuthExpired
+    }
+
+    /// init 시점엔 AppState가 self를 캡처할 수 없어, 만료 핸들러는 생성 직후 별도로 연결한다.
+    func setAuthExpiredHandler(_ handler: @escaping @Sendable () -> Void) {
+        onAuthExpired = handler
     }
 
     /// 앱 활성/설정 변경 시 현재 설정을 정책에 맞게 적용한다.
@@ -39,6 +52,7 @@ actor MealPushCoordinator {
         do {
             try await remoteStore.upsertMealNotifications(settings, timeZone: TimeZone.current.identifier)
         } catch RemoteStoreError.authExpired {
+            onAuthExpired()   // 세션 만료 → AppState가 로그인 게이트로 복귀시킨다
             return
         } catch {
             // 오프라인 / 서버 미배포(404) 등 → reconcile에서 로컬 보조
@@ -62,6 +76,7 @@ actor MealPushCoordinator {
             try await remoteStore.registerPushToken(hex, environment: Self.apnsEnvironment)
         } catch RemoteStoreError.authExpired {
             registeredToken = nil
+            onAuthExpired()
             return
         } catch {
             registeredToken = nil
@@ -74,7 +89,7 @@ actor MealPushCoordinator {
             try await remoteStore.upsertMealNotifications(.load(), timeZone: TimeZone.current.identifier)
         } catch RemoteStoreError.authExpired {
             registeredToken = nil
-            try? await remoteStore.deactivatePushToken(hex)
+            onAuthExpired()   // 만료 세션이라 토큰 DELETE는 401로 무의미 — 세션 만료만 트리거
             return
         } catch {
             registeredToken = nil
