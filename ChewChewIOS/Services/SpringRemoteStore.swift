@@ -180,6 +180,40 @@ final class SpringRemoteStore: RemoteStore {
         return try decodeResult(UploadResult.self, from: data).key
     }
 
+    // MARK: - push (ODO-56)
+
+    func registerPushToken(_ token: String, environment: String) async throws {
+        var req = jsonRequest(method: "POST", path: "/v1/me/push-tokens")
+        req.httpBody = try encoder.encode(
+            PushTokenRegisterRequestDTO(token: token, platform: "ios", environment: environment)
+        )
+        _ = try await sendExpectingSuccess(req)
+    }
+
+    func deactivatePushToken(_ token: String) async throws {
+        // APNs device token은 hex라 path에 그대로 실어도 URL-safe.
+        let req = jsonRequest(method: "DELETE", path: "/v1/me/push-tokens/\(token)")
+        _ = try await sendExpectingSuccess(req)
+    }
+
+    func upsertMealNotifications(_ settings: MealReminderSettings, timeZone: String) async throws {
+        var req = jsonRequest(method: "PUT", path: "/v1/me/meal-notifications")
+        req.httpBody = try encoder.encode(
+            MealNotificationsRequestDTO(timeZone: timeZone, slots: settings.toServerSlots())
+        )
+        _ = try await sendExpectingSuccess(req)
+    }
+
+    /// 미설정(404) → nil. 200 → wrapping result를 끼니 설정으로 복원.
+    func fetchMealNotifications() async throws -> MealReminderSettings? {
+        let req = jsonRequest(method: "GET", path: "/v1/me/meal-notifications")
+        let (data, http) = try await send(req)
+        if http.statusCode == 404 { return nil }
+        try validateSuccess(statusCode: http.statusCode, data: data)
+        let dto = try decodeResult(MealNotificationsResponseDTO.self, from: data)
+        return MealReminderSettings(serverSlots: dto.slots)
+    }
+
     // MARK: - Helpers
 
     /// JSON Content-Type 포함 요청 빌더.

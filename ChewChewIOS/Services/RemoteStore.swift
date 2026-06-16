@@ -33,9 +33,25 @@ protocol RemoteStore {
     /// 진행 상태는 남김.
     func deleteAllChewingSessions(deviceId: String) async throws
     func uploadIMUCSV(sessionId: UUID, deviceId: String, csvData: Data) async throws -> String
+
+    // MARK: - push (ODO-56)
+    /// APNs device token 등록/갱신. 같은 토큰 재등록은 서버가 소유자를 갱신한다.
+    func registerPushToken(_ token: String, environment: String) async throws
+    /// 토큰 해제(로그아웃·알림 끄기). 본인 토큰만 비활성, 멱등.
+    func deactivatePushToken(_ token: String) async throws
+    /// 끼니 알림 슬롯 전체 교체(PUT). 서버가 슬롯 시각에 APNs로 발송한다.
+    func upsertMealNotifications(_ settings: MealReminderSettings, timeZone: String) async throws
+    /// 저장된 끼니 알림 조회. 미설정이면 nil(서버 404).
+    func fetchMealNotifications() async throws -> MealReminderSettings?
 }
 
 extension RemoteStore {
+    // push: 레거시/테스트 스토어는 기본 no-op. Spring 구현만 실제 서버와 통신한다.
+    func registerPushToken(_ token: String, environment: String) async throws {}
+    func deactivatePushToken(_ token: String) async throws {}
+    func upsertMealNotifications(_ settings: MealReminderSettings, timeZone: String) async throws {}
+    func fetchMealNotifications() async throws -> MealReminderSettings? { nil }
+
     /// 상한 없는 편의 메서드 — `fetchChewingSessions(deviceId:since:until:)`에 `until: nil`을
     /// 위임. 기존 "오늘의 식사 기록" 호출자(`AppState.fetchTodaySessions`) 그대로 사용.
     func fetchChewingSessions(deviceId: String, since: Date) async throws -> [ChewingSessionDTO] {

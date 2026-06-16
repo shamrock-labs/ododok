@@ -64,12 +64,9 @@ struct ChewChewIOSApp: App {
                 .task {
                     // 홈 진행도/마스코트 mood가 첫 진입부터 정확히 보이도록 오늘 세션을 미리 적재.
                     await appState.fetchTodaySessions()
-                    // 권한이 이미 부여돼 있으면 저장된 끼니 알림을 재스케줄.
-                    // 재부팅·재설치·앱 강제종료 후에도 pending request가 그대로 유지되지만,
-                    // identifier 충돌 없이 원자적으로 다시 add — 안전한 idempotent 호출.
-                    let status = await MealNotificationService.authorizationStatus()
-                    guard status == .authorized || status == .provisional else { return }
-                    await MealNotificationService.reschedule(.load())
+                    // 끼니 알림(ODO-56): 서버 단독 + 오프라인 보조 정책으로 적용한다.
+                    // 로그인·권한·APNs 토큰 등록 상태에 따라 서버(APNs) 또는 로컬 알림으로 갈린다.
+                    await appState.mealPushCoordinator.apply(.load())
                 }
         }
         // `initial: true` — 콜드 스타트 시 첫 .active 도달도 콜백으로 받기 위함.

@@ -190,6 +190,9 @@ final class AppState {
     /// 원격 백엔드(InsForge)에 대한 추상화. 테스트/시뮬레이터에선 NoopRemoteStore 주입 가능.
     @ObservationIgnored let remoteStore: RemoteStore
 
+    /// 서버 기반 식사 푸시 조정자(ODO-56) — APNs 토큰 등록 + 서버/로컬 알림 전환을 관리.
+    @ObservationIgnored let mealPushCoordinator: MealPushCoordinator
+
     @ObservationIgnored private let authSessionManager: AuthSessionManaging
 
     /// 게임 상태 원격 동기화(upsert/delete) 직렬화 큐.
@@ -258,6 +261,7 @@ final class AppState {
     ) {
         self.remoteStore = remoteStore
         self.authSessionManager = authSessionManager
+        self.mealPushCoordinator = MealPushCoordinator(remoteStore: remoteStore)
         // displayName은 game state(`PersistedSnapshot`)과 다른 별도 캐시 키 — cold-start
         // 시 UserDefaults에서 즉시 read해 HomeView가 빈 이름으로 깜빡이지 않도록.
         displayName = UserDefaults.standard.string(forKey: Self.displayNameKey)
@@ -659,12 +663,16 @@ final class AppState {
     /// 사용자가 누른 로그아웃 — 서버 refresh token 폐기 후 로컬 세션을 종료한다.
     @MainActor
     func logoutFromServer() async {
+        // 토큰이 아직 유효할 때 서버 푸시 토큰을 해제한다(만료 후엔 401이라 의미 없음).
+        await mealPushCoordinator.handleLogout()
         await authSessionManager.logout()
         expireSession()
     }
 
     /// refresh 만료/폐기 등으로 인증 세션을 더 쓸 수 없을 때 로그인 게이트로 복귀한다.
     private func expireSession() {
+        // 로컬 끼니 알림 정리(서버 토큰 해제는 logoutFromServer에서 토큰이 유효할 때 수행).
+        MealNotificationService.cancelMealReminders()
         TokenManager.clear()
         isLoggedIn = false
         clearLocalSessionCache()
