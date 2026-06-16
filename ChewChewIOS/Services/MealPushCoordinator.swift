@@ -30,19 +30,23 @@ actor MealPushCoordinator {
             await MealNotificationService.reschedule(settings)   // 권한 없음 → reschedule이 제거만
             return
         }
-        // 로그인 + 권한 → 토큰 미등록이면 원격 등록 요청(결과는 didRegister 콜백에서).
-        await MainActor.run { UIApplication.shared.registerForRemoteNotifications() }
-
-        if registeredToken != nil {
-            do {
-                try await remoteStore.upsertMealNotifications(settings, timeZone: TimeZone.current.identifier)
-                MealNotificationService.cancelMealReminders()   // 서버가 발송 → 로컬 취소
-                return
-            } catch {
-                // 동기화 실패(오프라인 등) → 아래 로컬 보조로 폴백
-            }
+        // 끼니 설정은 계정 데이터다. 인증은 JWT(Authorization 헤더)로 되므로 APNs 푸시 토큰 유무와
+        // 무관하게, 로그인+권한이면 항상 서버에 기록한다(best-effort). 서버가 스케줄의 정본.
+        var syncedToServer = false
+        do {
+            try await remoteStore.upsertMealNotifications(settings, timeZone: TimeZone.current.identifier)
+            syncedToServer = true
+        } catch {
+            // 오프라인 / 서버 미배포(404) 등 → 아래 로컬 보조로 폴백.
         }
-        await MealNotificationService.reschedule(settings)   // 토큰 미등록 or 동기화 실패 → 로컬
+        // 발송 채널은 APNs 푸시 토큰에 달렸다 — 서버가 실제로 푸시를 보낼 수 있을 때만 로컬을 끈다.
+        // 토큰 미등록이면 원격 등록을 요청한다(성공 시 didRegister에서 서버로 전환).
+        await MainActor.run { UIApplication.shared.registerForRemoteNotifications() }
+        if syncedToServer && registeredToken != nil {
+            MealNotificationService.cancelMealReminders()   // 서버가 발송 → 로컬 취소
+        } else {
+            await MealNotificationService.reschedule(settings)   // 토큰 미등록·동기화 실패 → 로컬 보조
+        }
     }
 
     /// AppDelegate didRegisterForRemoteNotificationsWithDeviceToken에서 호출.
