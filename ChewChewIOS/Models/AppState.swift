@@ -671,8 +671,10 @@ final class AppState {
 
     /// refresh 만료/폐기 등으로 인증 세션을 더 쓸 수 없을 때 로그인 게이트로 복귀한다.
     private func expireSession() {
-        // 로컬 끼니 알림 정리(서버 토큰 해제는 logoutFromServer에서 토큰이 유효할 때 수행).
+        // 로컬 끼니 알림 정리 + 코디네이터의 in-memory 등록 토큰 리셋(서버 토큰 해제는 logoutFromServer에서
+        // 토큰이 유효할 때 수행. 만료 경로는 401이라 DELETE 무의미하므로 in-memory만 비운다).
         MealNotificationService.cancelMealReminders()
+        Task { await mealPushCoordinator.clearRegistration() }
         TokenManager.clear()
         isLoggedIn = false
         clearLocalSessionCache()

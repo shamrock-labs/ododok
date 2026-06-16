@@ -4,25 +4,29 @@ import UIKit
 /// 식사 알림을 "서버 단독 + 오프라인 보조" 정책으로 조율한다(ODO-56).
 ///
 /// 서버 수신 가능 = 로그인 AND 알림 권한 AND APNs 토큰 서버 등록 성공.
-///  - 가능: 서버에 슬롯 설정을 올리고 로컬 예약은 취소한다(서버가 APNs로 발송).
-///  - 불가(미로그인·권한 없음·토큰 미등록·동기화 실패): 기존 로컬 알림으로 운영한다(REQ-13 경로).
+///  - 가능: 서버에 슬롯 설정을 올리고 로컬 예약은 취소(서버가 APNs로 발송).
+///  - 불가(미로그인·권한 없음·토큰 미등록·동기화 실패): 기존 로컬 알림으로 운영(REQ-13 경로).
 ///
-/// 같은 끼니에 서버·로컬이 동시에 뜨지 않도록 둘은 상호배타로 둔다. APNs 토큰 수신은 비동기라,
-/// 첫 진입에는 로컬로 덮어두고 토큰이 등록되면 서버로 전환(로컬 취소)한다.
-/// actor로 둬 registeredToken 접근을 직렬화하고, UIApplication 호출만 메인으로 hop한다.
+/// 동시성: actor로 registeredToken 접근을 직렬화한다. 로컬/서버 발송 전환은 항상 `reconcileDelivery`
+/// 한 곳에서만 하고, 기준은 `registeredToken`(서버가 실제로 보낼 수 있나) 단일 신호다. apply()와
+/// didRegister()가 await 중 끼어들어도 reconcile이 reschedule 직후 토큰을 재확인해 "서버 전환됐는데
+/// 로컬을 다시 켜는" 중복을 닫는다. UIApplication 호출만 메인으로 hop한다.
 actor MealPushCoordinator {
 
     private let remoteStore: RemoteStore
+    /// 로그인 여부 제공자. 기본은 TokenManager.isLoggedIn(Keychain) — 테스트에서 주입해 결정적으로 만든다.
+    private let isLoggedIn: @Sendable () -> Bool
     /// APNs 등록에 성공해 서버에 올린 토큰(hex). nil이면 서버 수신 불가로 본다.
     private var registeredToken: String?
 
-    init(remoteStore: RemoteStore) {
+    init(remoteStore: RemoteStore, isLoggedIn: @escaping @Sendable () -> Bool = { TokenManager.isLoggedIn }) {
         self.remoteStore = remoteStore
+        self.isLoggedIn = isLoggedIn
     }
 
     /// 앱 활성/설정 변경 시 현재 설정을 정책에 맞게 적용한다.
     func apply(_ settings: MealReminderSettings) async {
-        guard TokenManager.isLoggedIn else {
+        guard isLoggedIn() else {
             MealNotificationService.cancelMealReminders()   // 로그아웃: 알림 없음(로그인 게이트)
             return
         }
@@ -30,48 +34,46 @@ actor MealPushCoordinator {
             await MealNotificationService.reschedule(settings)   // 권한 없음 → reschedule이 제거만
             return
         }
-        // 끼니 설정은 계정 데이터다. 인증은 JWT(Authorization 헤더)로 되므로 APNs 푸시 토큰 유무와
-        // 무관하게, 로그인+권한이면 항상 서버에 기록한다(best-effort). 서버가 스케줄의 정본.
-        var syncedToServer = false
+        // 끼니 설정은 계정 데이터 — JWT(Authorization)만으로 인증·기록되므로 APNs 토큰과 무관하게 항상 PUT.
+        // 단, 세션 만료(authExpired)면 로컬도 잡지 않고 종료한다(만료된 세션에 알림을 새로 깔지 않음).
         do {
             try await remoteStore.upsertMealNotifications(settings, timeZone: TimeZone.current.identifier)
-            syncedToServer = true
+        } catch RemoteStoreError.authExpired {
+            return
         } catch {
-            // 오프라인 / 서버 미배포(404) 등 → 아래 로컬 보조로 폴백.
+            // 오프라인 / 서버 미배포(404) 등 → reconcile에서 로컬 보조
         }
-        // 발송 채널은 APNs 푸시 토큰에 달렸다 — 서버가 실제로 푸시를 보낼 수 있을 때만 로컬을 끈다.
-        // 토큰 미등록이면 원격 등록을 요청한다(성공 시 didRegister에서 서버로 전환).
-        await MainActor.run { UIApplication.shared.registerForRemoteNotifications() }
-        if syncedToServer && registeredToken != nil {
-            MealNotificationService.cancelMealReminders()   // 서버가 발송 → 로컬 취소
-        } else {
-            await MealNotificationService.reschedule(settings)   // 토큰 미등록·동기화 실패 → 로컬 보조
+        // 토큰 미등록일 때만 원격 등록을 요청한다(이미 등록됐으면 재요청 안 함). 결과는 didRegister에서.
+        if registeredToken == nil {
+            await MainActor.run { UIApplication.shared.registerForRemoteNotifications() }
         }
+        await reconcileDelivery(settings)
     }
 
     /// AppDelegate didRegisterForRemoteNotificationsWithDeviceToken에서 호출.
     func didRegister(deviceToken: Data) async {
         let hex = deviceToken.map { String(format: "%02x", $0) }.joined()
-        guard TokenManager.isLoggedIn else {
+        guard isLoggedIn() else {
             registeredToken = nil
             return
         }
         do {
             try await remoteStore.registerPushToken(hex, environment: Self.apnsEnvironment)
             registeredToken = hex
-            // 등록 성공 → 서버로 전환: 저장된 설정을 올리고 로컬 예약 취소.
             try await remoteStore.upsertMealNotifications(.load(), timeZone: TimeZone.current.identifier)
-            MealNotificationService.cancelMealReminders()
+        } catch RemoteStoreError.authExpired {
+            registeredToken = nil
+            return
         } catch {
             registeredToken = nil   // 등록·동기화 실패 → 로컬 유지
-            await MealNotificationService.reschedule(.load())
         }
+        await reconcileDelivery(.load())
     }
 
     /// AppDelegate didFailToRegisterForRemoteNotificationsWithError에서 호출.
     func didFailToRegister() async {
         registeredToken = nil
-        await MealNotificationService.reschedule(.load())
+        await reconcileDelivery(.load())
     }
 
     /// 로그아웃 시 서버 토큰 해제 + 로컬 정리.
@@ -81,6 +83,24 @@ actor MealPushCoordinator {
         }
         registeredToken = nil
         MealNotificationService.cancelMealReminders()
+    }
+
+    /// 세션 만료(authExpired) 등으로 in-memory 등록 토큰만 비운다. 서버 DELETE는 401이라 의미 없어 생략.
+    func clearRegistration() {
+        registeredToken = nil
+    }
+
+    /// 로컬/서버 발송을 registeredToken 기준으로 일치시키는 단일 진입점.
+    /// 서버 가능(토큰 있음) → 로컬 OFF, 불가 → 로컬 ON. reschedule await 동안 토큰이 붙었으면 재확인해 취소.
+    private func reconcileDelivery(_ settings: MealReminderSettings) async {
+        if registeredToken != nil {
+            MealNotificationService.cancelMealReminders()   // 서버가 발송
+        } else {
+            await MealNotificationService.reschedule(settings)   // 로컬 보조
+            if registeredToken != nil {
+                MealNotificationService.cancelMealReminders()   // await 중 서버 전환됨 → 방금 잡은 로컬 취소
+            }
+        }
     }
 
     /// 빌드 구성에 따른 APNs 환경(디버그=sandbox, 릴리스=production).
