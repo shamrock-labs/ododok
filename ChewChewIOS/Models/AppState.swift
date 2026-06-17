@@ -82,6 +82,10 @@ final class AppState {
         }
     }
 
+    var friendInviteCode: String?
+    var friendInviteDeepLink: String?
+    var friendRankings: [FriendRankingDTO] = []
+
     /// `fetchAndApplyDisplayName` 한 번 끝났는지. 시작 직후 DB fetch 완료 전엔 false로 두어
     /// "기존 사용자가 reinstall한 cold-start에서 sheet이 잠깐 깜빡이는" 케이스를 차단.
     /// 처음 fetch가 끝나면 true로 마크 — 그 시점에 displayName nil이면 진짜 신규 디바이스.
@@ -1310,6 +1314,28 @@ final class AppState {
         } catch {
             handleRemoteError(error)
             return
+        }
+    }
+
+    @MainActor
+    func refreshFriendArea() async {
+        do {
+            let invite = try await remoteStore.fetchFriendInviteCode()
+            friendInviteCode = invite.code
+            friendInviteDeepLink = invite.deepLink
+            friendRankings = try await remoteStore.fetchFriendRanking()
+        } catch {
+            handleRemoteError(error)
+        }
+    }
+
+    @MainActor
+    func acceptFriendInvite(code: String) async {
+        do {
+            _ = try await remoteStore.acceptFriendInvite(code: code)
+            await refreshFriendArea()
+        } catch {
+            handleRemoteError(error)
         }
     }
 

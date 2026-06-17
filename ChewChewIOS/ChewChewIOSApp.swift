@@ -88,6 +88,13 @@ struct ChewChewIOSApp: App {
             appState.resumeMeasurement()
         case "stop":
             appState.stopMeasurementFromNotification()
+        case "invite":
+            // 외부 공유 링크(chewchew://invite?code=...) 수신 → 자동 수락.
+            if let code = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "code" })?.value,
+               !code.isEmpty {
+                Task { await appState.acceptFriendInvite(code: code) }
+            }
         default:
             break
         }
@@ -118,6 +125,11 @@ struct ChewChewIOSApp: App {
             appState.displayName = "테스터"
             appState.hasCompletedOnboarding = true
             appState.didLoadProfile = true
+        }
+
+        // XCUITest용 — 로그인 상태를 강제해 LoginView를 우회하고 mainTabs로 진입(Keychain 토큰 유무에 비의존).
+        if args.contains("-forceLogin") {
+            appState.isLoggedIn = true
         }
 
         if args.contains("-highlightStart") {

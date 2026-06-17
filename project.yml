@@ -40,6 +40,10 @@ targets:
         product: KakaoSDKAuth
       - package: KakaoOpenSDK
         product: KakaoSDKUser
+      - package: KakaoOpenSDK
+        product: KakaoSDKShare
+      - package: KakaoOpenSDK
+        product: KakaoSDKTemplate
     # 엔타이틀먼트(Sign in with Apple, APNs 푸시) — 유료 Apple Developer 계정 필요(개인 팀 서명 불가).
     # 보류로 임시 주석. 유료 계정 + Push 권한 전환 시 아래를 해제하면 서버 식사 푸시(ODO-56)가 활성화된다.
     # 그 전까지 앱은 registerForRemoteNotifications 실패를 받아 로컬 알림으로 자동 폴백한다(MealPushCoordinator).
@@ -193,6 +197,7 @@ schemes:
       config: Debug
       targets:
         - ChewChewIOSTests
+        - ChewChewIOSUITests
     profile:
       config: Release
     analyze:
