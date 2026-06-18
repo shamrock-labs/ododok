@@ -1,11 +1,12 @@
 import Foundation
+import SwiftUI
 import UIKit
 import KakaoSDKShare
 import KakaoSDKTemplate
 
 /// 친구 초대를 카카오톡 인앱 공유로 보낸다(링크 복사 아님 — 카카오톡 공유 시트가 직접 뜬다).
-/// 마스코트 이미지 + 제목 + 버튼의 FeedTemplate 카드로 보내며, 받은 사람이 버튼을 누르면
-/// `code` 파라미터로 앱이 열려 자동 수락 흐름으로 이어진다. 카카오 로그인과 동일한 네이티브 앱키 위에서 동작한다.
+/// 맨 마스코트 대신 디자인된 초대 배너(InviteCardImage)를 렌더해 카드 이미지로 쓰며,
+/// 받은 사람이 버튼을 누르면 `code` 파라미터로 앱이 열려 자동 수락 흐름으로 이어진다.
 enum KakaoInviteSharer {
 
     enum ShareError: Error {
@@ -14,8 +15,11 @@ enum KakaoInviteSharer {
         case imageUnavailable
     }
 
-    /// 업로드한 카드 이미지 URL 캐시 키. 마스코트는 정적이라 한 번 올리고 재사용한다.
-    private static let cachedImageUrlKey = "ChewChewIOS.KakaoInvite.cardImageUrl"
+    /// 카드 이미지 디자인 버전. 배너 디자인이 바뀌면 올려서 캐시(업로드된 URL)를 무효화한다.
+    private static let imageDesignVersion = 2
+    private static var cachedImageUrlKey: String {
+        "ChewChewIOS.KakaoInvite.cardImageUrl.v\(imageDesignVersion)"
+    }
 
     /// 초대 코드로 카카오 공유 시트를 띄운다. 성공 시 카카오톡이 열린다.
     @MainActor
@@ -51,15 +55,15 @@ enum KakaoInviteSharer {
         await UIApplication.shared.open(result.url)
     }
 
-    /// 카드 이미지 URL. FeedTemplate은 공개 이미지 URL이 필수라, 마스코트를 카카오에 1회 업로드해
-    /// URL을 받고 캐시한다(이후 공유는 캐시된 URL을 재사용해 업로드 지연 없음).
+    /// 카드 이미지 URL. 디자인된 배너를 ImageRenderer로 그려 카카오에 1회 업로드하고 URL을 캐시한다
+    /// (FeedTemplate은 공개 이미지 URL이 필수. 이후 공유는 캐시된 URL을 재사용해 지연 없음).
     @MainActor
     private static func invitationImageURL() async throws -> URL {
         if let cached = UserDefaults.standard.string(forKey: cachedImageUrlKey),
            let url = URL(string: cached) {
             return url
         }
-        guard let image = UIImage(named: "DaramHi") else { throw ShareError.imageUnavailable }
+        guard let image = renderInviteBanner() else { throw ShareError.imageUnavailable }
         let result: ImageUploadResult = try await withCheckedThrowingContinuation { continuation in
             ShareApi.shared.imageUpload(image: image) { uploadResult, error in
                 if let error {
@@ -74,5 +78,44 @@ enum KakaoInviteSharer {
         let url = result.infos.original.url
         UserDefaults.standard.set(url.absoluteString, forKey: cachedImageUrlKey)
         return url
+    }
+
+    /// 초대 배너 SwiftUI 뷰를 800x400(@2x) 이미지로 렌더한다.
+    @MainActor
+    private static func renderInviteBanner() -> UIImage? {
+        let renderer = ImageRenderer(content: InviteCardImage())
+        renderer.scale = 2
+        return renderer.uiImage
+    }
+}
+
+/// 카카오 공유 카드 이미지로 렌더되는 초대 배너. 맨 마스코트 대신 마스코트+문구+브랜드 그라데이션의
+/// "초대장" 느낌. 화면에 직접 띄우지 않고 ImageRenderer로만 이미지화한다.
+struct InviteCardImage: View {
+    var body: some View {
+        HStack(spacing: 28) {
+            Image("DaramHi")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 210, height: 210)
+            VStack(alignment: .leading, spacing: 12) {
+                Text("오도독에 초대받았어요")
+                    .font(.appFont(.heavy, size: 36))
+                    .foregroundStyle(Color.ink800)
+                Text("같이 식사 목표 채워요")
+                    .font(.appFont(.semibold, size: 23))
+                    .foregroundStyle(Color.ink600)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 52)
+        .frame(width: 800, height: 400)
+        .background(
+            LinearGradient(
+                colors: [Color.acorn100, Color.cream, Color.sage100],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+        )
     }
 }
