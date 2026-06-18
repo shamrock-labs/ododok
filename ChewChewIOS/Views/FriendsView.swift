@@ -47,65 +47,58 @@ struct FriendsView: View {
 
     // MARK: Invite
 
-    /// 내 초대 코드 표시. 로딩(재시도 포함) 중엔 스피너, 3회까지 모두 실패한 뒤에만 안내 문구를 보여준다.
-    @ViewBuilder
-    private var inviteCodeView: some View {
-        if let code = state.friendInviteCode {
-            Text(code)
-                .font(.appFont(.heavy, size: 18))
-                .foregroundStyle(Color.ink800)
-        } else if state.friendAreaLoadState == .failed {
-            Text("잠시 후 다시 시도해 주세요")
-                .font(.appFont(.semibold, size: 14))
-                .foregroundStyle(Color.ink400)
-        } else {
-            ProgressView()
-                .controlSize(.small)
-        }
-    }
-
     private var inviteCard: some View {
         VStack(spacing: 14) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("내 초대 코드")
-                    .font(.appFont(.bold, size: 12))
-                    .foregroundStyle(Color.ink600)
-                HStack {
-                    inviteCodeView
-                    Spacer()
-                    Button("새로고침") {
-                        Task { await state.refreshFriendArea() }
-                    }
-                    .font(.appFont(.bold, size: 13))
-                    .foregroundStyle(Color.sage600)
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .background(Color.cream, in: RoundedRectangle(cornerRadius: 14))
-            }
-
+            // 카카오 초대를 가장 크게(주 액션). 카카오 공식 옐로우 + 어두운 텍스트.
             Button {
                 Task { await shareInvite() }
             } label: {
-                HStack(spacing: 10) {
-                    Image(systemName: "paperplane.fill")
-                        .font(.appFont(.bold, size: 15))
-                    Text("카카오톡으로 초대하기")
+                HStack(spacing: 8) {
+                    Image(systemName: "message.fill")
                         .font(.appFont(.bold, size: 16))
+                    Text("카카오톡으로 초대하기")
+                        .font(.appFont(.heavy, size: 17))
                 }
-                .foregroundStyle(.white)
+                .foregroundStyle(Color.ink800)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 15)
-                .background(Color.sage600, in: RoundedRectangle(cornerRadius: 16))
+                .padding(.vertical, 18)
+                .background(Color.kakaoYellow, in: RoundedRectangle(cornerRadius: 18))
             }
             .buttonStyle(PressableButtonStyle())
             .softShadow(.pill)
+
+            // 내 초대 코드는 작게 아래에. 영구 단일 코드라 "새로고침"은 두지 않고, 실패 시에만 다시 시도.
+            inviteCodeLine
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 20)
         .frame(maxWidth: .infinity)
         .background(Color.white, in: RoundedRectangle(cornerRadius: 24))
         .neuoShadow(.md)
+    }
+
+    /// 내 초대 코드(작게). 로딩 중 미니 스피너, 3회 재시도까지 실패하면 "다시 시도".
+    private var inviteCodeLine: some View {
+        HStack(spacing: 6) {
+            Text("내 초대 코드")
+                .font(.appFont(.semibold, size: 12))
+                .foregroundStyle(Color.ink400)
+            if let code = state.friendInviteCode {
+                Text(code)
+                    .font(.appFont(.bold, size: 13))
+                    .foregroundStyle(Color.ink600)
+            } else if state.friendAreaLoadState == .failed {
+                Button("다시 시도") {
+                    Task { await state.refreshFriendArea() }
+                }
+                .font(.appFont(.bold, size: 12))
+                .foregroundStyle(Color.sage600)
+            } else {
+                ProgressView()
+                    .controlSize(.mini)
+            }
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private var rankingCard: some View {
