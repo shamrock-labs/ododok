@@ -86,6 +86,15 @@ final class AppState {
     var friendInviteDeepLink: String?
     var friendRankings: [FriendRankingDTO] = []
 
+    /// 친구 영역(초대 코드·랭킹) 로딩 상태. 실패를 "불러오는 중"과 구분해, 무한 로딩 대신 에러+재시도를 노출한다.
+    enum FriendAreaLoadState: Equatable {
+        case loading
+        case loaded
+        case failed
+    }
+
+    var friendAreaLoadState: FriendAreaLoadState = .loading
+
     /// `fetchAndApplyDisplayName` 한 번 끝났는지. 시작 직후 DB fetch 완료 전엔 false로 두어
     /// "기존 사용자가 reinstall한 cold-start에서 sheet이 잠깐 깜빡이는" 케이스를 차단.
     /// 처음 fetch가 끝나면 true로 마크 — 그 시점에 displayName nil이면 진짜 신규 디바이스.
@@ -1319,13 +1328,31 @@ final class AppState {
 
     @MainActor
     func refreshFriendArea() async {
-        do {
-            let invite = try await remoteStore.fetchFriendInviteCode()
-            friendInviteCode = invite.code
-            friendInviteDeepLink = invite.deepLink
-            friendRankings = try await remoteStore.fetchFriendRanking()
-        } catch {
-            handleRemoteError(error)
+        // 이미 코드를 받아둔 뒤의 새로고침은 화면을 비우지 않는다(첫 로딩일 때만 로딩 상태로).
+        if friendInviteCode == nil { friendAreaLoadState = .loading }
+        // 일시적 실패로 바로 에러를 띄우지 않는다: 짧은 backoff로 최대 3회 시도하고, 그 동안은 로딩(스피너) 유지.
+        let maxAttempts = 3
+        for attempt in 1...maxAttempts {
+            do {
+                let invite = try await remoteStore.fetchFriendInviteCode()
+                friendInviteCode = invite.code
+                friendInviteDeepLink = invite.deepLink
+                friendRankings = try await remoteStore.fetchFriendRanking()
+                friendAreaLoadState = .loaded
+                return
+            } catch {
+                // 인증 만료는 재시도로 풀리지 않으므로 즉시 실패 처리(세션 만료 핸들링은 그대로).
+                if case RemoteStoreError.authExpired = error {
+                    handleRemoteError(error)
+                    friendAreaLoadState = .failed
+                    return
+                }
+                if attempt < maxAttempts {
+                    try? await Task.sleep(for: .seconds(1))  // 다음 시도 전 짧게 대기
+                } else {
+                    friendAreaLoadState = .failed  // 3회 모두 실패한 뒤에만 에러 노출
+                }
+            }
         }
     }
 

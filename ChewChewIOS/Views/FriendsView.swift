@@ -4,7 +4,6 @@ struct FriendsView: View {
     @Environment(AppState.self) private var state
     @State private var inviteToastVisible = false
     @State private var toastMessage = ""
-    @State private var inviteCodeInput = ""
 
     var body: some View {
         VStack(spacing: 18) {
@@ -48,35 +47,31 @@ struct FriendsView: View {
 
     // MARK: Invite
 
+    /// 내 초대 코드 표시. 로딩(재시도 포함) 중엔 스피너, 3회까지 모두 실패한 뒤에만 안내 문구를 보여준다.
+    @ViewBuilder
+    private var inviteCodeView: some View {
+        if let code = state.friendInviteCode {
+            Text(code)
+                .font(.appFont(.heavy, size: 18))
+                .foregroundStyle(Color.ink800)
+        } else if state.friendAreaLoadState == .failed {
+            Text("잠시 후 다시 시도해 주세요")
+                .font(.appFont(.semibold, size: 14))
+                .foregroundStyle(Color.ink400)
+        } else {
+            ProgressView()
+                .controlSize(.small)
+        }
+    }
+
     private var inviteCard: some View {
-        VStack(spacing: 18) {
-            Spacer(minLength: 6)
-
-            Image("DaramHi")
-                .resizable()
-                .scaledToFit()
-                .frame(height: 150)
-
-            VStack(spacing: 6) {
-                Text("친구들과 식사 현황을 나눠요")
-                    .font(.appFont(.heavy, size: 21))
-                    .foregroundStyle(Color.ink800)
-                    .multilineTextAlignment(.center)
-                Text("함께 목표를 채우고, 아직 시작하지 않은 친구를 초대해요.")
-                    .font(.appFont(.semibold, size: 14))
-                    .foregroundStyle(Color.ink600)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(3)
-            }
-
+        VStack(spacing: 14) {
             VStack(alignment: .leading, spacing: 8) {
                 Text("내 초대 코드")
                     .font(.appFont(.bold, size: 12))
                     .foregroundStyle(Color.ink600)
                 HStack {
-                    Text(state.friendInviteCode ?? "불러오는 중...")
-                        .font(.appFont(.heavy, size: 18))
-                        .foregroundStyle(Color.ink800)
+                    inviteCodeView
                     Spacer()
                     Button("새로고침") {
                         Task { await state.refreshFriendArea() }
@@ -87,34 +82,6 @@ struct FriendsView: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 12)
                 .background(Color.cream, in: RoundedRectangle(cornerRadius: 14))
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text("친구 코드 입력")
-                    .font(.appFont(.bold, size: 12))
-                    .foregroundStyle(Color.ink600)
-                HStack(spacing: 10) {
-                    TextField("예: ABC123...", text: $inviteCodeInput)
-                        .textInputAutocapitalization(.characters)
-                        .autocorrectionDisabled()
-                        .font(.appFont(.semibold, size: 15))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .background(Color.cream, in: RoundedRectangle(cornerRadius: 14))
-                    Button("확인") {
-                        let code = inviteCodeInput.trimmingCharacters(in: .whitespacesAndNewlines)
-                        guard !code.isEmpty else { return }
-                        Task {
-                            await state.acceptFriendInvite(code: code)
-                            inviteCodeInput = ""
-                        }
-                    }
-                    .font(.appFont(.bold, size: 14))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(Color.acorn600, in: RoundedRectangle(cornerRadius: 14))
-                }
             }
 
             Button {
@@ -133,13 +100,11 @@ struct FriendsView: View {
             }
             .buttonStyle(PressableButtonStyle())
             .softShadow(.pill)
-
-            Spacer(minLength: 6)
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 28)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 20)
         .frame(maxWidth: .infinity)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 28))
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 24))
         .neuoShadow(.md)
     }
 
@@ -148,7 +113,16 @@ struct FriendsView: View {
             Text("친구 랭킹")
                 .font(.appFont(.heavy, size: 18))
                 .foregroundStyle(Color.ink800)
-            if state.friendRankings.isEmpty {
+            if state.friendAreaLoadState == .loading && state.friendRankings.isEmpty {
+                // 첫 로딩(재시도 포함) 중엔 "없음" 대신 스피너.
+                ProgressView()
+                    .controlSize(.small)
+            } else if state.friendAreaLoadState == .failed {
+                // 실패 시엔 직전 랭킹이 남아 있어도 성공처럼 보여주지 않는다(stale 노출 방지).
+                Text("잠시 후 다시 시도해 주세요")
+                    .font(.appFont(.semibold, size: 14))
+                    .foregroundStyle(Color.ink400)
+            } else if state.friendRankings.isEmpty {
                 Text("아직 랭킹이 없어요. 친구를 초대해 보세요.")
                     .font(.appFont(.semibold, size: 14))
                     .foregroundStyle(Color.ink400)

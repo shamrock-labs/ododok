@@ -26,7 +26,7 @@ enum KakaoInviteSharer {
         // 받은 앱이 code 파라미터로 초대 코드를 수신하도록 iosExecutionParams에 실어 보낸다.
         let link = Link(iosExecutionParams: ["code": code])
         let template = TextTemplate(
-            text: "오도독에서 같이 식사 목표를 채워요! 초대 코드 \(code)로 친구가 될 수 있어요.",
+            text: "오도독에서 같이 식사 목표를 채워요!",
             link: link,
             buttonTitle: "초대 수락하기"
         )
