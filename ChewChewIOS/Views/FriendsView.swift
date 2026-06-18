@@ -171,7 +171,7 @@ struct FriendsView: View {
             return
         }
         do {
-            try await KakaoInviteSharer.share(code: code, deepLink: state.friendInviteDeepLink)
+            try await KakaoInviteSharer.share(code: code)
         } catch KakaoInviteSharer.ShareError.kakaoTalkUnavailable {
             showToast("카카오톡이 설치되어 있지 않아요")
         } catch {
