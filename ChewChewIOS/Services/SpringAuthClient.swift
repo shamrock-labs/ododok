@@ -23,6 +23,8 @@ final class SpringAuthClient: AuthSessionManaging {
     private let session: URLSession
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
+    /// 동시 401에서 refresh가 중복 실행되는 것을 막는 single-flight 코디네이터.
+    private let refreshCoordinator = RefreshCoordinator()
 
     init(config: SpringConfig, session: URLSession = .shared) {
         self.config = config
@@ -67,15 +69,26 @@ final class SpringAuthClient: AuthSessionManaging {
         return LoginResult(userId: token.user?.id ?? "", displayName: token.user?.displayName, onboardingCompleted: token.user?.onboardingCompleted ?? false)
     }
 
-    /// access 만료 시 refresh로 재발급. 성공하면 새 토큰 저장 후 true,
-    /// 실패(refresh 만료/폐기)면 토큰 비우고 false — 호출처는 재로그인 유도.
+    /// access 만료 시 refresh로 재발급. 동시 401이 여러 개 와도 single-flight로 묶어
+    /// 한 번만 회전하고 나머지는 그 결과를 함께 기다린다(회전된 토큰이 서로를 무효화하는 레이스 차단).
+    /// 성공하면 새 토큰 저장 후 true. refresh가 명확히 거부(만료/폐기)되면 토큰 비우고 false.
     func refresh() async -> Bool {
+        await refreshCoordinator.run { [weak self] in
+            await self?.performRefresh() ?? false
+        }
+    }
+
+    private func performRefresh() async -> Bool {
         guard let refreshToken = TokenManager.refreshToken else { return false }
         do {
             let token = try await post("/auth/refresh", body: RefreshRequest(refreshToken: refreshToken), as: TokenResult.self)
             TokenManager.save(access: token.accessToken, refresh: token.refreshToken)
             return true
+        } catch RemoteStoreError.offline {
+            // 일시적 네트워크 실패는 세션을 비우지 않는다 — 다음 요청에서 다시 시도할 수 있다.
+            return false
         } catch {
+            // refresh가 거부됨(만료/폐기 등) → 세션 종료.
             TokenManager.clear()
             return false
         }
@@ -153,6 +166,24 @@ final class SpringAuthClient: AuthSessionManaging {
         guard let result = try? decoder.decode(BaseResponse<T>.self, from: data).result else {
             throw RemoteStoreError.malformed("empty result")
         }
+        return result
+    }
+}
+
+/// refresh를 single-flight로 직렬화한다. 진행 중인 refresh가 있으면 새로 시작하지 않고
+/// 그 결과를 함께 기다린다 — 동시 401들이 같은 옛 refresh 토큰으로 중복 회전해
+/// 서로를 무효화(→ 강제 로그아웃)하는 레이스를 막는다.
+private actor RefreshCoordinator {
+    private var inFlight: Task<Bool, Never>?
+
+    func run(_ operation: @escaping () async -> Bool) async -> Bool {
+        if let inFlight {
+            return await inFlight.value
+        }
+        let task = Task { await operation() }
+        inFlight = task
+        let result = await task.value
+        inFlight = nil
         return result
     }
 }
