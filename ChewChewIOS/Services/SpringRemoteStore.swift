@@ -235,6 +235,28 @@ final class SpringRemoteStore: RemoteStore {
         return try decodeOptionalResult([FriendRankingDTO].self, from: data) ?? []
     }
 
+    // MARK: - report (리포트 허브)
+
+    /// 일간 리포트. date는 호출처(ReportHubView)가 KST "yyyy-MM-dd"로 포맷해 넘긴다.
+    func fetchDailyReport(deviceId: String, date: String) async throws -> DailyReportDTO {
+        guard let encoded = date.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            throw RemoteStoreError.http(status: -1, body: "failed to percent-encode date")
+        }
+        let req = jsonRequest(method: "GET", path: "/v1/me/reports/daily?date=\(encoded)")
+        let data = try await sendExpectingSuccess(req)
+        return try decodeResult(DailyReportDTO.self, from: data)
+    }
+
+    /// 주간 리포트. weekStart는 ISO 월요일 "yyyy-MM-dd"여야 한다(서버가 월요일 아니면 4006 거절).
+    func fetchWeeklyReport(deviceId: String, weekStart: String) async throws -> WeeklyReportDTO {
+        guard let encoded = weekStart.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
+            throw RemoteStoreError.http(status: -1, body: "failed to percent-encode weekStart")
+        }
+        let req = jsonRequest(method: "GET", path: "/v1/me/reports/weekly?weekStart=\(encoded)")
+        let data = try await sendExpectingSuccess(req)
+        return try decodeResult(WeeklyReportDTO.self, from: data)
+    }
+
     // MARK: - Helpers
 
     /// JSON Content-Type 포함 요청 빌더.

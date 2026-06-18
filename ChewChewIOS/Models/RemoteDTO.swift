@@ -428,3 +428,74 @@ extension HomeStateDTO {
         )
     }
 }
+
+// MARK: - 리포트 집계 응답 (서버 /v1/me/reports)
+
+/// 일간 리포트. ReportHubView가 선택한 날의 끼 목록과 상세 리포트 카드 렌더에 쓴다.
+/// `date`(LocalDate)는 "yyyy-MM-dd" 문자열이라 String으로 디코드한다 — 공용 ISO8601 Date
+/// 디코더가 date-only를 못 잡는다. 끼의 started/endedAt는 Instant라 Date로 디코드된다.
+/// (timezone·평균류·vsYesterday 등 안 쓰는 키는 생략 — Swift Decodable이 미지 키를 무시한다.)
+struct DailyReportDTO: Decodable, Equatable {
+    let date: String
+    let mealCount: Int
+    let meals: [Meal]
+
+    struct Meal: Decodable, Equatable {
+        let sessionId: UUID
+        let startedAt: Date
+        let endedAt: Date
+        let durationSec: Double
+        let totalChews: Int?
+        let chewingFraction: Double?
+        let chewingSeconds: Double?
+        let restSeconds: Double?
+    }
+
+    static func empty(date: String) -> DailyReportDTO {
+        DailyReportDTO(date: date, mealCount: 0, meals: [])
+    }
+}
+
+/// 주간 리포트. days는 월~일 7개(빈 날 mealCount 0). ReportHubView가 타임라인 링·추세선과
+/// 주간 비교 막대에 쓴다. `weekStart`/`Day.date`는 "yyyy-MM-dd" 문자열로 디코드한다.
+struct WeeklyReportDTO: Decodable, Equatable {
+    let weekStart: String
+    let days: [Day]
+
+    struct Day: Decodable, Equatable {
+        let date: String
+        let mealCount: Int
+        let totalChews: Int
+        let totalEatingSeconds: Double
+    }
+
+    static func empty(weekStart: String) -> WeeklyReportDTO {
+        WeeklyReportDTO(weekStart: weekStart, days: [])
+    }
+}
+
+extension ChewingSessionDTO {
+    /// 서버 일간 리포트의 끼(meal)를 상세 리포트 카드용 DTO로 변환한다. 리포트 카드
+    /// (`ReportCardModel.from`)가 읽는 분석 필드 — durationSec·estimatedTotalChews·
+    /// chewingFraction·chewingSeconds·restSeconds·started/endedAt — 만 의미가 있고,
+    /// 원시 캡처 필드(sensorLocation·sampleCount 등)는 상세 카드가 쓰지 않아 중립값으로 둔다.
+    init(reportMeal meal: DailyReportDTO.Meal) {
+        self.init(
+            id: meal.sessionId,
+            deviceId: "",
+            startedAt: meal.startedAt,
+            endedAt: meal.endedAt,
+            durationSec: meal.durationSec,
+            sensorLocation: "",
+            sampleCount: 0,
+            sampleRateHz: 0,
+            storagePath: nil,
+            appVersion: nil,
+            chewingSeconds: meal.chewingSeconds,
+            restSeconds: meal.restSeconds,
+            chewingFraction: meal.chewingFraction,
+            estimatedTotalChews: meal.totalChews,
+            modelVersion: nil
+        )
+    }
+}

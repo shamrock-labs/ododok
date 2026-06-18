@@ -3,12 +3,14 @@ import SwiftUI
 struct ReportHubView: View {
     @Environment(AppState.self) private var state
 
-    @State private var recentSessions: [ChewingSessionDTO] = []
+    /// 최근 3주(월~일) 주간 리포트. [지지난주, 지난주, 이번 주] 순. 타임라인 링·추세선과 주간 비교 막대의 정본.
+    @State private var weeklies: [WeeklyReportDTO] = []
+    /// 선택한 날의 일간 리포트 캐시(key: KST startOfDay). 끼 목록·상세 카드용.
+    @State private var dailyByDay: [Date: DailyReportDTO] = [:]
     @State private var selectedDate: Date = mealCalendarCalendar.startOfDay(for: Date())
     @State private var detailSession: ChewingSessionDTO?
 
     private let dayWidth: CGFloat = 52
-    private let windowDays = 21
 
     var body: some View {
         VStack(spacing: 14) {
@@ -17,7 +19,10 @@ struct ReportHubView: View {
             sessionListCard
             weeklyComparisonCard
         }
-        .task { await reloadRecentSessions() }
+        .task { await reload() }
+        .onChange(of: selectedDate) { _, newDate in
+            Task { await loadDaily(for: newDate) }
+        }
         .sheet(item: $detailSession) { session in
             NavigationStack {
                 SessionReportDetailView(dto: session)
@@ -25,25 +30,29 @@ struct ReportHubView: View {
         }
     }
 
+    /// 최근 3주 주간 리포트의 day들을 펼쳐 만든 타임라인. 미래(이번 주 남은 날)는 제외해 오른쪽 끝이 오늘이 되게 한다.
     private var days: [ReportDay] {
-        let today = mealCalendarCalendar.startOfDay(for: Date())
-        let start = mealCalendarCalendar.date(byAdding: .day, value: -(windowDays - 1), to: today) ?? today
-        return (0..<windowDays).map { offset in
-            let date = mealCalendarCalendar.date(byAdding: .day, value: offset, to: start) ?? today
-            let sessions = sessions(on: date)
-            if !sessions.isEmpty {
-                return ReportDay(date: date, sessions: sessions)
+        let cal = mealCalendarCalendar
+        let today = cal.startOfDay(for: Date())
+        return weeklies
+            .flatMap(\.days)
+            .compactMap { serverDay -> ReportDay? in
+                guard let parsed = Self.serverDayFormatter.date(from: serverDay.date) else { return nil }
+                let date = cal.startOfDay(for: parsed)
+                guard date <= today else { return nil }
+                return ReportDay(date: date, serverDay: serverDay)
             }
-            return ReportDay.empty(date: date)
-        }
+            .sorted { $0.date < $1.date }
     }
 
     private var selectedDay: ReportDay {
-        days.first { mealCalendarCalendar.isDate($0.date, inSameDayAs: selectedDate) } ?? days.last ?? .demo(date: Date(), index: 0, total: 1)
+        days.first { mealCalendarCalendar.isDate($0.date, inSameDayAs: selectedDate) } ?? .empty(date: selectedDate)
     }
 
-    private var selectedSessions: [ChewingSessionDTO] {
-        sessions(on: selectedDate).sorted { $0.startedAt < $1.startedAt }
+    /// 선택한 날의 끼 목록(일간 리포트 meals). 미로딩/빈 날이면 빈 배열.
+    private var selectedMeals: [DailyReportDTO.Meal] {
+        let key = mealCalendarCalendar.startOfDay(for: selectedDate)
+        return (dailyByDay[key]?.meals ?? []).sorted { $0.startedAt < $1.startedAt }
     }
 
     private var timelineCard: some View {
@@ -127,7 +136,7 @@ struct ReportHubView: View {
                     .font(.appFont(.heavy, size: 16))
                     .foregroundStyle(Color.ink800)
                 Spacer()
-                Text("\(selectedSessions.count)회")
+                Text("\(selectedMeals.count)회")
                     .font(.appFont(.bold, size: 12))
                     .foregroundStyle(Color.acorn700)
                     .padding(.horizontal, 9)
@@ -135,12 +144,12 @@ struct ReportHubView: View {
                     .background(Color.acorn50, in: Capsule())
             }
 
-            if selectedSessions.isEmpty {
+            if selectedMeals.isEmpty {
                 emptySessionState
             } else {
                 VStack(spacing: 6) {
-                    ForEach(selectedSessions) { session in
-                        sessionRow(session)
+                    ForEach(selectedMeals, id: \.sessionId) { meal in
+                        sessionRow(meal)
                     }
                     dailyReportRow
                 }
@@ -171,10 +180,10 @@ struct ReportHubView: View {
         .background(Color.acorn50.opacity(0.55), in: RoundedRectangle(cornerRadius: 16))
     }
 
-    private func sessionRow(_ session: ChewingSessionDTO) -> some View {
-        let slot = DayMealSlot(hour: mealCalendarCalendar.component(.hour, from: session.startedAt))
+    private func sessionRow(_ meal: DailyReportDTO.Meal) -> some View {
+        let slot = DayMealSlot(hour: mealCalendarCalendar.component(.hour, from: meal.startedAt))
         return Button {
-            detailSession = session
+            detailSession = ChewingSessionDTO(reportMeal: meal)
         } label: {
             HStack(spacing: 12) {
                 Text(slot.emoji)
@@ -185,12 +194,12 @@ struct ReportHubView: View {
                     Text(slot.label)
                         .font(.appFont(.heavy, size: 15))
                         .foregroundStyle(Color.ink800)
-                    Text("\(timeLabel(session.startedAt)) · \((session.estimatedTotalChews ?? 0).koLocale)회")
+                    Text("\(timeLabel(meal.startedAt)) · \((meal.totalChews ?? 0).koLocale)회")
                         .font(.appFont(.semibold, size: 12))
                         .foregroundStyle(Color.ink600)
                 }
                 Spacer(minLength: 0)
-                Text(durationLabel(session.durationSec))
+                Text(durationLabel(meal.durationSec))
                     .font(.appFont(.bold, size: 13))
                     .foregroundStyle(Color.ink600)
                     .monospacedDigit()
@@ -205,7 +214,7 @@ struct ReportHubView: View {
 
     private var dailyReportRow: some View {
         Button {
-            detailSession = selectedSessions.last
+            detailSession = selectedMeals.last.map(ChewingSessionDTO.init(reportMeal:))
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -275,13 +284,20 @@ struct ReportHubView: View {
         }
     }
 
+    /// 주별 평균(끼당 아님, 7일 평균). 서버 주간 리포트의 day 합을 7로 나눠 codex 기존 의미를 유지한다.
     private var weeklyMetrics: [WeeklyMetric] {
-        let chunks = days.chunked(into: 7)
         let labels = ["지지난주", "지난주", "이번 주"]
-        return chunks.enumerated().map { index, chunk in
-            let chews = max(1, chunk.map(\.chewCount).reduce(0, +) / max(1, chunk.count))
-            let minutes = max(1, chunk.map(\.minutes).reduce(0, +) / max(1, chunk.count))
-            return WeeklyMetric(label: labels[min(index, labels.count - 1)], chews: chews, minutes: minutes, isCurrent: index == chunks.count - 1)
+        return weeklies.enumerated().map { index, week in
+            let dayCount = max(1, week.days.count)
+            let chews = max(1, week.days.map(\.totalChews).reduce(0, +) / dayCount)
+            let minutesTotal = week.days.map(\.totalEatingSeconds).reduce(0, +) / 60.0
+            let minutes = max(1, Int((minutesTotal / Double(dayCount)).rounded()))
+            return WeeklyMetric(
+                label: labels[min(index, labels.count - 1)],
+                chews: chews,
+                minutes: minutes,
+                isCurrent: index == weeklies.count - 1
+            )
         }
     }
 
@@ -300,22 +316,48 @@ struct ReportHubView: View {
         .accessibilityHidden(false)
     }
 
+    /// 최근 3주 주간 리포트 + 오늘 일간 리포트를 서버에서 받는다. mock 폴백 없음 — 데이터 없으면 빈 상태.
     @MainActor
-    private func reloadRecentSessions() async {
+    private func reload() async {
+        // 홈/UI 테스트 앵커가 보는 state.todaySessions 갱신용(리포트 허브 데이터 경로와는 별개).
         await state.fetchTodaySessions()
-        let today = mealCalendarCalendar.startOfDay(for: Date())
-        let start = mealCalendarCalendar.date(byAdding: .day, value: -(windowDays - 1), to: today) ?? today
-        let end = mealCalendarCalendar.date(byAdding: .day, value: 1, to: today)
+
         let deviceId = DeviceIdentity.shared
-        let rows = (try? await state.remoteStore.fetchChewingSessions(deviceId: deviceId, since: start, until: end)) ?? []
-        let reportableRows = rows.filter { ReportCardModel.from($0) != nil }
-        recentSessions = reportableRows.isEmpty
-            ? ReportMockData.sessions(start: start, days: windowDays)
-            : reportableRows
+        let cal = mealCalendarCalendar
+        let thisMonday = isoWeekMonday(Date())
+        let mondays = [-2, -1, 0].compactMap { cal.date(byAdding: .day, value: $0 * 7, to: thisMonday) }
+
+        var fetched: [WeeklyReportDTO] = []
+        for monday in mondays {
+            let weekStart = Self.serverDayFormatter.string(from: monday)
+            if let week = try? await state.remoteStore.fetchWeeklyReport(deviceId: deviceId, weekStart: weekStart) {
+                fetched.append(week)
+            }
+        }
+        weeklies = fetched
+
+        await loadDaily(for: selectedDate, force: true)
     }
 
-    private func sessions(on date: Date) -> [ChewingSessionDTO] {
-        recentSessions.filter { mealCalendarCalendar.isDate($0.startedAt, inSameDayAs: date) }
+    /// 선택한 날의 일간 리포트를 받아 캐시. force=true면 캐시 무시(오늘 재진입 시 최신화).
+    @MainActor
+    private func loadDaily(for date: Date, force: Bool = false) async {
+        let key = mealCalendarCalendar.startOfDay(for: date)
+        if !force, dailyByDay[key] != nil { return }
+        let deviceId = DeviceIdentity.shared
+        let dateString = Self.serverDayFormatter.string(from: key)
+        if let daily = try? await state.remoteStore.fetchDailyReport(deviceId: deviceId, date: dateString) {
+            dailyByDay[key] = daily
+        }
+    }
+
+    /// 주어진 날이 속한 ISO 주의 월요일(KST). 서버 weekStart는 월요일이어야 한다.
+    private func isoWeekMonday(_ date: Date) -> Date {
+        let cal = mealCalendarCalendar
+        let start = cal.startOfDay(for: date)
+        let weekday = cal.component(.weekday, from: start) // 1=일 ... 7=토
+        let deltaToMonday = (weekday + 5) % 7              // 월→0, 화→1, ..., 일→6
+        return cal.date(byAdding: .day, value: -deltaToMonday, to: start) ?? start
     }
 
     private func slotTint(_ slot: DayMealSlot) -> Color {
@@ -349,6 +391,15 @@ struct ReportHubView: View {
         if secs == 0 { return "\(mins)분" }
         return "\(mins)분 \(secs)초"
     }
+
+    /// 서버 LocalDate("yyyy-MM-dd") ↔ Date 변환용. 집계 시간대(KST)에 고정 — 서버 zone(Asia/Seoul)과 맞춘다.
+    private static let serverDayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "Asia/Seoul")
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
 }
 
 private struct ReportDay: Identifiable {
@@ -359,12 +410,12 @@ private struct ReportDay: Identifiable {
 
     var id: Date { date }
 
-    init(date: Date, sessions: [ChewingSessionDTO]) {
+    /// 서버 주간 리포트의 하루 집계에서 생성. mealCount는 링(아침·점심·저녁 3끼)용이라 3으로 캡한다.
+    init(date: Date, serverDay: WeeklyReportDTO.Day) {
         self.date = date
-        chewCount = sessions.reduce(0) { $0 + ($1.estimatedTotalChews ?? 0) }
-        minutes = max(1, Int((sessions.reduce(0) { $0 + $1.durationSec } / 60).rounded()))
-        let slots = Set(sessions.map { DayMealSlot(hour: mealCalendarCalendar.component(.hour, from: $0.startedAt)) })
-        mealCount = min(3, slots.count)
+        chewCount = serverDay.totalChews
+        mealCount = min(3, serverDay.mealCount)
+        minutes = serverDay.mealCount > 0 ? max(1, Int((serverDay.totalEatingSeconds / 60).rounded())) : 0
     }
 
     private init(date: Date, chewCount: Int, minutes: Int, mealCount: Int) {
@@ -372,14 +423,6 @@ private struct ReportDay: Identifiable {
         self.chewCount = chewCount
         self.minutes = minutes
         self.mealCount = mealCount
-    }
-
-    static func demo(date: Date, index: Int, total: Int) -> ReportDay {
-        let chews = [180, 205, 196, 220, 214, 208, 226, 212, 230, 225, 246, 238, 252, 240, 248, 266, 255, 284, 312, 286, 304]
-        let mins = [7, 8, 7, 9, 8, 8, 9, 8, 9, 9, 10, 9, 10, 10, 10, 11, 10, 12, 13, 12, 13]
-        let meals = [1, 2, 2, 3, 2, 2, 3, 1, 2, 2, 3, 2, 3, 2, 2, 3, 2, 3, 3, 2, 3]
-        let i = min(max(0, index), chews.count - 1)
-        return ReportDay(date: date, chewCount: chews[i], minutes: mins[i], mealCount: meals[i])
     }
 
     static func empty(date: Date) -> ReportDay {
@@ -527,60 +570,6 @@ private struct TrendLegend: View {
                 .font(.appFont(.bold, size: 11))
                 .foregroundStyle(Color.ink600)
         }
-    }
-}
-
-private extension Array {
-    func chunked(into size: Int) -> [[Element]] {
-        stride(from: 0, to: count, by: size).map {
-            Array(self[$0..<Swift.min($0 + size, count)])
-        }
-    }
-}
-
-private enum ReportMockData {
-    static func sessions(start: Date, days: Int) -> [ChewingSessionDTO] {
-        (0..<days).flatMap { offset -> [ChewingSessionDTO] in
-            guard let date = mealCalendarCalendar.date(byAdding: .day, value: offset, to: start) else { return [] }
-            let mealCount = mealPattern[offset % mealPattern.count]
-            return Array(slotHours.prefix(mealCount)).enumerated().map { mealIndex, hour in
-                makeSession(on: date, hour: hour, dayIndex: offset, mealIndex: mealIndex)
-            }
-        }
-    }
-
-    private static let mealPattern = [1, 2, 2, 3, 2, 2, 3, 1, 2, 2, 3, 2, 3, 2, 2, 3, 2, 3, 3, 2, 3]
-    private static let slotHours = [8, 12, 18]
-
-    private static func makeSession(on date: Date, hour: Int, dayIndex: Int, mealIndex: Int) -> ChewingSessionDTO {
-        let start = mealCalendarCalendar.date(
-            bySettingHour: hour,
-            minute: [12, 36, 5][mealIndex],
-            second: 0,
-            of: date
-        ) ?? date
-        let duration = Double([620, 780, 860][mealIndex] + (dayIndex % 5) * 24)
-        let chews = [214, 286, 328][mealIndex] + (dayIndex % 7) * 9
-        let chewingSeconds = duration * Double([0.62, 0.68, 0.71][mealIndex])
-        let restSeconds = max(1, duration - chewingSeconds)
-
-        return ChewingSessionDTO(
-            id: UUID(),
-            deviceId: "mock-report",
-            startedAt: start,
-            endedAt: start.addingTimeInterval(duration),
-            durationSec: duration,
-            sensorLocation: "AirPods Pro Mock",
-            sampleCount: Int(duration * 25),
-            sampleRateHz: 25,
-            storagePath: nil,
-            appVersion: "mock",
-            chewingSeconds: chewingSeconds,
-            restSeconds: restSeconds,
-            chewingFraction: chewingSeconds / duration,
-            estimatedTotalChews: chews,
-            modelVersion: "mock-v1"
-        )
     }
 }
 

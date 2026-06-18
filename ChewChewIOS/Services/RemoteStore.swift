@@ -48,6 +48,12 @@ protocol RemoteStore {
     func fetchFriendInviteCode() async throws -> FriendInviteCodeDTO
     func acceptFriendInvite(code: String) async throws -> FriendAcceptResultDTO
     func fetchFriendRanking() async throws -> [FriendRankingDTO]
+
+    // MARK: - report (서버 집계 — 리포트 허브)
+    /// 일간 리포트(선택한 날 끼 목록·상세 카드). `date`는 집계 시간대(KST) 기준 "yyyy-MM-dd".
+    func fetchDailyReport(deviceId: String, date: String) async throws -> DailyReportDTO
+    /// 주간 리포트(월~일 7일). `weekStart`는 ISO 월요일 "yyyy-MM-dd".
+    func fetchWeeklyReport(deviceId: String, weekStart: String) async throws -> WeeklyReportDTO
 }
 
 extension RemoteStore {
@@ -59,6 +65,10 @@ extension RemoteStore {
     func fetchFriendInviteCode() async throws -> FriendInviteCodeDTO { .init(code: "") }
     func acceptFriendInvite(code: String) async throws -> FriendAcceptResultDTO { .init(accepted: false, bonusGranted: false) }
     func fetchFriendRanking() async throws -> [FriendRankingDTO] { [] }
+
+    // report: 레거시/테스트/프리뷰 스토어는 빈 리포트. Spring 구현만 실제 서버와 통신한다.
+    func fetchDailyReport(deviceId: String, date: String) async throws -> DailyReportDTO { .empty(date: date) }
+    func fetchWeeklyReport(deviceId: String, weekStart: String) async throws -> WeeklyReportDTO { .empty(weekStart: weekStart) }
 
     /// 상한 없는 편의 메서드 — `fetchChewingSessions(deviceId:since:until:)`에 `until: nil`을
     /// 위임. 기존 "오늘의 식사 기록" 호출자(`AppState.fetchTodaySessions`) 그대로 사용.
