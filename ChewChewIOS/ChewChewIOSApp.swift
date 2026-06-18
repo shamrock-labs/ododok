@@ -86,7 +86,7 @@ struct ChewChewIOSApp: App {
             if let code = URLComponents(url: url, resolvingAgainstBaseURL: false)?
                 .queryItems?.first(where: { $0.name == "code" })?.value,
                !code.isEmpty {
-                Task { await appState.acceptFriendInvite(code: code) }
+                appState.receiveInviteCode(code)
             }
             return
         }
@@ -103,7 +103,7 @@ struct ChewChewIOSApp: App {
             if let code = URLComponents(url: url, resolvingAgainstBaseURL: false)?
                 .queryItems?.first(where: { $0.name == "code" })?.value,
                !code.isEmpty {
-                Task { await appState.acceptFriendInvite(code: code) }
+                appState.receiveInviteCode(code)
             }
         default:
             break
