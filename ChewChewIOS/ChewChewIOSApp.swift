@@ -80,6 +80,16 @@ struct ChewChewIOSApp: App {
     /// `chewchew://` 딥링크 처리. onOpenURL 및 NotificationDelegate에서 공통 호출.
     @MainActor
     func handleOpenURL(_ url: URL) {
+        // 카카오 공유 메시지의 "초대 수락하기" 버튼은 앱을 kakao{앱키}://kakaolink?code=... 로 연다
+        // (iosExecutionParams). chewchew:// 외에 이 카카오 실행 스킴도 초대 수락으로 라우팅한다.
+        if url.scheme?.hasPrefix("kakao") == true, url.host == "kakaolink" {
+            if let code = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "code" })?.value,
+               !code.isEmpty {
+                appState.receiveInviteCode(code)
+            }
+            return
+        }
         guard url.scheme == "chewchew" else { return }
         switch url.host {
         case "start":
@@ -88,6 +98,13 @@ struct ChewChewIOSApp: App {
             appState.resumeMeasurement()
         case "stop":
             appState.stopMeasurementFromNotification()
+        case "invite":
+            // 외부 공유 링크(chewchew://invite?code=...) 수신 → 자동 수락.
+            if let code = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "code" })?.value,
+               !code.isEmpty {
+                appState.receiveInviteCode(code)
+            }
         default:
             break
         }
@@ -118,6 +135,11 @@ struct ChewChewIOSApp: App {
             appState.displayName = "테스터"
             appState.hasCompletedOnboarding = true
             appState.didLoadProfile = true
+        }
+
+        // XCUITest용 — 로그인 상태를 강제해 LoginView를 우회하고 mainTabs로 진입(Keychain 토큰 유무에 비의존).
+        if args.contains("-forceLogin") {
+            appState.isLoggedIn = true
         }
 
         if args.contains("-highlightStart") {

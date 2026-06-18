@@ -43,6 +43,11 @@ protocol RemoteStore {
     func upsertMealNotifications(_ settings: MealReminderSettings, timeZone: String) async throws
     /// 저장된 끼니 알림 조회. 미설정이면 nil(서버 404).
     func fetchMealNotifications() async throws -> MealReminderSettings?
+
+    // MARK: - friend (ODO-55)
+    func fetchFriendInviteCode() async throws -> FriendInviteCodeDTO
+    func acceptFriendInvite(code: String) async throws -> FriendAcceptResultDTO
+    func fetchFriendRanking() async throws -> [FriendRankingDTO]
 }
 
 extension RemoteStore {
@@ -51,6 +56,9 @@ extension RemoteStore {
     func deactivatePushToken(_ token: String) async throws {}
     func upsertMealNotifications(_ settings: MealReminderSettings, timeZone: String) async throws {}
     func fetchMealNotifications() async throws -> MealReminderSettings? { nil }
+    func fetchFriendInviteCode() async throws -> FriendInviteCodeDTO { .init(code: "") }
+    func acceptFriendInvite(code: String) async throws -> FriendAcceptResultDTO { .init(accepted: false, bonusGranted: false) }
+    func fetchFriendRanking() async throws -> [FriendRankingDTO] { [] }
 
     /// 상한 없는 편의 메서드 — `fetchChewingSessions(deviceId:since:until:)`에 `until: nil`을
     /// 위임. 기존 "오늘의 식사 기록" 호출자(`AppState.fetchTodaySessions`) 그대로 사용.
@@ -84,6 +92,10 @@ struct NoopRemoteStore: RemoteStore {
     func deleteChewingSession(id: UUID, deviceId: String) async throws {}
     func deleteAllChewingSessions(deviceId: String) async throws {}
     func uploadIMUCSV(sessionId: UUID, deviceId: String, csvData: Data) async throws -> String { "" }
+    // 친구 초대 UI/카카오 공유 e2e용 — 비어 있지 않은 코드로 공유 경로(코드 가드 통과)를 타게 한다.
+    func fetchFriendInviteCode() async throws -> FriendInviteCodeDTO {
+        .init(code: "TESTCODE01", deepLink: "chewchew://invite?code=TESTCODE01")
+    }
 }
 
 struct InsForgeConfig {

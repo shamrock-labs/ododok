@@ -82,6 +82,25 @@ final class AppState {
         }
     }
 
+    var friendInviteCode: String?
+    var friendInviteDeepLink: String?
+    var friendRankings: [FriendRankingDTO] = []
+
+    /// 친구 영역(초대 코드·랭킹) 로딩 상태. 실패를 "불러오는 중"과 구분해, 무한 로딩 대신 에러+재시도를 노출한다.
+    enum FriendAreaLoadState: Equatable {
+        case loading
+        case loaded
+        case failed
+    }
+
+    var friendAreaLoadState: FriendAreaLoadState = .loading
+
+    /// 딥링크로 받았지만 아직 미로그인이라 보류 중인 초대 코드. 로그인/가입(OAuth) 완료 후 자동 수락한다.
+    var pendingInviteCode: String?
+
+    /// 전역 토스트(딥링크 친구 수락 결과 등). ContentView가 하단에 표시한다.
+    var globalToast: String?
+
     /// `fetchAndApplyDisplayName` 한 번 끝났는지. 시작 직후 DB fetch 완료 전엔 false로 두어
     /// "기존 사용자가 reinstall한 cold-start에서 sheet이 잠깐 깜빡이는" 케이스를 차단.
     /// 처음 fetch가 끝나면 true로 마크 — 그 시점에 displayName nil이면 진짜 신규 디바이스.
@@ -104,6 +123,7 @@ final class AppState {
 
     private static let displayNameKey = "ChewChewIOS.AppState.displayName"
     private static let onboardingCompleteKey = "ChewChewIOS.AppState.hasCompletedOnboarding"
+    private static let pendingInviteCodeKey = "ChewChewIOS.AppState.pendingInviteCode"
 
     // MARK: - Wardrobe (다람쥐 꾸미기)
 
@@ -273,6 +293,8 @@ final class AppState {
             hasCompletedOnboarding = true
             UserDefaults.standard.set(true, forKey: Self.onboardingCompleteKey)
         }
+        // 로그인 도중 앱이 종료돼도 보류 초대가 살아남도록 복원(로그인 완료 시 소비).
+        pendingInviteCode = UserDefaults.standard.string(forKey: Self.pendingInviteCodeKey)
         // 즉시 표시용 fallback — DB 실패 또는 응답 전에 화면 그려도 마지막 캐시값으로.
         loadPersistedSnapshot()
         Task { [weak self] in
@@ -660,6 +682,8 @@ final class AppState {
             // 로그인 직후 끼니 알림 재적용 — 서버 토큰 등록/설정 PUT 또는 로컬 fallback을 재개한다.
             // (.task는 앱 시작 시 1회뿐이라, 앱 실행 중 로그인하면 여기서 다시 걸어줘야 알림이 재등록된다.)
             await self?.mealPushCoordinator.apply(.load())
+            // 미로그인 상태에서 받은 초대가 있으면 로그인/가입 완료 후 자동 수락한다.
+            await self?.consumePendingInviteCodeIfNeeded()
         }
     }
 
@@ -1310,6 +1334,97 @@ final class AppState {
         } catch {
             handleRemoteError(error)
             return
+        }
+    }
+
+    @MainActor
+    func refreshFriendArea() async {
+        // 이미 코드를 받아둔 뒤의 새로고침은 화면을 비우지 않는다(첫 로딩일 때만 로딩 상태로).
+        if friendInviteCode == nil { friendAreaLoadState = .loading }
+        // 일시적 실패로 바로 에러를 띄우지 않는다: 짧은 backoff로 최대 3회 시도하고, 그 동안은 로딩(스피너) 유지.
+        let maxAttempts = 3
+        for attempt in 1...maxAttempts {
+            do {
+                let invite = try await remoteStore.fetchFriendInviteCode()
+                friendInviteCode = invite.code
+                friendInviteDeepLink = invite.deepLink
+                friendRankings = try await remoteStore.fetchFriendRanking()
+                friendAreaLoadState = .loaded
+                return
+            } catch {
+                // 인증 만료는 재시도로 풀리지 않으므로 즉시 실패 처리(세션 만료 핸들링은 그대로).
+                if case RemoteStoreError.authExpired = error {
+                    handleRemoteError(error)
+                    friendAreaLoadState = .failed
+                    return
+                }
+                if attempt < maxAttempts {
+                    try? await Task.sleep(for: .seconds(1))  // 다음 시도 전 짧게 대기
+                } else {
+                    friendAreaLoadState = .failed  // 3회 모두 실패한 뒤에만 에러 노출
+                }
+            }
+        }
+    }
+
+    @MainActor
+    func acceptFriendInvite(code: String) async {
+        do {
+            let result = try await remoteStore.acceptFriendInvite(code: code)
+            await refreshFriendArea()
+            flashToast(result.bonusGranted ? "친구가 됐어요! 도토리 100개 받았어요" : "이미 친구예요")
+        } catch {
+            handleRemoteError(error) // authExpired면 세션 만료 처리(로그인 게이트로 복귀)
+            flashToast(acceptErrorMessage(error))
+        }
+    }
+
+    /// 딥링크(카카오/외부 공유)로 받은 초대 코드 처리. 로그인 상태면 바로 수락하고,
+    /// 미로그인이면 보관했다가 로그인/가입(OAuth) 완료 후 자동 수락한다.
+    @MainActor
+    func receiveInviteCode(_ code: String) {
+        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        if isLoggedIn {
+            Task { await acceptFriendInvite(code: trimmed) }
+        } else {
+            // 로그인 게이트(isLoggedIn=false)는 이미 노출됨. 로그인 후 자동 수락하도록 보관.
+            pendingInviteCode = trimmed
+            UserDefaults.standard.set(trimmed, forKey: Self.pendingInviteCodeKey)
+            flashToast("로그인하면 친구가 돼요")
+        }
+    }
+
+    /// 보류된 초대 코드가 있으면 수락하고 비운다(로그인 완료 직후 호출).
+    @MainActor
+    private func consumePendingInviteCodeIfNeeded() async {
+        guard let code = pendingInviteCode else { return }
+        pendingInviteCode = nil
+        UserDefaults.standard.removeObject(forKey: Self.pendingInviteCodeKey)
+        await acceptFriendInvite(code: code)
+    }
+
+    /// 친구 수락 실패 토스트 문구. 서버 에러 코드(4011/4012)·오프라인·만료를 구분한다.
+    private func acceptErrorMessage(_ error: Error) -> String {
+        if case let RemoteStoreError.server(_, code, _) = error {
+            switch code {
+            case 4012: return "본인 초대 코드는 수락할 수 없어요"
+            case 4011: return "유효하지 않은 초대 코드예요"
+            default: break
+            }
+        }
+        if case RemoteStoreError.offline = error { return "네트워크 연결을 확인해 주세요" }
+        if case RemoteStoreError.authExpired = error { return "다시 로그인한 뒤 시도해 주세요" }
+        return "친구 맺기에 실패했어요"
+    }
+
+    /// 전역 토스트 표시(2.2초). 같은 메시지일 때만 정리해 새 토스트가 일찍 사라지지 않게 한다.
+    @MainActor
+    func flashToast(_ message: String) {
+        globalToast = message
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(2.2))
+            if self?.globalToast == message { self?.globalToast = nil }
         }
     }
 

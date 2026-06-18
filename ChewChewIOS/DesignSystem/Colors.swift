@@ -28,6 +28,9 @@ extension Color {
     static let butter500 = Color(hex: 0xE8B055)
     static let butter600 = Color(hex: 0xC9912E)
 
+    /// 카카오 브랜드 옐로우(공식 #FEE500). 카카오 공유/초대 버튼 전용.
+    static let kakaoYellow = Color(hex: 0xFEE500)
+
     static let blush100 = Color(hex: 0xFCE7E0)
     static let blush200 = Color(hex: 0xF8CFC0)
     static let blush400 = Color(hex: 0xF4A99B)

@@ -214,6 +214,27 @@ final class SpringRemoteStore: RemoteStore {
         return MealReminderSettings(serverSlots: dto.slots)
     }
 
+    // MARK: - friend
+
+    func fetchFriendInviteCode() async throws -> FriendInviteCodeDTO {
+        let req = jsonRequest(method: "GET", path: "/v1/me/friends/invite-code")
+        let data = try await sendExpectingSuccess(req)
+        return try decodeResult(FriendInviteCodeDTO.self, from: data)
+    }
+
+    func acceptFriendInvite(code: String) async throws -> FriendAcceptResultDTO {
+        var req = jsonRequest(method: "POST", path: "/v1/me/friends/accept")
+        req.httpBody = try encoder.encode(["code": code])
+        let data = try await sendExpectingSuccess(req)
+        return try decodeResult(FriendAcceptResultDTO.self, from: data)
+    }
+
+    func fetchFriendRanking() async throws -> [FriendRankingDTO] {
+        let req = jsonRequest(method: "GET", path: "/v1/me/friends/ranking")
+        let data = try await sendExpectingSuccess(req)
+        return try decodeOptionalResult([FriendRankingDTO].self, from: data) ?? []
+    }
+
     // MARK: - Helpers
 
     /// JSON Content-Type 포함 요청 빌더.
