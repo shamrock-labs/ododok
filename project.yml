@@ -83,6 +83,7 @@ targets:
         LSApplicationQueriesSchemes:
           - kakaokompassauth
           - kakaotalk
+          - kakaolink
         CFBundleURLTypes:
           - CFBundleURLSchemes:
               - chewchew

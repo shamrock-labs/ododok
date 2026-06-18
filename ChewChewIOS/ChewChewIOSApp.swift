@@ -80,6 +80,16 @@ struct ChewChewIOSApp: App {
     /// `chewchew://` 딥링크 처리. onOpenURL 및 NotificationDelegate에서 공통 호출.
     @MainActor
     func handleOpenURL(_ url: URL) {
+        // 카카오 공유 메시지의 "초대 수락하기" 버튼은 앱을 kakao{앱키}://kakaolink?code=... 로 연다
+        // (iosExecutionParams). chewchew:// 외에 이 카카오 실행 스킴도 초대 수락으로 라우팅한다.
+        if url.scheme?.hasPrefix("kakao") == true, url.host == "kakaolink" {
+            if let code = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first(where: { $0.name == "code" })?.value,
+               !code.isEmpty {
+                Task { await appState.acceptFriendInvite(code: code) }
+            }
+            return
+        }
         guard url.scheme == "chewchew" else { return }
         switch url.host {
         case "start":
