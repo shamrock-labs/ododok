@@ -404,6 +404,7 @@ struct FriendAcceptResultDTO: Codable, Equatable {
 
 struct FriendRankingDTO: Codable, Equatable, Identifiable {
     var userId: UUID
+    var name: String?
     var points: Int
     var me: Bool
 

@@ -120,19 +120,29 @@ struct FriendsView: View {
                     .font(.appFont(.semibold, size: 14))
                     .foregroundStyle(Color.ink400)
             } else {
-                ForEach(Array(state.friendRankings.enumerated()), id: \.element.id) { index, row in
-                    HStack {
-                        Text(row.me ? "나" : "친구 \(index + 1)")
-                            .font(.appFont(.bold, size: 14))
-                            .foregroundStyle(Color.ink800)
-                        Spacer()
-                        Text("\(row.points) 도토리")
-                            .font(.appFont(.semibold, size: 14))
-                            .foregroundStyle(Color.sage600)
-                    }
-                    .padding(.vertical, 10)
-                    if index + 1 < state.friendRankings.count {
-                        Divider().overlay(Color.ink100)
+                VStack(spacing: 4) {
+                    ForEach(Array(state.friendRankings.enumerated()), id: \.element.id) { index, row in
+                        HStack(spacing: 10) {
+                            Text("\(index + 1)")
+                                .font(.appFont(.heavy, size: 14))
+                                .foregroundStyle(row.me ? Color.sage600 : Color.ink400)
+                                .frame(minWidth: 18)
+                            Text(rankingName(row))
+                                .font(.appFont(.bold, size: 14))
+                                .foregroundStyle(Color.ink800)
+                                .lineLimit(1)
+                            Spacer()
+                            Text("\(row.points) 도토리")
+                                .font(.appFont(.semibold, size: 14))
+                                .foregroundStyle(Color.sage600)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 11)
+                        // 내 행은 은은한 배경 틴트로 자연스럽게 강조.
+                        .background(
+                            row.me ? Color.sage50 : Color.clear,
+                            in: RoundedRectangle(cornerRadius: 12)
+                        )
                     }
                 }
             }
@@ -142,6 +152,14 @@ struct FriendsView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white, in: RoundedRectangle(cornerRadius: 28))
         .neuoShadow(.md)
+    }
+
+    /// 랭킹 행 표시 이름. 내 행은 내 닉네임(없으면 "나"), 친구는 서버 표시 이름(없으면 "친구").
+    private func rankingName(_ row: FriendRankingDTO) -> String {
+        if row.me {
+            return state.displayName ?? row.name ?? "나"
+        }
+        return row.name ?? "친구"
     }
 
     /// 카카오톡 인앱 공유로 초대를 보낸다(링크 복사 아님 — 카카오톡 공유 시트가 직접 뜬다).
