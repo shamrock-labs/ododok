@@ -12,6 +12,7 @@ struct ReportHubView: View {
     @State private var selectedDate: Date = mealCalendarCalendar.startOfDay(for: Date())
     @State private var detailSession: ChewingSessionDTO?
     @State private var showCalendar = false
+    @State private var showDailySummary = false
     @State private var calendarMonth: Date = mealCalendarCalendar.startOfDay(for: Date())
 
     private let dayWidth: CGFloat = 52
@@ -51,6 +52,12 @@ struct ReportHubView: View {
                 }
             )
             .presentationDetents([.medium, .large])
+        }
+        .sheet(isPresented: $showDailySummary) {
+            DailySummarySheet(
+                daily: dailyByDay[mealCalendarCalendar.startOfDay(for: selectedDate)] ?? .empty(date: Self.serverDayFormatter.string(from: selectedDate)),
+                dateLabel: selectedDay.shortDateLabel
+            )
         }
     }
 
@@ -152,7 +159,7 @@ struct ReportHubView: View {
                     .font(.appFont(.bold, size: 11))
                     .foregroundStyle(selected ? Color.acorn700 : Color.ink400)
                 ZStack {
-                    MealCompletionRing(meals: day.mealCount, selected: selected)
+                    MealCompletionRing(meals: day.slotCount, selected: selected)
                     Text(day.dayLabel)
                         .font(.appFont(.heavy, size: 14))
                         .foregroundStyle(selected ? Color.white : Color.ink800)
@@ -163,7 +170,7 @@ struct ReportHubView: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(day.shortDateLabel), \(day.mealCount)끼 기록")
+        .accessibilityLabel("\(day.shortDateLabel), \(day.slotCount)끼 기록")
     }
 
     // MARK: - 끼니 목록 카드
@@ -177,7 +184,7 @@ struct ReportHubView: View {
                         .foregroundStyle(Color.ink800)
                         .monospacedDigit()
                     Spacer()
-                    Text("\(selectedMeals.count)회")
+                    Text("기록 \(selectedMeals.count)개")
                         .font(.appFont(.bold, size: 12))
                         .foregroundStyle(Color.acorn700)
                         .padding(.horizontal, 9)
@@ -193,9 +200,9 @@ struct ReportHubView: View {
             if selectedMeals.isEmpty {
                 emptySessionState
             } else {
-                VStack(spacing: 6) {
-                    ForEach(selectedMeals, id: \.sessionId) { meal in
-                        sessionRow(meal)
+                VStack(alignment: .leading, spacing: 14) {
+                    ForEach(slotGroups, id: \.slot) { group in
+                        slotGroupBlock(slot: group.slot, meals: group.meals)
                     }
                     dailyReportRow
                 }
@@ -226,24 +233,58 @@ struct ReportHubView: View {
         .background(Color.acorn50.opacity(0.55), in: RoundedRectangle(cornerRadius: 16))
     }
 
-    private func sessionRow(_ meal: DailyReportDTO.Meal) -> some View {
-        let slot = DayMealSlot(hour: mealCalendarCalendar.component(.hour, from: meal.startedAt))
-        return Button {
+    /// 선택일 끼를 서버 슬롯 기준으로 묶는다(아침→점심→저녁→야식). 같은 슬롯 다회 식사는 한 그룹에 여러 줄.
+    private var slotGroups: [(slot: DayMealSlot, meals: [DailyReportDTO.Meal])] {
+        let order: [DayMealSlot] = [.morning, .lunch, .dinner, .lateNight]
+        let grouped = Dictionary(grouping: selectedMeals) { DayMealSlot(serverSlot: $0.slot) }
+        return order.compactMap { slot in
+            guard let meals = grouped[slot], !meals.isEmpty else { return nil }
+            return (slot, meals.sorted { $0.startedAt < $1.startedAt })
+        }
+    }
+
+    private func slotGroupBlock(slot: DayMealSlot, meals: [DailyReportDTO.Meal]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(slot.emoji)
+                    .font(.appFont(.regular, size: 17))
+                    .frame(width: 30, height: 30)
+                    .background(slotTint(slot), in: RoundedRectangle(cornerRadius: 10))
+                Text(slot.label)
+                    .font(.appFont(.heavy, size: 15))
+                    .foregroundStyle(Color.ink800)
+                if meals.count > 1 {
+                    Text("\(meals.count)회")
+                        .font(.appFont(.bold, size: 11))
+                        .foregroundStyle(Color.acorn700)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 2)
+                        .background(Color.acorn50, in: Capsule())
+                }
+                Spacer(minLength: 0)
+            }
+            VStack(spacing: 6) {
+                ForEach(meals, id: \.sessionId) { meal in
+                    mealRow(meal)
+                }
+            }
+        }
+    }
+
+    /// 슬롯 그룹 안의 개별 세션 줄(헤더가 슬롯을 보여주므로 여기선 시각·횟수·시간만).
+    private func mealRow(_ meal: DailyReportDTO.Meal) -> some View {
+        Button {
             detailSession = ChewingSessionDTO(reportMeal: meal)
         } label: {
             HStack(spacing: 12) {
-                Text(slot.emoji)
-                    .font(.appFont(.regular, size: 17))
-                    .frame(width: 34, height: 34)
-                    .background(slotTint(slot), in: RoundedRectangle(cornerRadius: 11))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(slot.label)
-                        .font(.appFont(.heavy, size: 15))
-                        .foregroundStyle(Color.ink800)
-                    Text("\(timeLabel(meal.startedAt)) · \((meal.totalChews ?? 0).koLocale)회")
-                        .font(.appFont(.semibold, size: 12))
-                        .foregroundStyle(Color.ink600)
-                }
+                Text(timeLabel(meal.startedAt))
+                    .font(.appFont(.heavy, size: 14))
+                    .foregroundStyle(Color.ink800)
+                    .monospacedDigit()
+                    .frame(width: 48, alignment: .leading)
+                Text("\((meal.totalChews ?? 0).koLocale)회")
+                    .font(.appFont(.semibold, size: 12))
+                    .foregroundStyle(Color.ink600)
                 Spacer(minLength: 0)
                 Text(durationLabel(meal.durationSec))
                     .font(.appFont(.bold, size: 13))
@@ -254,13 +295,15 @@ struct ReportHubView: View {
                     .foregroundStyle(Color.ink400)
             }
             .padding(.vertical, 8)
+            .padding(.horizontal, 12)
+            .background(Color.acorn50.opacity(0.5), in: RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
     }
 
     private var dailyReportRow: some View {
         Button {
-            detailSession = selectedMeals.last.map(ChewingSessionDTO.init(reportMeal:))
+            showDailySummary = true
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -410,9 +453,9 @@ struct ReportHubView: View {
         showCalendar = true
     }
 
-    /// 그 날이 속한 주의 mealCount(달력 링·타임라인 링 공용). 데이터 없으면 0.
+    /// 그 날의 메인 끼 슬롯 수(달력 링·타임라인 링 공용, 0~3). 같은 슬롯 다회는 1로 캡. 데이터 없으면 0.
     private func dayMealCount(for date: Date) -> Int {
-        min(3, serverDay(for: date)?.mealCount ?? 0)
+        min(3, serverDay(for: date)?.mainSlotCount ?? 0)
     }
 
     private func serverDay(for date: Date) -> WeeklyReportDTO.Day? {
@@ -513,17 +556,18 @@ private struct ReportDay: Identifiable {
     let date: Date
     let chewCount: Int
     let minutes: Int
-    let mealCount: Int
+    /// 그날 채운 메인 끼 슬롯 수(아침·점심·저녁, 0~3). 링 완성도와 요약 m/3의 정본.
+    let slotCount: Int
 
     var id: Date { date }
 
-    /// 서버 주간 리포트의 하루 집계에서 생성. mealCount는 링(아침·점심·저녁 3끼)용이라 3으로 캡한다.
+    /// 서버 주간 리포트의 하루 집계에서 생성. 링·요약은 세션 수가 아니라 메인 슬롯 수(mainSlotCount)를 쓴다.
     init(date: Date, serverDay: WeeklyReportDTO.Day?) {
         self.date = date
-        let mc = serverDay?.mealCount ?? 0
+        let hasSession = (serverDay?.mealCount ?? 0) > 0
         chewCount = serverDay?.totalChews ?? 0
-        mealCount = min(3, mc)
-        minutes = mc > 0 ? max(1, Int(((serverDay?.totalEatingSeconds ?? 0) / 60).rounded())) : 0
+        slotCount = min(3, serverDay?.mainSlotCount ?? 0)
+        minutes = hasSession ? max(1, Int(((serverDay?.totalEatingSeconds ?? 0) / 60).rounded())) : 0
     }
 
     var weekdayLabel: String {
@@ -546,7 +590,7 @@ private struct ReportDay: Identifiable {
     }
 
     var summaryLabel: String {
-        "\(chewCount.koLocale)회 · 평균 씹기 시간 \(minutes)분 · \(mealCount)/3끼"
+        "\(chewCount.koLocale)회 · 평균 씹기 시간 \(minutes)분 · \(slotCount)/3끼"
     }
 }
 
@@ -805,6 +849,177 @@ private struct TrendLegend: View {
                 .font(.appFont(.bold, size: 11))
                 .foregroundStyle(Color.ink600)
         }
+    }
+}
+
+// 서버 끼 분류(BREAKFAST/LUNCH/DINNER/OTHER)를 표시용 슬롯으로. iOS 시각 재계산 대신 서버 값을 정본으로 쓴다.
+extension DayMealSlot {
+    init(serverSlot: String) {
+        switch serverSlot {
+        case "BREAKFAST": self = .morning
+        case "LUNCH": self = .lunch
+        case "DINNER": self = .dinner
+        default: self = .lateNight // OTHER(야식)
+        }
+    }
+}
+
+// MARK: - 일간 요약 시트 (하루 전체 합산 + 어제 대비 + 끼별 요약)
+
+private struct DailySummarySheet: View {
+    let daily: DailyReportDTO
+    let dateLabel: String
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        Text(dateLabel)
+                            .font(.appFont(.heavy, size: 18))
+                            .foregroundStyle(Color.ink800)
+                            .monospacedDigit()
+                        Spacer()
+                        Text("기록 \(daily.meals.count)개")
+                            .font(.appFont(.bold, size: 12))
+                            .foregroundStyle(Color.acorn700)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 4)
+                            .background(Color.acorn50, in: Capsule())
+                    }
+
+                    metricsGrid
+
+                    if let vs = daily.vsYesterday {
+                        vsYesterdayCard(vs)
+                    }
+
+                    if !daily.meals.isEmpty {
+                        slotBreakdown
+                    }
+                }
+                .padding(20)
+            }
+            .background(LinearGradient.appBackground.ignoresSafeArea())
+            .navigationTitle("일간 리포트")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("닫기") { dismiss() }
+                        .foregroundStyle(Color.acorn700)
+                }
+            }
+        }
+    }
+
+    private var metricsGrid: some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 10) {
+                metricTile("총 씹은 횟수", "\(daily.totalChews.koLocale)회")
+                metricTile("총 식사 시간", minutesText(daily.totalEatingSeconds))
+            }
+            HStack(spacing: 10) {
+                metricTile("평균 씹기 속도", daily.avgChewRatePerMin.map { String(format: "%.0f회/분", $0) } ?? "-")
+                metricTile("평균 집중 비율", daily.avgChewingFraction.map { "\(Int(($0 * 100).rounded()))%" } ?? "-")
+            }
+        }
+    }
+
+    private func metricTile(_ title: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.appFont(.semibold, size: 12))
+                .foregroundStyle(Color.ink600)
+            Text(value)
+                .font(.appFont(.heavy, size: 20))
+                .foregroundStyle(Color.ink800)
+                .monospacedDigit()
+                .minimumScaleFactor(0.7)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 16))
+        .softShadow(.base)
+    }
+
+    private func vsYesterdayCard(_ vs: DailyReportDTO.VsYesterday) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("어제 대비")
+                .font(.appFont(.heavy, size: 14))
+                .foregroundStyle(Color.ink800)
+            HStack(spacing: 18) {
+                deltaItem("끼", vs.mealCountDelta.map { signed($0) }, positive: (vs.mealCountDelta ?? 0) >= 0)
+                deltaItem("씹기 속도", vs.avgChewRatePerMinDelta.map { String(format: "%+.1f", $0) }, positive: (vs.avgChewRatePerMinDelta ?? 0) >= 0)
+                deltaItem("식사 시간", vs.totalEatingSecondsDelta.map { signedMinutes($0) }, positive: (vs.totalEatingSecondsDelta ?? 0) >= 0)
+                Spacer(minLength: 0)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 16))
+        .softShadow(.base)
+    }
+
+    private func deltaItem(_ label: String, _ value: String?, positive: Bool) -> some View {
+        VStack(spacing: 2) {
+            Text(value ?? "-")
+                .font(.appFont(.heavy, size: 15))
+                .foregroundStyle(value == nil ? Color.ink400 : (positive ? Color.sage500 : Color.blush500))
+                .monospacedDigit()
+            Text(label)
+                .font(.appFont(.semibold, size: 11))
+                .foregroundStyle(Color.ink600)
+        }
+    }
+
+    private var slotBreakdown: some View {
+        let order: [DayMealSlot] = [.morning, .lunch, .dinner, .lateNight]
+        let grouped = Dictionary(grouping: daily.meals) { DayMealSlot(serverSlot: $0.slot) }
+        let slots = order.filter { (grouped[$0]?.isEmpty == false) }
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("끼별 요약")
+                .font(.appFont(.heavy, size: 14))
+                .foregroundStyle(Color.ink800)
+            ForEach(slots, id: \.self) { slot in
+                let meals = grouped[slot] ?? []
+                let chews = meals.reduce(0) { $0 + ($1.totalChews ?? 0) }
+                HStack(spacing: 10) {
+                    Text(slot.emoji).font(.appFont(.regular, size: 16))
+                    Text(slot.label)
+                        .font(.appFont(.heavy, size: 14))
+                        .foregroundStyle(Color.ink800)
+                    Spacer()
+                    Text("\(meals.count)끼 · \(chews.koLocale)회")
+                        .font(.appFont(.semibold, size: 13))
+                        .foregroundStyle(Color.ink600)
+                        .monospacedDigit()
+                }
+                .padding(.vertical, 6)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 16))
+        .softShadow(.base)
+    }
+
+    private func signed(_ n: Int) -> String { "\(n > 0 ? "+" : "")\(n)" }
+
+    private func signedMinutes(_ seconds: Double) -> String {
+        let m = Int((seconds / 60).rounded())
+        return "\(m > 0 ? "+" : "")\(m)분"
+    }
+
+    private func minutesText(_ seconds: Double) -> String {
+        let total = max(0, Int(seconds.rounded()))
+        let m = total / 60
+        let s = total % 60
+        if m == 0 { return "\(s)초" }
+        if s == 0 { return "\(m)분" }
+        return "\(m)분 \(s)초"
     }
 }
 

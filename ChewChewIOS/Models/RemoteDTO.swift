@@ -438,10 +438,17 @@ extension HomeStateDTO {
 struct DailyReportDTO: Decodable, Equatable {
     let date: String
     let mealCount: Int
+    let totalEatingSeconds: Double
+    let totalChews: Int
+    let avgChewRatePerMin: Double?
+    let avgChewingFraction: Double?
     let meals: [Meal]
+    let vsYesterday: VsYesterday?
 
     struct Meal: Decodable, Equatable {
         let sessionId: UUID
+        /// 서버 끼 분류(정본): BREAKFAST/LUNCH/DINNER/OTHER. iOS는 자체 시각 재계산 대신 이 값을 쓴다.
+        let slot: String
         let startedAt: Date
         let endedAt: Date
         let durationSec: Double
@@ -451,8 +458,18 @@ struct DailyReportDTO: Decodable, Equatable {
         let restSeconds: Double?
     }
 
+    /// 어제 대비 델타(일간 요약 시트용). 오늘·어제 모두 0끼면 서버가 null로 준다.
+    struct VsYesterday: Decodable, Equatable {
+        let mealCountDelta: Int?
+        let avgChewRatePerMinDelta: Double?
+        let totalEatingSecondsDelta: Double?
+    }
+
     static func empty(date: String) -> DailyReportDTO {
-        DailyReportDTO(date: date, mealCount: 0, meals: [])
+        DailyReportDTO(
+            date: date, mealCount: 0, totalEatingSeconds: 0, totalChews: 0,
+            avgChewRatePerMin: nil, avgChewingFraction: nil, meals: [], vsYesterday: nil
+        )
     }
 }
 
@@ -465,6 +482,9 @@ struct WeeklyReportDTO: Decodable, Equatable {
     struct Day: Decodable, Equatable {
         let date: String
         let mealCount: Int
+        /// 그날 기록된 메인 끼 슬롯(아침/점심/저녁) 수 0~3. 링 완성도(m/3) 근거. 같은 슬롯 다회는 1로 캡.
+        /// 서버 배포 전(필드 부재)에도 주간 디코딩이 깨지지 않도록 optional — 없으면 0(빈 링)으로 본다.
+        let mainSlotCount: Int?
         let totalChews: Int
         let totalEatingSeconds: Double
     }
