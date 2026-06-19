@@ -90,11 +90,12 @@ struct ReportHubView: View {
 
     private var timelineCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack {
+            HStack(spacing: 10) {
                 Text(monthRangeLabel)
                     .font(.appFont(.heavy, size: 15))
                     .foregroundStyle(Color.ink800)
                 Spacer()
+                TrendLegend()
                 Button { openCalendar() } label: {
                     Image(systemName: "calendar")
                         .font(.system(size: 17, weight: .semibold))
@@ -135,22 +136,6 @@ struct ReportHubView: View {
                     }
                 }
             }
-
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(selectedDay.shortDateLabel)
-                        .font(.appFont(.heavy, size: 17))
-                        .foregroundStyle(Color.ink800)
-                        .monospacedDigit()
-                    Text(selectedDay.summaryLabel)
-                        .font(.appFont(.semibold, size: 13))
-                        .foregroundStyle(Color.ink600)
-                        .monospacedDigit()
-                }
-                Spacer(minLength: 0)
-                TrendLegend()
-            }
-            .padding(.top, 2)
         }
         .padding(16)
         .background(Color.white, in: RoundedRectangle(cornerRadius: 24))
@@ -185,17 +170,24 @@ struct ReportHubView: View {
 
     private var sessionListCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("끼니")
-                    .font(.appFont(.heavy, size: 16))
-                    .foregroundStyle(Color.ink800)
-                Spacer()
-                Text("\(selectedMeals.count)회")
-                    .font(.appFont(.bold, size: 12))
-                    .foregroundStyle(Color.acorn700)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
-                    .background(Color.acorn50, in: Capsule())
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text(selectedDay.shortDateLabel)
+                        .font(.appFont(.heavy, size: 16))
+                        .foregroundStyle(Color.ink800)
+                        .monospacedDigit()
+                    Spacer()
+                    Text("\(selectedMeals.count)회")
+                        .font(.appFont(.bold, size: 12))
+                        .foregroundStyle(Color.acorn700)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(Color.acorn50, in: Capsule())
+                }
+                Text(selectedDay.summaryLabel)
+                    .font(.appFont(.semibold, size: 13))
+                    .foregroundStyle(Color.ink600)
+                    .monospacedDigit()
             }
 
             if selectedMeals.isEmpty {
