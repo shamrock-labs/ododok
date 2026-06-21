@@ -210,6 +210,9 @@ final class AppState {
     /// 원격 백엔드(InsForge)에 대한 추상화. 테스트/시뮬레이터에선 NoopRemoteStore 주입 가능.
     @ObservationIgnored let remoteStore: RemoteStore
 
+    /// 제품·리텐션 분석 포트(ODO-79). Amplitude·(후속) Firebase로 fan-out. 테스트/미설정 시 Noop.
+    @ObservationIgnored let analytics: AnalyticsService
+
     /// 서버 기반 식사 푸시 조정자(ODO-56) — APNs 토큰 등록 + 서버/로컬 알림 전환을 관리.
     @ObservationIgnored let mealPushCoordinator: MealPushCoordinator
 
@@ -277,10 +280,12 @@ final class AppState {
 
     init(
         remoteStore: RemoteStore = NoopRemoteStore(),
-        authSessionManager: AuthSessionManaging = NoopAuthSessionManager()
+        authSessionManager: AuthSessionManaging = NoopAuthSessionManager(),
+        analytics: AnalyticsService = NoopAnalytics()
     ) {
         self.remoteStore = remoteStore
         self.authSessionManager = authSessionManager
+        self.analytics = analytics
         self.mealPushCoordinator = MealPushCoordinator(remoteStore: remoteStore)
         // displayName은 game state(`PersistedSnapshot`)과 다른 별도 캐시 키 — cold-start
         // 시 UserDefaults에서 즉시 read해 HomeView가 빈 이름으로 깜빡이지 않도록.
@@ -313,6 +318,7 @@ final class AppState {
     func startEating() {
         guard !isEating else { return }
         isEating = true
+        analytics.track(.mealSessionStarted())
         let now = Date()
         eatingStartedAt = now
         // 새 세션 시작 시 IMU 진단 지표 리셋 — 백그라운드 수집 여부 검증에 깨끗한 기준 제공
@@ -1142,11 +1148,19 @@ final class AppState {
             pendingUpload = nil
             // 서버가 계산한 도토리/스트릭/오늘 상태를 화면에 반영(정본). iOS는 재계산하지 않는다.
             applyHome(result.userStats)
+            let isReportable = ReportCardModel.from(dto) != nil
+            analytics.track(.mealSessionCompleted(
+                durationSec: Int(dto.durationSec),
+                sampleCount: dto.sampleCount,
+                chewingFraction: dto.chewingFraction,
+                estimatedTotalChews: dto.estimatedTotalChews,
+                reportable: isReportable
+            ))
             // 리포트가 생성될 수 없는 세션(durationSec < 60 또는 분석 5필드 nil)은 결과·보상
             // 다이얼로그 어디에도 반영하지 않는다 — 서버도 rewardEligible=false로 보상 0.
             // 알림 '그만하기'로 끝낸 너무 짧은 세션도 홈 '그만두기'(discard)와 동일하게 무보상.
             // raw IMU는 이미 업로드됐고, fetchTodaySessions가 reload 시 이런 세션을 필터한다.
-            guard ReportCardModel.from(dto) != nil else { return }
+            guard isReportable else { return }
 
             // 방금 저장한 행을 즉시 리스트에 반영 — GET 라운드트립 생략.
             // started_at 오름차순 정렬을 유지하기 위해 append (방금 종료된 세션이 가장 최신).
@@ -1158,11 +1172,13 @@ final class AppState {
             // 멱등 재전송(idempotentReplay)이면 적립 0이므로 도토리 다이얼로그를 띄우지 않는다.
             if let streakGrant = rewardGrant(forStreak: result.streak) {
                 pendingRewardGrant = streakGrant
+                analytics.track(.streakEvent(type: streakGrant.kind.analyticsType, amount: streakGrant.amount))
             } else if result.reward.grantedPoints > 0 && !result.reward.idempotentReplay {
                 // SessionResultSheet가 먼저 떠 있는 상태 — ContentView overlay는
                 // sheet 닫힌 후(`lastCompletedSession == nil`)에만 그려져, 다이얼로그가
                 // sheet에 가려지지 않고 순차로 등장한다.
                 pendingRewardGrant = RewardGrant(amount: result.reward.grantedPoints, kind: .sessionComplete)
+                analytics.track(.rewardEarned(amount: result.reward.grantedPoints, kind: "session_complete"))
             }
         } catch {
             handleRemoteError(error)
@@ -1258,6 +1274,7 @@ final class AppState {
     func completeOnboarding() {
         guard !hasCompletedOnboarding else { return }
         hasCompletedOnboarding = true
+        analytics.track(.onboardingCompleted())
         Task { await grantDailyAttendanceIfNeeded() }
     }
 
@@ -1283,6 +1300,7 @@ final class AppState {
         applyHome(result.userStats)
         if result.grantedPoints > 0 && !result.idempotentReplay {
             pendingRewardGrant = RewardGrant(amount: result.grantedPoints, kind: .attendance)
+            analytics.track(.rewardEarned(amount: result.grantedPoints, kind: "attendance"))
         }
     }
 
@@ -1385,6 +1403,7 @@ final class AppState {
     func receiveInviteCode(_ code: String) {
         let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        analytics.track(.friendInviteReceived(loggedIn: isLoggedIn))
         if isLoggedIn {
             Task { await acceptFriendInvite(code: trimmed) }
         } else {
