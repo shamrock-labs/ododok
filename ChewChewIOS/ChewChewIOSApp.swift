@@ -17,7 +17,8 @@ struct ChewChewIOSApp: App {
         let dependencies = ChewChewIOSApp.makeDependencies()
         _appState = State(initialValue: AppState(
             remoteStore: dependencies.remoteStore,
-            authSessionManager: dependencies.authSessionManager
+            authSessionManager: dependencies.authSessionManager,
+            analytics: ChewChewIOSApp.makeAnalytics()
         ))
         // Kakao SDK 초기화(네이티브 앱키는 Info.plist 경유 Secrets.xcconfig). placeholder면 건너뜀.
         if let kakaoKey = Bundle.main.object(forInfoDictionaryKey: "KakaoNativeAppKey") as? String,
@@ -45,6 +46,19 @@ struct ChewChewIOSApp: App {
         }
         let springConfig = SpringConfig.current
         return (SpringRemoteStore(config: springConfig), SpringAuthClient(config: springConfig))
+    }
+
+    /// 제품·리텐션 분석 부트스트랩(ODO-79). Amplitude로 fan-out하는 CompositeAnalytics를 만든다.
+    /// 테스트 런·API Key 미설정(기여자 빌드)에서는 NoopAnalytics로 안전하게 비활성.
+    /// 향후 Firebase provider는 이 배열에 한 줄 추가로 합류한다(호출부 무변경).
+    private static func makeAnalytics() -> AnalyticsService {
+        let pi = ProcessInfo.processInfo
+        let underTest = pi.environment["XCTestConfigurationFilePath"] != nil
+            || pi.arguments.contains("-useNoopRemote")
+        guard !underTest else { return NoopAnalytics() }
+        guard let key = Bundle.main.object(forInfoDictionaryKey: "AmplitudeAPIKey") as? String,
+              !key.isEmpty, !key.contains("REPLACE") else { return NoopAnalytics() }
+        return CompositeAnalytics([AmplitudeProvider(apiKey: key)])
     }
 
     var body: some Scene {

@@ -76,6 +76,18 @@ struct RewardGrant: Equatable {
         case streakReset                         // 끊김 리셋
         case streakFirstDay                      // 첫 성공(스트릭 1일째) 토스트
 
+        /// 분석 이벤트용 안정적 식별자(ODO-79). 표시 문구(title)와 독립 — 문구가 바뀌어도 값은 유지된다.
+        var analyticsType: String {
+            switch self {
+            case .attendance:      "attendance"
+            case .sessionComplete: "session_complete"
+            case .streakMilestone: "streak_milestone"
+            case .streakSaved:     "streak_saved"
+            case .streakReset:     "streak_reset"
+            case .streakFirstDay:  "streak_first_day"
+            }
+        }
+
         var title: String {
             switch self {
             case .attendance:      "출석 보상"
