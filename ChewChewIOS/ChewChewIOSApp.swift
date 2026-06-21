@@ -56,9 +56,18 @@ struct ChewChewIOSApp: App {
         let underTest = pi.environment["XCTestConfigurationFilePath"] != nil
             || pi.arguments.contains("-useNoopRemote")
         guard !underTest else { return NoopAnalytics() }
-        guard let key = Bundle.main.object(forInfoDictionaryKey: "AmplitudeAPIKey") as? String,
-              !key.isEmpty, !key.contains("REPLACE") else { return NoopAnalytics() }
-        return CompositeAnalytics([AmplitudeProvider(apiKey: key)])
+
+        var providers: [AnalyticsService] = []
+        // Amplitude(EU) — API Key가 있을 때만.
+        if let key = Bundle.main.object(forInfoDictionaryKey: "AmplitudeAPIKey") as? String,
+           !key.isEmpty, !key.contains("REPLACE") {
+            providers.append(AmplitudeProvider(apiKey: key))
+        }
+        // Firebase Analytics — GoogleService-Info.plist이 번들에 있을 때만(plist는 gitignore).
+        if let firebase = FirebaseProvider.makeIfAvailable() {
+            providers.append(firebase)
+        }
+        return providers.isEmpty ? NoopAnalytics() : CompositeAnalytics(providers)
     }
 
     var body: some Scene {
