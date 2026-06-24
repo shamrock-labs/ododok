@@ -19,13 +19,12 @@ struct HomeView: View {
     var body: some View {
         VStack(spacing: 14) {
             topBar
-            statRow
             squirrelCard
                 .frame(maxHeight: .infinity)
             mealToggleButton
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 24)
+        .padding(.horizontal, 20)
+        .padding(.top, 18)
         .padding(.bottom, 18)
         .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { newDate in
             nowTick = newDate
@@ -117,19 +116,32 @@ struct HomeView: View {
     // MARK: Top bar
 
     private var topBar: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(todayLabel)
-                    .font(.appFont(.semibold, size: 14))
-                    .foregroundStyle(Color.ink600)
-                Text("안녕, \(state.displayName ?? "친구")님")
-                    .font(.appFont(.bold, size: 26))
-                    .foregroundStyle(Color.ink800)
-            }
-            Spacer()
-            HStack(spacing: 10) {
-                circleButton("bell.fill") { showMealReminderSettings = true }
-                circleButton("gearshape.fill") { showSettings = true }
+        HStack(alignment: .center, spacing: 12) {
+            Text("오도독")
+                .font(.appFont(.heavy, size: 22))
+                .foregroundStyle(Color.ink800)
+                .kerning(-0.5)
+
+            Spacer(minLength: 0)
+
+            HStack(spacing: 6) {
+                compactCounter(emoji: "🔥", value: "\(state.currentStreak)", color: .butter600)
+                compactCounter(emoji: "🌰", value: state.points.koLocale, color: .acorn700)
+
+                Rectangle()
+                    .fill(Color.ink100)
+                    .frame(width: 1, height: 18)
+                    .padding(.horizontal, 2)
+
+                flatIconButton("bell") { showMealReminderSettings = true }
+                    .overlay(alignment: .topTrailing) {
+                        Circle()
+                            .fill(Color.blush500)
+                            .frame(width: 7, height: 7)
+                            .overlay(Circle().stroke(Color.cream, lineWidth: 1.4))
+                            .offset(x: -4, y: 5)
+                    }
+                flatIconButton("gearshape") { showSettings = true }
             }
         }
     }
@@ -151,6 +163,32 @@ struct HomeView: View {
         }
         .buttonStyle(.plain)
         .neuoShadow(.sm)
+    }
+
+    private func compactCounter(emoji: String, value: String, color: Color) -> some View {
+        HStack(spacing: 3) {
+            Text(emoji)
+                .font(.appFont(.regular, size: 12))
+            Text(value)
+                .font(.appFont(.heavy, size: 13))
+                .foregroundStyle(color)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 28)
+        .background(Color.ink100.opacity(0.42), in: Capsule())
+    }
+
+    private func flatIconButton(_ symbol: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(Color.ink600)
+                .frame(width: 30, height: 30)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: Streak + Points
@@ -264,7 +302,7 @@ struct HomeView: View {
         .frame(maxWidth: .infinity)
         .frame(minHeight: 390)
         .background(Color.white, in: RoundedRectangle(cornerRadius: 26))
-        .neuoShadow(.md)
+        .softShadow(.base)
     }
 
     private var imuWaveformCard: some View {
