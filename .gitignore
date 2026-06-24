@@ -49,3 +49,6 @@ OdodokWidgets/Info.plist
 
 # 개인 MCP 설정 (레포 강제 안 함)
 .mcp.json
+
+# 작업 보고서 산출물 (레포에 넣지 않음)
+observability-report.html

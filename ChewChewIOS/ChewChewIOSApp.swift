@@ -14,6 +14,10 @@ struct ChewChewIOSApp: App {
     init() {
         // 크래시·에러 모니터링을 최우선 부팅 — 이후 의존성 초기화 단계의 실패까지 포착하기 위해 init 맨 앞.
         SentryService.start()
+        #if DEBUG
+        // Sentry 수집 검증용 의도적 크래시(launch arg `-crashTest <type>`). 인자 없으면 no-op.
+        CrashTester.crashIfRequested()
+        #endif
         let dependencies = ChewChewIOSApp.makeDependencies()
         _appState = State(initialValue: AppState(
             remoteStore: dependencies.remoteStore,
