@@ -47,3 +47,8 @@ OdodokWidgets/Info.plist
 
 # 개인 MCP 설정 (레포 강제 안 함)
 .mcp.json
+
+# 코드 서명 자료 (개인키 포함, 절대 커밋 금지)
+.signing/
+*.p12
+*.mobileprovision
