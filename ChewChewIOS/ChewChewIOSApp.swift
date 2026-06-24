@@ -62,9 +62,10 @@ struct ChewChewIOSApp: App {
         guard !underTest else { return NoopAnalytics() }
 
         var providers: [AnalyticsService] = []
-        // Amplitude(EU) — API Key가 있을 때만.
+        // Amplitude(EU) — 실사용 가능한 키일 때만. 빈값·미확장 `$(...)`·placeholder는 거부해
+        // garbage 키로 SDK가 초기화되며 이벤트가 조용히 유실되는 오설정을 막는다.
         if let key = Bundle.main.object(forInfoDictionaryKey: "AmplitudeAPIKey") as? String,
-           !key.isEmpty, !key.contains("REPLACE") {
+           ChewChewIOSApp.isUsableSecret(key) {
             providers.append(AmplitudeProvider(apiKey: key))
         }
         // Firebase Analytics — GoogleService-Info.plist이 번들에 있을 때만(plist는 gitignore).
@@ -72,6 +73,14 @@ struct ChewChewIOSApp: App {
             providers.append(firebase)
         }
         return providers.isEmpty ? NoopAnalytics() : CompositeAnalytics(providers)
+    }
+
+    /// config 주입 시크릿이 실사용 가능한 값인지 검증한다.
+    /// 거부: 빈값·공백·미설정 build setting의 미확장 리터럴(`$(...)`)·placeholder(REPLACE).
+    /// xcconfig 키가 아예 없을 때 Xcode가 `$(NAME)`을 빈 문자열이 아닌 리터럴로 남기는 경로까지 닫는다.
+    static func isUsableSecret(_ raw: String) -> Bool {
+        let v = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !v.isEmpty && !v.contains("REPLACE") && !v.contains("$(")
     }
 
     var body: some Scene {

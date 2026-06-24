@@ -18,9 +18,10 @@ enum SentryService {
             || pi.arguments.contains("-useNoopRemote")
         guard !underTest else { return }
 
-        // DSN 본문(scheme 제외). placeholder(REPLACE)거나 비면 Sentry 비활성 — 로컬/기여자 빌드 보호.
+        // DSN 본문(scheme 제외). placeholder(REPLACE)·빈값·미확장 `$(SENTRY_DSN)` 리터럴(키 미설정 시)이면
+        // Sentry 비활성 — 로컬/기여자/CI 빌드 보호. garbage 값으로 SDK가 켜지는 오설정을 막는다.
         guard let body = Bundle.main.object(forInfoDictionaryKey: "SentryDSN") as? String,
-              !body.isEmpty, !body.contains("REPLACE") else { return }
+              !body.isEmpty, !body.contains("REPLACE"), !body.contains("$(") else { return }
         let dsn = "https://" + body
 
         SentrySDK.start { options in
