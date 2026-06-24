@@ -668,6 +668,8 @@ final class AppState {
         freezeInventory = 0
         TokenManager.clear()
         isLoggedIn = false
+        analytics.setUserId(nil)
+        SentryService.setUser(id: nil)
         // 저장된 스냅샷도 비워서 다음 실행에서 시드값이 살아남도록
         clearPersistedSnapshot()
     }
@@ -682,6 +684,10 @@ final class AppState {
         // 서버 응답이 완료라고 하면 즉시 온보딩 sheet을 스킵 — 재로그인 시 재노출 회귀 차단.
         if onboardingCompleted { hasCompletedOnboarding = true }
         isLoggedIn = true
+        let deviceIdForLogin = DeviceIdentity.shared
+        analytics.setUserId(deviceIdForLogin)
+        analytics.setUserProperty("has_completed_onboarding", onboardingCompleted)
+        SentryService.setUser(id: deviceIdForLogin)
         Task { [weak self] in
             await self?.refreshFromServerHome()
             await self?.fetchAndApplyDisplayName()
@@ -715,6 +721,8 @@ final class AppState {
         Task { await mealPushCoordinator.clearRegistration() }
         TokenManager.clear()
         isLoggedIn = false
+        analytics.setUserId(nil)
+        SentryService.setUser(id: nil)
         clearLocalSessionCache()
     }
 
@@ -1242,6 +1250,14 @@ final class AppState {
         // 동기 블록에서 순차로 갱신되면 ContentView의 onboardingBinding 평가가 한 frame에
         // 일관된 두 값으로 수행돼, "didLoadProfile만 true + displayName 아직 nil" 중간
         // 상태에서 sheet이 열리는 race를 피한다.
+        // 콜드스타트 기존 유저 식별 복원 — Keychain 토큰이 있어 completeLogin()을
+        // 거치지 않고 재실행된 경우 Analytics + Sentry에 ID를 등록한다.
+        if isLoggedIn {
+            let deviceIdForRestore = DeviceIdentity.shared
+            analytics.setUserId(deviceIdForRestore)
+            analytics.setUserProperty("has_completed_onboarding", hasCompletedOnboarding)
+            SentryService.setUser(id: deviceIdForRestore)
+        }
         didLoadProfile = true
         // 재설치한 기존 사용자(위에서 hasCompletedOnboarding을 막 true로 올린 경우) 또는
         // me()로 온보딩 완료를 확인한 경우: foreground 진입 시점엔 아직 false였을 수 있으므로,

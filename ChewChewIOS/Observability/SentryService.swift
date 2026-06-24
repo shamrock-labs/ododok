@@ -45,4 +45,16 @@ enum SentryService {
             options.sendDefaultPii = false
         }
     }
+
+    /// Sentry 유저 컨텍스트 설정. 비-PII 익명 식별자(DeviceIdentity)만 넣는다.
+    /// 크래시·에러를 유저 단위로 묶어 "몇 명에게 영향" 같은 집계를 가능하게 한다.
+    /// SDK 미시작(테스트·DSN 미설정) 시 SentrySDK가 안전하게 no-op 처리한다.
+    /// 호출부(AppState)가 벤더 SDK에 직접 의존하지 않도록 이 헬퍼로 감싼다.
+    static func setUser(id: String?) {
+        if let id {
+            SentrySDK.setUser(User(userId: id))
+        } else {
+            SentrySDK.setUser(nil) // 로그아웃·리셋 시 컨텍스트 해제
+        }
+    }
 }
