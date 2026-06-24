@@ -1178,6 +1178,7 @@ final class AppState {
             // 우선순위: 스트릭 이벤트(마일스톤/프리즈/리셋/첫날) > 세션 적립 도토리. 둘 다
             // 발생해도 다이얼로그는 1개만 — milestone이 더 임팩트. 모두 서버 응답값으로 표시만 한다.
             // 멱등 재전송(idempotentReplay)이면 적립 0이므로 도토리 다이얼로그를 띄우지 않는다.
+            // 다이얼로그는 우선순위 1개만 표시(스트릭 > 세션 적립). UI 정책.
             if let streakGrant = rewardGrant(forStreak: result.streak) {
                 pendingRewardGrant = streakGrant
                 analytics.track(.streakEvent(type: streakGrant.kind.analyticsType, amount: streakGrant.amount))
@@ -1186,6 +1187,10 @@ final class AppState {
                 // sheet 닫힌 후(`lastCompletedSession == nil`)에만 그려져, 다이얼로그가
                 // sheet에 가려지지 않고 순차로 등장한다.
                 pendingRewardGrant = RewardGrant(amount: result.reward.grantedPoints, kind: .sessionComplete)
+            }
+            // 적립 도토리 트래킹은 다이얼로그 우선순위와 분리한다 — 스트릭 마일스톤과 세션 적립이
+            // 동시에 발생해도 reward_earned가 누락되지 않도록(과소집계 방지). streak_event와는 별도 이벤트.
+            if result.reward.grantedPoints > 0 && !result.reward.idempotentReplay {
                 analytics.track(.rewardEarned(amount: result.reward.grantedPoints, kind: "session_complete"))
             }
         } catch {
