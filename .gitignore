@@ -52,3 +52,8 @@ OdodokWidgets/Info.plist
 
 # 작업 보고서 산출물 (레포에 넣지 않음)
 observability-report.html
+
+# 코드 서명 자료 (개인키 포함, 절대 커밋 금지)
+.signing/
+*.p12
+*.mobileprovision
