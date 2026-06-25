@@ -26,6 +26,9 @@ packages:
   Amplitude:
     url: https://github.com/amplitude/Amplitude-Swift
     from: "1.0.0"
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk
+    from: "12.0.0"
 
 targets:
   ChewChewIOS:
@@ -54,6 +57,30 @@ targets:
         product: Sentry
       - package: Amplitude
         product: AmplitudeSwift
+      - package: Firebase
+        product: FirebaseAnalytics
+    postBuildScripts:
+      # Release 아카이브 시 dSYM을 Sentry로 업로드해 크래시 스택을 심볼화한다(ODO-78).
+      # Release + 토큰 설정 + sentry-cli 설치가 모두 충족될 때만 실행, 그 외(Debug·시뮬레이터·CI·미설정)는 조용히 skip.
+      # 토큰은 Info.plist로 가지 않고 빌드 시점 환경변수로만 쓰여 번들에 실리지 않는다(Secrets.xcconfig 빌드 설정).
+      - name: Upload dSYMs to Sentry
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ "${CONFIGURATION}" != "Release" ]; then echo "dSYM upload: skip (not Release)"; exit 0; fi
+          # token·org·project가 모두 채워졌고 placeholder가 아닐 때만 업로드한다. 하나라도 비었거나
+          # REPLACE 상태면 조용히 skip — token만 채워진 부분 설정으로 sentry-cli가 실패해
+          # Release 빌드 페이즈가 깨지는 것을 막는다(isUsableSecret과 같은 *REPLACE* 가드).
+          for v in "${SENTRY_AUTH_TOKEN}" "${SENTRY_ORG}" "${SENTRY_PROJECT}"; do
+            case "$v" in ""|*REPLACE*) echo "dSYM upload: skip (Sentry token/org/project 미설정)"; exit 0;; esac
+          done
+          if ! command -v sentry-cli >/dev/null 2>&1; then
+            echo "warning: sentry-cli 미설치 — dSYM 업로드 생략. 설치: brew install getsentry/tools/sentry-cli"; exit 0
+          fi
+          sentry-cli debug-files upload \
+            --auth-token "${SENTRY_AUTH_TOKEN}" \
+            --org "${SENTRY_ORG}" \
+            --project "${SENTRY_PROJECT}" \
+            "${DWARF_DSYM_FOLDER_PATH}"
     # 엔타이틀먼트(Sign in with Apple, APNs 푸시) — 유료 Apple Developer 계정 필요(개인 팀 서명 불가).
     # 보류로 임시 주석. 유료 계정 + Push 권한 전환 시 아래를 해제하면 서버 식사 푸시(ODO-56)가 활성화된다.
     # 그 전까지 앱은 registerForRemoteNotifications 실패를 받아 로컬 알림으로 자동 폴백한다(MealPushCoordinator).
@@ -116,8 +143,14 @@ targets:
         IPHONEOS_DEPLOYMENT_TARGET: "17.0"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
-        # 백엔드 base URL. Swift 하드코딩 대신 빌드설정(BACKEND_BASE_URL) → Info.plist(BackendBaseURL)로 주입.
-        BACKEND_BASE_URL: http://100.99.252.124:8080
+      # 백엔드 base URL은 빌드 컨피그별로 분리 → Info.plist(BackendBaseURL)로 주입(Swift 하드코딩 안 함).
+      # Debug=dev/staging(Tailscale Funnel 공개주소, 폰이 Tailscale 없이 일반 인터넷으로 도달) / Release=prod.
+      # 여기(project.yml=YAML)에 두는 이유: xcconfig는 //를 주석으로 봐서 https:// 가 잘림. YAML은 안전.
+      configs:
+        Debug:
+          BACKEND_BASE_URL: https://sungho-macmini.tail502d5f.ts.net
+        Release:
+          BACKEND_BASE_URL: https://api.ododok.cloud
 
   OdodokWidgets:
     type: app-extension

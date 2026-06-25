@@ -18,9 +18,10 @@ enum SentryService {
             || pi.arguments.contains("-useNoopRemote")
         guard !underTest else { return }
 
-        // DSN 본문(scheme 제외). placeholder(REPLACE)거나 비면 Sentry 비활성 — 로컬/기여자 빌드 보호.
+        // DSN 본문(scheme 제외). placeholder(REPLACE)·빈값·미확장 `$(SENTRY_DSN)` 리터럴(키 미설정 시)이면
+        // Sentry 비활성 — 로컬/기여자/CI 빌드 보호. garbage 값으로 SDK가 켜지는 오설정을 막는다.
         guard let body = Bundle.main.object(forInfoDictionaryKey: "SentryDSN") as? String,
-              !body.isEmpty, !body.contains("REPLACE") else { return }
+              !body.isEmpty, !body.contains("REPLACE"), !body.contains("$(") else { return }
         let dsn = "https://" + body
 
         SentrySDK.start { options in
@@ -43,6 +44,18 @@ enum SentryService {
 
             // PII(이메일·IP 등) 자동 수집 비활성 — 헬스 앱 프라이버시 보수적 기본값.
             options.sendDefaultPii = false
+        }
+    }
+
+    /// Sentry 유저 컨텍스트 설정. 비-PII 익명 식별자(DeviceIdentity)만 넣는다.
+    /// 크래시·에러를 유저 단위로 묶어 "몇 명에게 영향" 같은 집계를 가능하게 한다.
+    /// SDK 미시작(테스트·DSN 미설정) 시 SentrySDK가 안전하게 no-op 처리한다.
+    /// 호출부(AppState)가 벤더 SDK에 직접 의존하지 않도록 이 헬퍼로 감싼다.
+    static func setUser(id: String?) {
+        if let id {
+            SentrySDK.setUser(User(userId: id))
+        } else {
+            SentrySDK.setUser(nil) // 로그아웃·리셋 시 컨텍스트 해제
         }
     }
 }

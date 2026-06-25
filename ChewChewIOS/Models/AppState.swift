@@ -380,6 +380,8 @@ final class AppState {
     func stopEating() {
         guard isEating else { return }
         isEating = false
+        // eatingStartedAt을 nil로 비우기 전에 측정 시간 캡처(중단/실패 이벤트의 duration_sec).
+        let sessionDurationSec = eatingStartedAt.map { Int(Date().timeIntervalSince($0)) } ?? 0
         eatingStartedAt = nil
         stopHeadphoneMotionLoop()
         stopChewAnimationLoop()
@@ -409,7 +411,10 @@ final class AppState {
             let output = recorder.finalize(endedAt: endedAt)
             // 분석이 불가능한 세션(IMU 샘플 0개)은 DB·도토리·리포트 어디에도
             // 흔적을 남기지 않는다 — 사용자 입장에서 "아무 일도 안 일어난" 상태.
-            guard output.sampleCount > 0 else { return }
+            guard output.sampleCount > 0 else {
+                analytics.track(.mealSessionAborted(reason: "no_samples", durationSec: sessionDurationSec))
+                return
+            }
             sessionUploadStatus = .uploading
             Task { [weak self] in
                 let stats = await counter?.sessionStats(modelVersion: AppState.modelVersion)
@@ -423,6 +428,7 @@ final class AppState {
     func discardCurrentSession() {
         guard isEating else { return }
         isEating = false
+        let sessionDurationSec = eatingStartedAt.map { Int(Date().timeIntervalSince($0)) } ?? 0
         eatingStartedAt = nil
         stopHeadphoneMotionLoop()
         stopChewAnimationLoop()
@@ -442,6 +448,7 @@ final class AppState {
             imuSessionRecorder = nil
             _ = recorder.finalize(endedAt: Date())
         }
+        analytics.track(.mealSessionAborted(reason: "user_discard", durationSec: sessionDurationSec))
     }
 
     func toggleEating() {
@@ -528,6 +535,7 @@ final class AppState {
         points -= item.price
         owned.insert(item.id)
         persistSnapshot()
+        analytics.track(.shopItemPurchased(itemId: item.id, itemType: item.type.rawValue, price: item.price))
         return .success
     }
 
@@ -558,6 +566,7 @@ final class AppState {
         points -= pack.price
         ownedAcornPacks[pack.id, default: 0] += 1
         persistSnapshot()
+        analytics.track(.acornPackPurchased(packId: pack.id, price: pack.price))
         return .success
     }
 
@@ -668,6 +677,8 @@ final class AppState {
         freezeInventory = 0
         TokenManager.clear()
         isLoggedIn = false
+        analytics.setUserId(nil)
+        SentryService.setUser(id: nil)
         // 저장된 스냅샷도 비워서 다음 실행에서 시드값이 살아남도록
         clearPersistedSnapshot()
     }
@@ -676,12 +687,18 @@ final class AppState {
     /// 로그인 계정 기준으로 홈/프로필을 다시 적재한다.
     /// `onboardingCompleted`는 로그인 응답(`/auth/login`)의 정본 — true면 즉시 온보딩을
     /// 스킵해, 재로그인 시 온보딩이 다시 뜨던 회귀를 막는다.
-    func completeLogin(onboardingCompleted: Bool) {
+    func completeLogin(onboardingCompleted: Bool, method: String) {
         clearLocalSessionCache()
         // clearLocalSessionCache가 hasCompletedOnboarding을 false로 리셋하므로 그 뒤에 세팅한다.
         // 서버 응답이 완료라고 하면 즉시 온보딩 sheet을 스킵 — 재로그인 시 재노출 회귀 차단.
         if onboardingCompleted { hasCompletedOnboarding = true }
         isLoggedIn = true
+        let deviceIdForLogin = DeviceIdentity.shared
+        analytics.setUserId(deviceIdForLogin)
+        analytics.setUserProperty("has_completed_onboarding", onboardingCompleted)
+        SentryService.setUser(id: deviceIdForLogin)
+        analytics.track(.login(method: method, onboardingCompleted: onboardingCompleted))
+        syncAnalyticsUserProperties()
         Task { [weak self] in
             await self?.refreshFromServerHome()
             await self?.fetchAndApplyDisplayName()
@@ -690,6 +707,26 @@ final class AppState {
             await self?.mealPushCoordinator.apply(.load())
             // 미로그인 상태에서 받은 초대가 있으면 로그인/가입 완료 후 자동 수락한다.
             await self?.consumePendingInviteCodeIfNeeded()
+        }
+    }
+
+    /// 분석 유저 속성을 현재 상태로 동기화(코호트 분석용). 로그인·콜드스타트 복원·서버 홈 갱신 시 호출.
+    /// 가입일·총세션수는 서버 DTO에 없어 제외(서버 추가 시 후속).
+    private func syncAnalyticsUserProperties() {
+        analytics.setUserProperty("current_streak", currentStreak)
+        analytics.setUserProperty("total_points", points)
+    }
+
+    /// 업로드 실패 원인을 저카디널리티 라벨로 분류(meal_session_failed의 reason 속성용).
+    private static func uploadFailureReason(_ error: Error) -> String {
+        guard let e = error as? RemoteStoreError else { return "unknown" }
+        switch e {
+        case .authExpired: return "auth_expired"
+        case .server: return "server"
+        case .offline: return "offline"
+        case .malformed: return "malformed"
+        case .http: return "http"
+        case .invalidUploadResponse: return "invalid_upload"
         }
     }
 
@@ -715,6 +752,8 @@ final class AppState {
         Task { await mealPushCoordinator.clearRegistration() }
         TokenManager.clear()
         isLoggedIn = false
+        analytics.setUserId(nil)
+        SentryService.setUser(id: nil)
         clearLocalSessionCache()
     }
 
@@ -790,10 +829,16 @@ final class AppState {
         headphoneMotionService.start { [weak self] _ in
             // 첫 샘플이 도착했다 = 권한이 허용됨. 업데이트를 즉시 멈추고 호출자에게 위임.
             self?.headphoneMotionService.stop()
-            DispatchQueue.main.async { onGranted() }
-        } onError: { _ in
+            DispatchQueue.main.async {
+                self?.analytics.track(.permissionResult(type: "motion", granted: true))
+                onGranted()
+            }
+        } onError: { [weak self] _ in
             // 에러 = 권한 거부 또는 디바이스 없음.
-            DispatchQueue.main.async { onDenied() }
+            DispatchQueue.main.async {
+                self?.analytics.track(.permissionResult(type: "motion", granted: false))
+                onDenied()
+            }
         }
     }
 
@@ -1060,6 +1105,8 @@ final class AppState {
         if let name = home.displayName, !name.isEmpty, name != displayName {
             displayName = name
         }
+        // 서버가 갱신한 streak/points를 분석 유저 속성에도 반영(세션 완료·출석 후 코호트 최신화).
+        syncAnalyticsUserProperties()
         persistSnapshot()
     }
 
@@ -1170,6 +1217,7 @@ final class AppState {
             // 우선순위: 스트릭 이벤트(마일스톤/프리즈/리셋/첫날) > 세션 적립 도토리. 둘 다
             // 발생해도 다이얼로그는 1개만 — milestone이 더 임팩트. 모두 서버 응답값으로 표시만 한다.
             // 멱등 재전송(idempotentReplay)이면 적립 0이므로 도토리 다이얼로그를 띄우지 않는다.
+            // 다이얼로그는 우선순위 1개만 표시(스트릭 > 세션 적립). UI 정책.
             if let streakGrant = rewardGrant(forStreak: result.streak) {
                 pendingRewardGrant = streakGrant
                 analytics.track(.streakEvent(type: streakGrant.kind.analyticsType, amount: streakGrant.amount))
@@ -1178,11 +1226,16 @@ final class AppState {
                 // sheet 닫힌 후(`lastCompletedSession == nil`)에만 그려져, 다이얼로그가
                 // sheet에 가려지지 않고 순차로 등장한다.
                 pendingRewardGrant = RewardGrant(amount: result.reward.grantedPoints, kind: .sessionComplete)
+            }
+            // 적립 도토리 트래킹은 다이얼로그 우선순위와 분리한다 — 스트릭 마일스톤과 세션 적립이
+            // 동시에 발생해도 reward_earned가 누락되지 않도록(과소집계 방지). streak_event와는 별도 이벤트.
+            if result.reward.grantedPoints > 0 && !result.reward.idempotentReplay {
                 analytics.track(.rewardEarned(amount: result.reward.grantedPoints, kind: "session_complete"))
             }
         } catch {
             handleRemoteError(error)
             if case RemoteStoreError.authExpired = error { return }
+            analytics.track(.mealSessionFailed(reason: Self.uploadFailureReason(error)))
             sessionUploadStatus = .failure
             // 사용자에겐 부드러운 통일 카피(userMessage)만 노출 — 서버 원문은 로그(description)로만 남는다.
             sessionUploadErrorMessage = (error as? RemoteStoreError)?.userMessage
@@ -1242,6 +1295,15 @@ final class AppState {
         // 동기 블록에서 순차로 갱신되면 ContentView의 onboardingBinding 평가가 한 frame에
         // 일관된 두 값으로 수행돼, "didLoadProfile만 true + displayName 아직 nil" 중간
         // 상태에서 sheet이 열리는 race를 피한다.
+        // 콜드스타트 기존 유저 식별 복원 — Keychain 토큰이 있어 completeLogin()을
+        // 거치지 않고 재실행된 경우 Analytics + Sentry에 ID를 등록한다.
+        if isLoggedIn {
+            let deviceIdForRestore = DeviceIdentity.shared
+            analytics.setUserId(deviceIdForRestore)
+            analytics.setUserProperty("has_completed_onboarding", hasCompletedOnboarding)
+            SentryService.setUser(id: deviceIdForRestore)
+            syncAnalyticsUserProperties()
+        }
         didLoadProfile = true
         // 재설치한 기존 사용자(위에서 hasCompletedOnboarding을 막 true로 올린 경우) 또는
         // me()로 온보딩 완료를 확인한 경우: foreground 진입 시점엔 아직 false였을 수 있으므로,
