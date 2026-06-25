@@ -72,7 +72,16 @@ struct ChewChewIOSApp: App {
         if let firebase = FirebaseProvider.makeIfAvailable() {
             providers.append(firebase)
         }
-        return providers.isEmpty ? NoopAnalytics() : CompositeAnalytics(providers)
+        // 모든 이벤트에 environment를 첨부해 dev/prod 데이터 오염을 막는다(Sentry environment와 일관).
+        // Debug=staging 빌드, Release=운영. Amplitude·Firebase 대시보드에서 이 속성으로 필터한다.
+        #if DEBUG
+        let environment = "debug"
+        #else
+        let environment = "production"
+        #endif
+        return providers.isEmpty
+            ? NoopAnalytics()
+            : CompositeAnalytics(providers, baseProperties: ["environment": environment])
     }
 
     /// config 주입 시크릿이 실사용 가능한 값인지 검증한다.
