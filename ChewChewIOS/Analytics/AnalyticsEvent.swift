@@ -59,4 +59,37 @@ extension AnalyticsEvent {
     static func friendInviteReceived(loggedIn: Bool) -> AnalyticsEvent {
         .init("friend_invite_received", ["logged_in": loggedIn])
     }
+
+    /// 소셜 로그인 성공. method(apple/google/kakao) 분포·전환을 본다.
+    /// 서버에 신규가입 플래그가 없어 signup은 별도 계측하지 않는다 — 가입 전환은 onboarding_completed로.
+    static func login(method: String, onboardingCompleted: Bool) -> AnalyticsEvent {
+        .init("login", ["method": method, "onboarding_completed": onboardingCompleted])
+    }
+
+    /// 측정 세션이 서버 저장 없이 종료됨. reason: user_discard(사용자 그만두기) | no_samples(IMU 0개).
+    /// 저장 성공한 세션은 meal_session_completed, 저장 실패는 meal_session_failed로 별도 구분.
+    static func mealSessionAborted(reason: String, durationSec: Int) -> AnalyticsEvent {
+        .init("meal_session_aborted", ["reason": reason, "duration_sec": durationSec])
+    }
+
+    /// 측정은 끝났으나 서버 저장 실패. reason은 오류 분류(offline/server/http/malformed/...).
+    /// 저장 실패 세션이 통계에서 증발하지 않도록(생존편향 방지) 기록한다.
+    static func mealSessionFailed(reason: String) -> AnalyticsEvent {
+        .init("meal_session_failed", ["reason": reason])
+    }
+
+    /// 권한 요청 결과. type=motion(AirPods 모션). granted로 거부율·활성화 이탈을 본다.
+    static func permissionResult(type: String, granted: Bool) -> AnalyticsEvent {
+        .init("permission_result", ["type": type, "granted": granted])
+    }
+
+    /// 상점 꾸미기 아이템 구매(포인트 소비). 적립(reward_earned)과 짝을 이뤄 포인트 경제를 본다.
+    static func shopItemPurchased(itemId: String, itemType: String, price: Int) -> AnalyticsEvent {
+        .init("shop_item_purchased", ["item_id": itemId, "item_type": itemType, "price": price])
+    }
+
+    /// 도토리팩 구매(포인트 소비).
+    static func acornPackPurchased(packId: String, price: Int) -> AnalyticsEvent {
+        .init("acorn_pack_purchased", ["pack_id": packId, "price": price])
+    }
 }
