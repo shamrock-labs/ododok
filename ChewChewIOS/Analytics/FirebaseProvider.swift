@@ -15,15 +15,15 @@ final class FirebaseProvider: AnalyticsService {
         guard let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist") else {
             return nil
         }
-        // plist의 BUNDLE_ID가 실제 앱 번들 ID와 다르면 비활성한다.
+        // plist의 BUNDLE_ID가 실제 앱 번들 ID와 일치할 때만 활성화한다(fail-safe).
         // 콘솔에 잘못 등록된 앱(예: 이전 개인 계정 번들 ID)으로 이벤트가 흘러가
         // 엉뚱한 GA4 스트림을 채우는 오설정을 막는다 — isUsableSecret·Sentry 가드와 같은 철학.
+        // plist를 못 읽거나 BUNDLE_ID가 없으면(손상·키 부재) 일치 검증이 불가하므로 비활성한다.
         // 올바른 앱 번들 ID로 발급한 plist로 교체하면 자동으로 다시 활성화된다.
-        if let plistBundleID = NSDictionary(contentsOfFile: path)?["BUNDLE_ID"] as? String,
-           let appBundleID = Bundle.main.bundleIdentifier,
-           plistBundleID != appBundleID {
+        let plistBundleID = NSDictionary(contentsOfFile: path)?["BUNDLE_ID"] as? String
+        guard plistBundleID == Bundle.main.bundleIdentifier else {
             #if DEBUG
-            print("[Firebase] GoogleService-Info.plist BUNDLE_ID(\(plistBundleID)) ≠ 앱 번들 ID(\(appBundleID)) — Analytics 비활성. 콘솔에서 \(appBundleID)로 등록한 plist로 교체하세요.")
+            print("[Firebase] GoogleService-Info.plist BUNDLE_ID(\(plistBundleID ?? "nil")) ≠ 앱 번들 ID(\(Bundle.main.bundleIdentifier ?? "nil")) — Analytics 비활성. 콘솔에서 앱 번들 ID로 등록한 plist로 교체하세요.")
             #endif
             return nil
         }
