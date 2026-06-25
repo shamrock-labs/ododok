@@ -67,9 +67,12 @@ targets:
         basedOnDependencyAnalysis: false
         script: |
           if [ "${CONFIGURATION}" != "Release" ]; then echo "dSYM upload: skip (not Release)"; exit 0; fi
-          if [ -z "${SENTRY_AUTH_TOKEN}" ] || [ "${SENTRY_AUTH_TOKEN}" = "REPLACE_WITH_SENTRY_AUTH_TOKEN" ]; then
-            echo "dSYM upload: skip (no SENTRY_AUTH_TOKEN)"; exit 0
-          fi
+          # token·org·project가 모두 채워졌고 placeholder가 아닐 때만 업로드한다. 하나라도 비었거나
+          # REPLACE 상태면 조용히 skip — token만 채워진 부분 설정으로 sentry-cli가 실패해
+          # Release 빌드 페이즈가 깨지는 것을 막는다(isUsableSecret과 같은 *REPLACE* 가드).
+          for v in "${SENTRY_AUTH_TOKEN}" "${SENTRY_ORG}" "${SENTRY_PROJECT}"; do
+            case "$v" in ""|*REPLACE*) echo "dSYM upload: skip (Sentry token/org/project 미설정)"; exit 0;; esac
+          done
           if ! command -v sentry-cli >/dev/null 2>&1; then
             echo "warning: sentry-cli 미설치 — dSYM 업로드 생략. 설치: brew install getsentry/tools/sentry-cli"; exit 0
           fi
