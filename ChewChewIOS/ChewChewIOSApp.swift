@@ -12,10 +12,17 @@ struct ChewChewIOSApp: App {
     @UIApplicationDelegateAdaptor private var notifDelegate: NotificationDelegate
 
     init() {
+        // 크래시·에러 모니터링을 최우선 부팅 — 이후 의존성 초기화 단계의 실패까지 포착하기 위해 init 맨 앞.
+        SentryService.start()
+        #if DEBUG
+        // Sentry 수집 검증용 의도적 크래시(launch arg `-crashTest <type>`). 인자 없으면 no-op.
+        CrashTester.crashIfRequested()
+        #endif
         let dependencies = ChewChewIOSApp.makeDependencies()
         _appState = State(initialValue: AppState(
             remoteStore: dependencies.remoteStore,
-            authSessionManager: dependencies.authSessionManager
+            authSessionManager: dependencies.authSessionManager,
+            analytics: ChewChewIOSApp.makeAnalytics()
         ))
         // Kakao SDK 초기화(네이티브 앱키는 Info.plist 경유 Secrets.xcconfig). placeholder면 건너뜀.
         if let kakaoKey = Bundle.main.object(forInfoDictionaryKey: "KakaoNativeAppKey") as? String,
@@ -43,6 +50,46 @@ struct ChewChewIOSApp: App {
         }
         let springConfig = SpringConfig.current
         return (SpringRemoteStore(config: springConfig), SpringAuthClient(config: springConfig))
+    }
+
+    /// 제품·리텐션 분석 부트스트랩(ODO-79). Amplitude로 fan-out하는 CompositeAnalytics를 만든다.
+    /// 테스트 런·API Key 미설정(기여자 빌드)에서는 NoopAnalytics로 안전하게 비활성.
+    /// 향후 Firebase provider는 이 배열에 한 줄 추가로 합류한다(호출부 무변경).
+    private static func makeAnalytics() -> AnalyticsService {
+        let pi = ProcessInfo.processInfo
+        let underTest = pi.environment["XCTestConfigurationFilePath"] != nil
+            || pi.arguments.contains("-useNoopRemote")
+        guard !underTest else { return NoopAnalytics() }
+
+        var providers: [AnalyticsService] = []
+        // Amplitude(EU) — 실사용 가능한 키일 때만. 빈값·미확장 `$(...)`·placeholder는 거부해
+        // garbage 키로 SDK가 초기화되며 이벤트가 조용히 유실되는 오설정을 막는다.
+        if let key = Bundle.main.object(forInfoDictionaryKey: "AmplitudeAPIKey") as? String,
+           ChewChewIOSApp.isUsableSecret(key) {
+            providers.append(AmplitudeProvider(apiKey: key))
+        }
+        // Firebase Analytics — GoogleService-Info.plist이 번들에 있을 때만(plist는 gitignore).
+        if let firebase = FirebaseProvider.makeIfAvailable() {
+            providers.append(firebase)
+        }
+        // 모든 이벤트에 environment를 첨부해 dev/prod 데이터 오염을 막는다(Sentry environment와 일관).
+        // Debug=staging 빌드, Release=운영. Amplitude·Firebase 대시보드에서 이 속성으로 필터한다.
+        #if DEBUG
+        let environment = "debug"
+        #else
+        let environment = "production"
+        #endif
+        return providers.isEmpty
+            ? NoopAnalytics()
+            : CompositeAnalytics(providers, baseProperties: ["environment": environment])
+    }
+
+    /// config 주입 시크릿이 실사용 가능한 값인지 검증한다.
+    /// 거부: 빈값·공백·미설정 build setting의 미확장 리터럴(`$(...)`)·placeholder(REPLACE).
+    /// xcconfig 키가 아예 없을 때 Xcode가 `$(NAME)`을 빈 문자열이 아닌 리터럴로 남기는 경로까지 닫는다.
+    static func isUsableSecret(_ raw: String) -> Bool {
+        let v = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return !v.isEmpty && !v.contains("REPLACE") && !v.contains("$(")
     }
 
     var body: some Scene {

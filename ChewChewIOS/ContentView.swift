@@ -41,7 +41,7 @@ struct ContentView: View {
             if state.isLoggedIn {
                 mainTabs
             } else {
-                LoginView(onLoggedIn: { state.completeLogin(onboardingCompleted: $0) })
+                LoginView(onLoggedIn: { state.completeLogin(onboardingCompleted: $0, method: $1) })
             }
         }
         // 전역 토스트(딥링크 친구 수락 결과 등) — 로그인 화면/탭 어디서나 위에 뜬다.

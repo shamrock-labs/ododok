@@ -3,9 +3,10 @@ import SwiftUI
 /// 소셜 로그인 화면. Apple/Google/Kakao 중 하나로 로그인 → 서버 JWT 발급 → onLoggedIn().
 /// 일반적인 앱의 소셜 로그인 UI(브랜드 컬러 풀폭 버튼)를 따른다. 온보딩 앞 게이트로 표시.
 struct LoginView: View {
-    /// 로그인 + 서버 토큰 발급 성공 시 호출. Bool = 서버가 판정한 onboardingCompleted.
+    /// 로그인 + 서버 토큰 발급 성공 시 호출. Bool = 서버가 판정한 onboardingCompleted,
+    /// String = 로그인 method(apple/google/kakao, 분석 계측용).
     /// 호출처(AppState/ContentView)가 이 값으로 온보딩 표시 여부를 정한다.
-    var onLoggedIn: (Bool) -> Void
+    var onLoggedIn: (Bool, String) -> Void
 
     @State private var isLoading = false
     @State private var errorMessage: String?
@@ -138,7 +139,7 @@ struct LoginView: View {
                 deviceId: DeviceIdentity.shared,
                 name: credential.name
             )
-            onLoggedIn(result.onboardingCompleted)
+            onLoggedIn(result.onboardingCompleted, credential.provider)
         } catch SocialLoginError.cancelled {
             // 사용자가 취소 — 에러 메시지 표시하지 않는다.
         } catch {
