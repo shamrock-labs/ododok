@@ -195,6 +195,7 @@ final class BackgroundAudioKeepAlive {
     func stop() {}
     func setMuted(_ muted: Bool) {}
     func resume() {}
+    func markInterruptionBegan() {}
     func handleInterruption(type: AVAudioSession.InterruptionType, options: AVAudioSession.InterruptionOptions) {}
 
     #endif
