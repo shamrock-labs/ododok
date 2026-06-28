@@ -33,14 +33,14 @@ actor ChewCounter {
 
     private var sampleCount: Int = 0
     private var lastPeakSample: Int = 0
-    // 0.76 s at 50 Hz — 한 번 씹을 때 여러 피크가 생기는 과카운트를 줄인다.
-    private let minPeakGap = 38
+    // 0.64 s at 50 Hz — 한 번 씹을 때 여러 피크가 생기는 과카운트를 줄인다.
+    private let minPeakGap = 32
     // Filters idle sensor noise floor; tune down if micro-chewing is suppressed,
     // up if non-eating motion contributes false positives.
-    private let minPeakAmplitude: Double = 0.008
+    private let minPeakAmplitude: Double = 0.006
     // Heading-motion guard: rotation magnitude above this threshold (rad/s) indicates
     // a deliberate head turn/nod rather than a jaw chew — peaks are suppressed.
-    private let headingMotionThreshold: Double = 0.08
+    private let headingMotionThreshold: Double = 0.12
     private var chewingStateDetector = ChewingStateDetector()
 
     private(set) var isChewing: Bool = false
@@ -220,13 +220,15 @@ private struct ChewingStateDetector {
 
     // 0.8초 EWMA: 너무 짧은 단발 피크는 버리고, 2초 안팎의 지속 신호는 빠르게 따라간다.
     private let featureAlpha = exp(-1.0 / (50.0 * 0.8))
-    private let minimumRotationYStd = 0.060
-    private let minimumRotationYDominance = 0.30
-    private let minimumRotationYJitterBandDominance = 0.40
-    private let maximumAccelToRotation = 0.025
-    private let hardJitterAccelToRotation = 0.035
-    private let enterSampleCount = 15
-    private let exitSampleCount = 75
+    // 게이트 임계값 — 2026-06-28 실기기 튜닝으로 과소카운트 해결을 위해 완화한 최적값.
+    // 원본의 빡빡한 우세도 게이트가 실제 씹기를 진동으로 오판해 버리던 걸 푼 결과다.
+    private let minimumRotationYStd = 0.030
+    private let minimumRotationYDominance = 0.15
+    private let minimumRotationYJitterBandDominance = 0.15
+    private let maximumAccelToRotation = 0.050
+    private let hardJitterAccelToRotation = 0.060
+    private let enterSampleCount = 10
+    private let exitSampleCount = 90
     private let epsilon = 1e-12
 
     mutating func feed(
