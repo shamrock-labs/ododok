@@ -15,7 +15,7 @@ final class CompleteLoginTests: XCTestCase {
     func testCompleteLogin_onboardingTrue_setsHasCompletedOnboarding() {
         let state = AppState(remoteStore: SpyRemoteStore())
 
-        state.completeLogin(onboardingCompleted: true)
+        state.completeLogin(onboardingCompleted: true, method: "google")
 
         XCTAssertTrue(state.hasCompletedOnboarding,
             "서버가 onboardingCompleted=true를 반환하면 hasCompletedOnboarding이 true여야 한다")
@@ -24,7 +24,7 @@ final class CompleteLoginTests: XCTestCase {
     func testCompleteLogin_onboardingTrue_setsIsLoggedIn() {
         let state = AppState(remoteStore: SpyRemoteStore())
 
-        state.completeLogin(onboardingCompleted: true)
+        state.completeLogin(onboardingCompleted: true, method: "google")
 
         XCTAssertTrue(state.isLoggedIn, "completeLogin 후 isLoggedIn이 true여야 한다")
     }
@@ -34,7 +34,7 @@ final class CompleteLoginTests: XCTestCase {
     func testCompleteLogin_onboardingFalse_doesNotSetHasCompletedOnboarding() {
         let state = AppState(remoteStore: SpyRemoteStore())
 
-        state.completeLogin(onboardingCompleted: false)
+        state.completeLogin(onboardingCompleted: false, method: "google")
 
         XCTAssertFalse(state.hasCompletedOnboarding,
             "서버가 onboardingCompleted=false를 반환하면 hasCompletedOnboarding이 false로 유지돼야 한다")
@@ -50,7 +50,7 @@ final class CompleteLoginTests: XCTestCase {
         // 로그아웃으로 캐시가 한 번 지워진 상태를 시뮬레이션
         state.hasCompletedOnboarding = false
 
-        state.completeLogin(onboardingCompleted: true)
+        state.completeLogin(onboardingCompleted: true, method: "google")
 
         XCTAssertTrue(state.hasCompletedOnboarding,
             "clearLocalSessionCache()의 리셋이 서버 값(true)을 덮어쓰면 안 된다")
@@ -62,7 +62,7 @@ final class CompleteLoginTests: XCTestCase {
         // 로컬에 true가 캐시된 상태에서 재로그인
         state.hasCompletedOnboarding = true
 
-        state.completeLogin(onboardingCompleted: false)
+        state.completeLogin(onboardingCompleted: false, method: "google")
 
         XCTAssertFalse(state.hasCompletedOnboarding,
             "서버가 false를 반환하면 기존 로컬 캐시(true)가 우선되면 안 된다")
@@ -76,7 +76,7 @@ final class CompleteLoginTests: XCTestCase {
         state.streak = 5
         state.displayName = "이전계정"
 
-        state.completeLogin(onboardingCompleted: true)
+        state.completeLogin(onboardingCompleted: true, method: "google")
 
         XCTAssertEqual(state.points, 0, "completeLogin은 이전 계정의 points를 초기화해야 한다")
         XCTAssertEqual(state.streak, 0, "completeLogin은 이전 계정의 streak을 초기화해야 한다")

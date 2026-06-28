@@ -20,6 +20,15 @@ packages:
   KakaoOpenSDK:
     url: https://github.com/kakao/kakao-ios-sdk
     from: "2.0.0"
+  Sentry:
+    url: https://github.com/getsentry/sentry-cocoa
+    from: "8.0.0"
+  Amplitude:
+    url: https://github.com/amplitude/Amplitude-Swift
+    from: "1.0.0"
+  Firebase:
+    url: https://github.com/firebase/firebase-ios-sdk
+    from: "12.0.0"
 
 targets:
   ChewChewIOS:
@@ -44,6 +53,34 @@ targets:
         product: KakaoSDKShare
       - package: KakaoOpenSDK
         product: KakaoSDKTemplate
+      - package: Sentry
+        product: Sentry
+      - package: Amplitude
+        product: AmplitudeSwift
+      - package: Firebase
+        product: FirebaseAnalytics
+    postBuildScripts:
+      # Release 아카이브 시 dSYM을 Sentry로 업로드해 크래시 스택을 심볼화한다(ODO-78).
+      # Release + 토큰 설정 + sentry-cli 설치가 모두 충족될 때만 실행, 그 외(Debug·시뮬레이터·CI·미설정)는 조용히 skip.
+      # 토큰은 Info.plist로 가지 않고 빌드 시점 환경변수로만 쓰여 번들에 실리지 않는다(Secrets.xcconfig 빌드 설정).
+      - name: Upload dSYMs to Sentry
+        basedOnDependencyAnalysis: false
+        script: |
+          if [ "${CONFIGURATION}" != "Release" ]; then echo "dSYM upload: skip (not Release)"; exit 0; fi
+          # token·org·project가 모두 채워졌고 placeholder가 아닐 때만 업로드한다. 하나라도 비었거나
+          # REPLACE 상태면 조용히 skip — token만 채워진 부분 설정으로 sentry-cli가 실패해
+          # Release 빌드 페이즈가 깨지는 것을 막는다(isUsableSecret과 같은 *REPLACE* 가드).
+          for v in "${SENTRY_AUTH_TOKEN}" "${SENTRY_ORG}" "${SENTRY_PROJECT}"; do
+            case "$v" in ""|*REPLACE*) echo "dSYM upload: skip (Sentry token/org/project 미설정)"; exit 0;; esac
+          done
+          if ! command -v sentry-cli >/dev/null 2>&1; then
+            echo "warning: sentry-cli 미설치 — dSYM 업로드 생략. 설치: brew install getsentry/tools/sentry-cli"; exit 0
+          fi
+          sentry-cli debug-files upload \
+            --auth-token "${SENTRY_AUTH_TOKEN}" \
+            --org "${SENTRY_ORG}" \
+            --project "${SENTRY_PROJECT}" \
+            "${DWARF_DSYM_FOLDER_PATH}"
     # 엔타이틀먼트(Sign in with Apple, APNs 푸시). ODO-16: 유료 Apple Developer 계정 등록 완료로 활성화.
     # 비활성 시엔 앱이 registerForRemoteNotifications 실패를 받아 로컬 알림으로 폴백했다(MealPushCoordinator).
     # Debug는 APNs sandbox, Release/TestFlight/App Store는 APNs production으로 빌드 설정에서 분리한다.
@@ -61,6 +98,8 @@ targets:
       properties:
         CFBundleDisplayName: Ododok
         InsForgeAPIKey: "$(INSFORGE_API_KEY)"
+        SentryDSN: "$(SENTRY_DSN)"
+        AmplitudeAPIKey: "$(AMPLITUDE_API_KEY)"
         BackendBaseURL: "$(BACKEND_BASE_URL)"
         KakaoInviteMobileWebURL: "$(KAKAO_INVITE_MOBILE_WEB_URL)"
         # Spring staging(HTTP, Tailscale 내부 IP) 연결용 ATS 예외.
