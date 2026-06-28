@@ -19,13 +19,12 @@ struct HomeView: View {
     var body: some View {
         VStack(spacing: 14) {
             topBar
-            statRow
             squirrelCard
                 .frame(maxHeight: .infinity)
             mealToggleButton
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 24)
+        .padding(.horizontal, 20)
+        .padding(.top, 18)
         .padding(.bottom, 18)
         .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { newDate in
             nowTick = newDate
@@ -117,21 +116,26 @@ struct HomeView: View {
     // MARK: Top bar
 
     private var topBar: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(todayLabel)
-                    .font(.appFont(.semibold, size: 14))
-                    .foregroundStyle(Color.ink600)
-                Text("안녕, \(state.displayName ?? "친구")님")
-                    .font(.appFont(.bold, size: 26))
-                    .foregroundStyle(Color.ink800)
+        AppHeaderView(eyebrow: todayLabel, title: "오도독", subtitle: homeHeaderSubtitle) {
+            HStack(spacing: 7) {
+                HeaderMetricPill(icon: .flame, value: "\(state.currentStreak)", tint: .butter600)
+                HeaderMetricPill(icon: .acorn, value: state.points.koLocale, tint: .acorn700)
+                HeaderIconButton(systemName: "bell", showsBadge: true) {
+                    showMealReminderSettings = true
+                }
+                HeaderIconButton(systemName: "gearshape") {
+                    showSettings = true
+                }
             }
-            Spacer()
-            HStack(spacing: 10) {
-                circleButton("bell.fill") { showMealReminderSettings = true }
-                circleButton("gearshape.fill") { showSettings = true }
-            }
+            .offset(y: -8)
         }
+    }
+
+    private var homeHeaderSubtitle: String {
+        if state.isEating {
+            return state.imuWaveformSource.usesRealMotion ? "식사 중 · AirPods LIVE" : "식사 중 · MVP 모드"
+        }
+        return "오늘 \(state.todayRealChewCount.koLocale) / \(Constants.dailyGoal.koLocale)회"
     }
 
     private var todayLabel: String {
@@ -162,7 +166,8 @@ struct HomeView: View {
                 value: "\(state.currentStreak)일째",
                 iconBG: Color.blush100
             ) {
-                Text("🔥").font(.appFont(.regular, size: 26))
+                OpenIconView(icon: .flame, color: .blush500, lineWidth: 2.2)
+                    .frame(width: 24, height: 24)
             }
 
             statCard(
@@ -170,7 +175,8 @@ struct HomeView: View {
                 value: state.points.koLocale,
                 iconBG: Color.butter100
             ) {
-                Text("🌰").font(.appFont(.regular, size: 26))
+                OpenIconView(icon: .acorn, color: .acorn700, lineWidth: 2.1)
+                    .frame(width: 24, height: 24)
             }
         }
     }
@@ -264,7 +270,7 @@ struct HomeView: View {
         .frame(maxWidth: .infinity)
         .frame(minHeight: 390)
         .background(Color.white, in: RoundedRectangle(cornerRadius: 26))
-        .neuoShadow(.md)
+        .softShadow(.base)
     }
 
     private var imuWaveformCard: some View {

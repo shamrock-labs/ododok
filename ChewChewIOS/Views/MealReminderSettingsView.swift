@@ -16,11 +16,11 @@ struct MealReminderSettingsView: View {
                     if permissionStatus == .denied {
                         deniedBanner
                     }
-                    mealCard(title: "🌅 아침", slot: $settings.breakfast)
-                    mealCard(title: "🍱 점심", slot: $settings.lunch)
-                    mealCard(title: "🌙 저녁", slot: $settings.dinner)
-                    mealCard(title: "☕ 추가 1", slot: $settings.extra1)
-                    mealCard(title: "🍎 추가 2", slot: $settings.extra2)
+                    mealCard(title: "아침", icon: .sunrise, tint: .butter600, slot: $settings.breakfast)
+                    mealCard(title: "점심", icon: .utensils, tint: .sage600, slot: $settings.lunch)
+                    mealCard(title: "저녁", icon: .moonStar, tint: .blush500, slot: $settings.dinner)
+                    mealCard(title: "추가 1", icon: .utensils, tint: .acorn600, slot: $settings.extra1)
+                    mealCard(title: "추가 2", icon: .moonStar, tint: .acorn700, slot: $settings.extra2)
                     footerHint
                     Spacer(minLength: 24)
                 }
@@ -74,12 +74,18 @@ struct MealReminderSettingsView: View {
             .padding(.top, 8)
     }
 
-    private func mealCard(title: String, slot: Binding<MealSlot>) -> some View {
+    private func mealCard(title: String, icon: OpenIcon, tint: Color, slot: Binding<MealSlot>) -> some View {
         VStack(spacing: 12) {
             HStack {
-                Text(title)
-                    .font(.appFont(.bold, size: 17))
-                    .foregroundStyle(Color.ink800)
+                HStack(spacing: 9) {
+                    OpenIconView(icon: icon, color: tint, lineWidth: 2.1)
+                        .frame(width: 20, height: 20)
+                        .frame(width: 34, height: 34)
+                        .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 11))
+                    Text(title)
+                        .font(.appFont(.bold, size: 17))
+                        .foregroundStyle(Color.ink800)
+                }
                 Spacer()
                 Toggle("", isOn: toggleBinding(slot))
                     .labelsHidden()

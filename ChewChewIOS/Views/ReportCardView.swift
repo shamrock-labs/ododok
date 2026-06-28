@@ -3,9 +3,9 @@ import SwiftUI
 /// 식사 후 분석 리포트 카드의 표시 모델. `ChewingSessionDTO` → 이 모델로 변환하는
 /// 매퍼는 아래 extension에서 노출. UI 컴포넌트가 DTO 변경에 직접 결합되지 않도록 분리.
 struct ReportCardModel: Equatable {
-    /// 식사 점수 0~100.
+    /// 내부 분석용 점수 0~100. 화면에는 노출하지 않고 mood/caption fallback에만 사용.
     let score: Int
-    /// 점수 등급. 컬러/라벨/이모지 분기.
+    /// 내부 분석 등급. 화면에는 점수 대신 평균 대비 분석을 노출한다.
     let grade: Grade
     /// 4대 지표.
     let chewCount: Int
@@ -16,7 +16,7 @@ struct ReportCardModel: Equatable {
     /// 씹기·쉬기 구간 바. 한 끼 중 실제 씹은 시간 / 쉰 시간(초).
     let chewingSeconds: Double
     let restSeconds: Double
-    /// 점수 4요소 분해 (각 0~100) — "왜 이 점수인지" 근거를 그리드에 노출.
+    /// 내부 4요소 분해 (각 0~100). 화면에는 평균 대비 지표로 치환한다.
     let speedScore: Int
     let rhythmScore: Int
     let continuityScore: Int
@@ -50,13 +50,6 @@ struct ReportCardModel: Equatable {
     }
 }
 
-/// 점수 카운트업 계산. progress 0→0, 1→target. 범위 [0, target] 로 clamp.
-/// View와 분리된 순수 함수 — 단위테스트 가능.
-func scoreCountUpValue(progress: Double, target: Int) -> Int {
-    let clamped = max(0.0, min(1.0, progress))
-    return Int((Double(target) * clamped).rounded())
-}
-
 /// 식사 후 분석 리포트 카드. 식사 종료 직후 sheet/overlay 표시와 캘린더에서 과거 세션
 /// 재현 양쪽에서 동일하게 사용된다. 1080×1920 PNG 공유도 같은 View를 ImageRenderer로 렌더.
 ///
@@ -66,18 +59,12 @@ struct ReportCardView: View {
     let model: ReportCardModel
     var onDeepReport: (() -> Void)? = nil
 
-    @State private var scoreProgress: Double = 1.0
-    @State private var showScoreFormula = false
-
     var body: some View {
         VStack(spacing: 18) {
             header
-            scoreSection
-            scoreBreakdownGrid
-            if showScoreFormula {
-                ScoreFormulaInline(model: model)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
+            averageOverviewSection
+            coachPanel
+            averageComparisonGrid
             chewRestSection
             captionSection
             if onDeepReport != nil { deepReportCTA }
@@ -103,100 +90,148 @@ struct ReportCardView: View {
         }
     }
 
-    private var scoreSection: some View {
-        VStack(spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text("\(scoreCountUpValue(progress: scoreProgress, target: model.score))")
-                    .font(.appFont(.heavy, size: 72))
-                    .foregroundStyle(gradeColor)
-                    .monospacedDigit()
-                Text("점")
-                    .font(.appFont(.bold, size: 22))
-                    .foregroundStyle(Color.ink600)
+    private var averageOverviewSection: some View {
+        let summary = averageComparisonSummary
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                Text("평균 대비 분석")
+                    .font(.appFont(.heavy, size: 15))
+                    .foregroundStyle(Color.ink800)
+                Spacer(minLength: 0)
+                Text(summary.badge)
+                    .font(.appFont(.heavy, size: 11))
+                    .foregroundStyle(summary.color)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(summary.color.opacity(0.14), in: Capsule())
             }
-            Text(model.grade.label)
-                .font(.appFont(.bold, size: 14))
-                .foregroundStyle(gradeColor)
+            Text(summary.title)
+                .font(.appFont(.heavy, size: 23))
+                .foregroundStyle(Color.ink800)
+                .lineSpacing(2)
+            Text(summary.detail)
+                .font(.appFont(.semibold, size: 13))
+                .foregroundStyle(Color.ink600)
+                .lineSpacing(2)
+            HStack(spacing: 8) {
+                averageDeltaChip(
+                    title: "저작",
+                    value: signedDelta(model.chewCount - AverageBaseline.chewCount, suffix: "회"),
+                    color: .acorn700
+                )
+                averageDeltaChip(
+                    title: "시간",
+                    value: signedDelta(durationDeltaMinutes, suffix: "분"),
+                    color: .sage600
+                )
+                averageDeltaChip(
+                    title: "집중",
+                    value: signedDelta(chewingFocusDeltaPercent, suffix: "%"),
+                    color: .butter600
+                )
+            }
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 4)
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(summary.color.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(summary.color.opacity(0.18), lineWidth: 1)
+        )
     }
 
-    // MARK: - 점수 근거 그리드 (4요소 = 왜 이 점수인지)
+    private func averageDeltaChip(title: String, value: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(.appFont(.bold, size: 10))
+                .foregroundStyle(Color.ink600)
+            Text(value)
+                .font(.appFont(.heavy, size: 12))
+                .foregroundStyle(color)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 12))
+    }
 
-    private var scoreBreakdownGrid: some View {
+    private var averageComparisonGrid: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 0) {
-                Spacer()
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
-                        showScoreFormula.toggle()
-                    }
-                } label: {
-                    Image(systemName: showScoreFormula ? "info.circle.fill" : "info.circle")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(showScoreFormula ? Color.acorn500 : Color.ink400)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("점수 산식 보기")
-            }
+            sectionTitle("평균 대비 세부")
             LazyVGrid(
                 columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
                 spacing: 12
             ) {
-                factorCell(
-                    label: "속도",
-                    value: String(format: "%.0f", model.chewsPerMinute), unit: "회/분",
-                    subScore: model.speedScore, reference: "기준 28회/분"
+                averageComparisonCell(
+                    label: "저작 횟수",
+                    current: "약 \(model.chewCount.koLocale)회",
+                    average: "평균 \(AverageBaseline.chewCount.koLocale)회",
+                    delta: signedDelta(model.chewCount - AverageBaseline.chewCount, suffix: "회"),
+                    ratio: Double(model.chewCount - AverageBaseline.chewCount) / 180,
+                    color: .acorn700
                 )
-                factorCell(
-                    label: "리듬",
-                    value: "\(Int((model.chewingFraction * 100).rounded()))", unit: "%",
-                    subScore: model.rhythmScore, reference: "씹기 50% 이상"
-                )
-                factorCell(
-                    label: "연속성",
-                    value: model.chewCount.koLocale, unit: "회",
-                    subScore: model.continuityScore, reference: "200회 이상"
-                )
-                factorCell(
+                averageComparisonCell(
                     label: "식사 시간",
-                    value: formatDurationShort(model.totalDurationSec), unit: nil,
-                    subScore: model.lengthScore, reference: "12분 안팎"
+                    current: formatDurationShort(model.totalDurationSec),
+                    average: "평균 \(formatDurationShort(AverageBaseline.durationSec))",
+                    delta: signedDelta(durationDeltaMinutes, suffix: "분"),
+                    ratio: Double(durationDeltaMinutes) / 8,
+                    color: .sage600
+                )
+                averageComparisonCell(
+                    label: "식사 속도",
+                    current: "약 \(Int(model.chewsPerMinute.rounded()))회/분",
+                    average: "평균 \(Int(AverageBaseline.chewsPerMinute))회/분",
+                    delta: signedDelta(Int((model.chewsPerMinute - AverageBaseline.chewsPerMinute).rounded()), suffix: "회/분"),
+                    ratio: (model.chewsPerMinute - AverageBaseline.chewsPerMinute) / 16,
+                    color: .blush500
+                )
+                averageComparisonCell(
+                    label: "씹기 비율",
+                    current: "\(Int((model.chewingFraction * 100).rounded()))%",
+                    average: "평균 \(Int(AverageBaseline.chewingFraction * 100))%",
+                    delta: signedDelta(chewingFocusDeltaPercent, suffix: "%"),
+                    ratio: Double(chewingFocusDeltaPercent) / 30,
+                    color: .butter600
                 )
             }
         }
     }
 
-    /// 점수 한 요소 카드: 실제 값 + 0~100 요소 점수 미니바 + 기준선 문구.
-    private func factorCell(label: String, value: String, unit: String?, subScore: Int, reference: String) -> some View {
-        let color = factorColor(subScore)
-        return VStack(alignment: .leading, spacing: 6) {
-            Text(label)
-                .font(.appFont(.semibold, size: 13))
-                .foregroundStyle(Color.ink600)
-            HStack(alignment: .firstTextBaseline, spacing: 3) {
-                Text(value)
-                    .font(.appFont(.heavy, size: 20))
-                    .foregroundStyle(Color.ink800)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.6)
+    private func averageComparisonCell(
+        label: String,
+        current: String,
+        average: String,
+        delta: String,
+        ratio: Double,
+        color: Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 6) {
+                Text(label)
+                    .font(.appFont(.semibold, size: 13))
+                    .foregroundStyle(Color.ink600)
+                Spacer(minLength: 0)
+                Text(delta)
+                    .font(.appFont(.heavy, size: 10))
+                    .foregroundStyle(color)
                     .monospacedDigit()
-                if let unit {
-                    Text(unit)
-                        .font(.appFont(.bold, size: 11))
-                        .foregroundStyle(Color.acorn600)
-                }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(color.opacity(0.12), in: Capsule())
             }
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule().fill(Color.ink100)
-                    Capsule().fill(color)
-                        .frame(width: geo.size.width * CGFloat(max(0, min(100, subScore))) / 100)
-                }
-            }
-            .frame(height: 5)
-            Text(reference)
+            Text(current)
+                .font(.appFont(.heavy, size: 20))
+                .foregroundStyle(Color.ink800)
+                .lineLimit(1)
+                .minimumScaleFactor(0.62)
+                .monospacedDigit()
+            AverageDeltaBar(ratio: ratio, color: color)
+                .frame(height: 12)
+            Text(average)
                 .font(.appFont(.semibold, size: 13))
                 .foregroundStyle(Color.ink600.opacity(0.8))
                 .lineLimit(1)
@@ -204,6 +239,34 @@ struct ReportCardView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, 4)
+    }
+
+    private var coachPanel: some View {
+        let summary = averageComparisonSummary
+        return HStack(spacing: 12) {
+            Image(summary.imageName)
+                .resizable()
+                .scaledToFit()
+                .frame(width: 64, height: 64)
+                .background(Color.butter100.opacity(0.7), in: Circle())
+            VStack(alignment: .leading, spacing: 5) {
+                Text(coachTitle)
+                    .font(.appFont(.heavy, size: 15))
+                    .foregroundStyle(Color.ink800)
+                Text(coachMessage)
+                    .font(.appFont(.semibold, size: 13))
+                    .foregroundStyle(Color.ink600)
+                    .lineSpacing(2)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity)
+        .background(Color.sage50.opacity(0.82), in: RoundedRectangle(cornerRadius: 18))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.sage100, lineWidth: 1)
+        )
     }
 
     // MARK: - 씹기 · 쉬기 구간 바
@@ -284,21 +347,12 @@ struct ReportCardView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var gradeColor: Color {
-        switch model.grade {
-        case .good: Color.sage600
-        case .soso: Color.butter500
-        case .bad:  Color.blush400
-        }
+    private var coachTitle: String {
+        "다람이 코치: \(averageComparisonSummary.badge)"
     }
 
-    /// 요소 점수(0~100) → 점수 컬러 토큰. 등급 경계(80/60)와 동일.
-    private func factorColor(_ subScore: Int) -> Color {
-        switch subScore {
-        case 80...:     Color.sage600
-        case 60..<80:   Color.butter500
-        default:        Color.blush400
-        }
+    private var coachMessage: String {
+        averageComparisonSummary.coachMessage
     }
 
     private var headerDateLabel: String {
@@ -316,9 +370,127 @@ struct ReportCardView: View {
         if secs == 0 { return "\(mins)분" }
         return "\(mins)분 \(secs)초"
     }
+
+    private var durationDeltaMinutes: Int {
+        Int(((model.totalDurationSec - AverageBaseline.durationSec) / 60).rounded())
+    }
+
+    private var chewingFocusDeltaPercent: Int {
+        Int(((model.chewingFraction - AverageBaseline.chewingFraction) * 100).rounded())
+    }
+
+    private var averageComparisonSummary: AverageComparisonSummary {
+        let chewDelta = model.chewCount - AverageBaseline.chewCount
+        let speedDelta = model.chewsPerMinute - AverageBaseline.chewsPerMinute
+        let minuteDelta = durationDeltaMinutes
+        let focusDelta = chewingFocusDeltaPercent
+        let positiveSignals = [
+            chewDelta >= 30,
+            minuteDelta >= 1,
+            focusDelta >= 5,
+            speedDelta <= 3
+        ].filter { $0 }.count
+
+        if positiveSignals >= 3 {
+            return AverageComparisonSummary(
+                badge: "평균보다 여유",
+                title: "평균보다 천천히, 더 오래 씹은 식사예요",
+                detail: "저작 횟수와 씹기 비율이 기준 평균보다 높아요. 이번 리듬은 다음 식사에서도 재현해볼 만해요.",
+                coachMessage: "지금처럼 첫 몇 입의 속도를 낮추면 식사 전체 리듬이 안정적으로 이어질 수 있어요.",
+                color: .sage600,
+                imageName: Mood.happy.imageName
+            )
+        }
+
+        if chewDelta < -80 || minuteDelta < -3 || speedDelta > 8 {
+            return AverageComparisonSummary(
+                badge: "평균보다 빠름",
+                title: "평균보다 짧고 빠른 식사였어요",
+                detail: "식사 시간이 기준 평균보다 짧거나 분당 저작 흐름이 빠른 편이에요. 신호 상태와 메뉴 차이도 함께 참고해요.",
+                coachMessage: "다음 식사에서는 첫 5분만 의식적으로 천천히 시작해봐요. 처음 속도가 전체 흐름을 잡아줘요.",
+                color: .blush500,
+                imageName: Mood.sleepy.imageName
+            )
+        }
+
+        if chewDelta >= 30 || focusDelta >= 5 {
+            return AverageComparisonSummary(
+                badge: "저작 우세",
+                title: "평균보다 씹는 흐름이 많은 식사예요",
+                detail: "총 저작 횟수나 씹기 비율이 기준 평균보다 높아요. 식사 시간이 크게 짧지 않았다면 좋은 흐름으로 볼 수 있어요.",
+                coachMessage: "저작 흐름은 좋아요. 다음에는 중간중간 짧은 쉼을 섞어 더 편안한 리듬을 만들어봐요.",
+                color: .acorn700,
+                imageName: Mood.champ.imageName
+            )
+        }
+
+        return AverageComparisonSummary(
+            badge: "평균 근처",
+            title: "평균과 비슷한 리듬의 식사예요",
+            detail: "저작 횟수와 식사 시간이 기준 평균 범위 안에 있어요. 꾸준히 쌓이면 나만의 평균과도 비교할 수 있어요.",
+            coachMessage: "큰 흔들림 없이 식사했어요. 다음 목표는 한 끼에서 씹기 비율을 조금 더 높여보는 거예요.",
+            color: .butter600,
+            imageName: Mood.puffy.imageName
+        )
+    }
+
+    private func signedDelta(_ value: Int, suffix: String) -> String {
+        if value == 0 { return "±0\(suffix)" }
+        return value > 0 ? "+\(value)\(suffix)" : "\(value)\(suffix)"
+    }
 }
 
-#Preview("Good 82점") {
+private enum AverageBaseline {
+    static let chewCount = 300
+    static let durationSec: Double = 720
+    static let chewsPerMinute: Double = 28
+    static let chewingFraction: Double = 0.6
+}
+
+private struct AverageComparisonSummary {
+    let badge: String
+    let title: String
+    let detail: String
+    let coachMessage: String
+    let color: Color
+    let imageName: String
+}
+
+private struct AverageDeltaBar: View {
+    let ratio: Double
+    let color: Color
+
+    private var clampedRatio: CGFloat {
+        CGFloat(max(-1, min(1, ratio)))
+    }
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = geo.size.width
+            let center = width / 2
+            let markerX = center + clampedRatio * width * 0.42
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.ink100.opacity(0.8))
+                Rectangle()
+                    .fill(Color.ink400.opacity(0.32))
+                    .frame(width: 1)
+                    .offset(x: center)
+                Capsule()
+                    .fill(color.opacity(0.24))
+                    .frame(width: abs(markerX - center), height: 8)
+                    .offset(x: min(center, markerX))
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 12, height: 12)
+                    .overlay(Circle().stroke(color, lineWidth: 2))
+                    .offset(x: min(max(0, markerX - 6), width - 12))
+            }
+        }
+    }
+}
+
+#Preview("Good 분석") {
     ZStack {
         Color.cream.ignoresSafeArea()
         ReportCardView(model: ReportCardModel(
@@ -342,7 +514,7 @@ struct ReportCardView: View {
     }
 }
 
-#Preview("Soso 65점") {
+#Preview("Soso 분석") {
     ZStack {
         Color.cream.ignoresSafeArea()
         ReportCardView(model: ReportCardModel(
@@ -366,7 +538,7 @@ struct ReportCardView: View {
     }
 }
 
-#Preview("Bad 42점") {
+#Preview("Bad 분석") {
     ZStack {
         Color.cream.ignoresSafeArea()
         ReportCardView(model: ReportCardModel(
@@ -473,46 +645,5 @@ struct EmptyReportCardView: View {
         .padding(.horizontal, 24)
         .background(Color.white, in: RoundedRectangle(cornerRadius: 28))
         .softShadow(.base)
-    }
-}
-
-// MARK: - 점수 산식 인라인 박스 (info 토글)
-
-/// 점수 근거 그리드 아래에 inline으로 펼쳐지는 산식 박스. 4요소 기준값만 짧게.
-/// 시스템 popover의 iPhone placement 변덕(상단 점프)을 피하기 위해 카드 안
-/// inline 배치 — 다른 콘텐츠는 가리지 않고 아래로 밀린다.
-private struct ScoreFormulaInline: View {
-    let model: ReportCardModel
-
-    var body: some View {
-        VStack(spacing: 6) {
-            formulaRow(label: "속도",      detail: "28회/분",       subScore: model.speedScore)
-            formulaRow(label: "리듬",      detail: "씹기 비율 50%+", subScore: model.rhythmScore)
-            formulaRow(label: "연속성",    detail: "200회+",         subScore: model.continuityScore)
-            formulaRow(label: "식사 시간", detail: "12분 부근",      subScore: model.lengthScore)
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity)
-        .background(Color.acorn50, in: RoundedRectangle(cornerRadius: 14))
-        .overlay(
-            RoundedRectangle(cornerRadius: 14).stroke(Color.acorn100, lineWidth: 1)
-        )
-    }
-
-    private func formulaRow(label: String, detail: String, subScore: Int) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 10) {
-            Text(label)
-                .font(.appFont(.bold, size: 12))
-                .foregroundStyle(Color.ink800)
-                .frame(width: 56, alignment: .leading)
-            Text(detail)
-                .font(.appFont(.semibold, size: 13))
-                .foregroundStyle(Color.ink600)
-            Spacer(minLength: 0)
-            Text("\(subScore)")
-                .font(.appFont(.heavy, size: 13))
-                .foregroundStyle(Color.ink800)
-                .monospacedDigit()
-        }
     }
 }

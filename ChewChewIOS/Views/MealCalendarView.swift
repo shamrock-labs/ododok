@@ -476,7 +476,8 @@ private struct DayInlineSection: View {
     private func slotBlock(slot: DayMealSlot, sessions: [ChewingSessionDTO]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Text(slot.emoji).font(.appFont(.regular, size: 20))
+                OpenIconView(icon: slot.openIcon, color: slot.iconColor, lineWidth: 2.1)
+                    .frame(width: 20, height: 20)
                 Text(slot.label)
                     .font(.appFont(.heavy, size: 16))
                     .foregroundStyle(Color.ink800)
@@ -542,7 +543,7 @@ private struct DayInlineSection: View {
     }
 }
 
-/// 끼니 슬롯 분류. 시각(시간)으로 매핑. UI 라벨/이모지 보관.
+/// 끼니 슬롯 분류. 시각(시간)으로 매핑. UI 라벨/아이콘 보관.
 enum DayMealSlot: CaseIterable, Hashable {
     case morning, lunch, dinner, lateNight
 
@@ -554,12 +555,20 @@ enum DayMealSlot: CaseIterable, Hashable {
         case .lateNight: "야식"
         }
     }
-    var emoji: String {
+    var openIcon: OpenIcon {
         switch self {
-        case .morning:   "🌅"
-        case .lunch:     "🍱"
-        case .dinner:    "🌙"
-        case .lateNight: "🍎"
+        case .morning:   .sunrise
+        case .lunch:     .utensils
+        case .dinner:    .moonStar
+        case .lateNight: .moonStar
+        }
+    }
+    var iconColor: Color {
+        switch self {
+        case .morning:   .butter600
+        case .lunch:     .sage600
+        case .dinner:    .blush500
+        case .lateNight: .acorn700
         }
     }
     init(hour: Int) {

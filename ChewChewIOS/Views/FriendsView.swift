@@ -37,11 +37,8 @@ struct FriendsView: View {
     // MARK: Header
 
     private var header: some View {
-        HStack {
-            Text("친구")
-                .font(.appFont(.heavy, size: 22))
-                .foregroundStyle(Color.ink800)
-            Spacer()
+        AppHeaderView(eyebrow: "함께 먹는 리듬", title: "친구", subtitle: "초대와 랭킹을 한 곳에서 준비해요") {
+            HeaderMetricPill(icon: .people, value: "준비중", tint: .sage600)
         }
     }
 
