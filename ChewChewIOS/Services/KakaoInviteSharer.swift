@@ -20,8 +20,13 @@ enum KakaoInviteSharer {
         // 카카오톡 미설치 시 공유 시트가 뜨지 않으므로 호출부에서 안내한다.
         guard ShareApi.isKakaoTalkSharingAvailable() else { throw ShareError.kakaoTalkUnavailable }
 
-        // 받은 앱이 code 파라미터로 초대 코드를 수신하도록 iosExecutionParams에 실어 보낸다.
-        let link = Link(iosExecutionParams: ["code": code])
+        // 받은 앱은 iosExecutionParams로 자동 수락하고, 미설치자는 콘솔 마켓 URL 또는 mobileWebUrl로 폴백한다.
+        let link = Link(
+            mobileWebUrl: mobileWebFallbackURL(
+                from: Bundle.main.object(forInfoDictionaryKey: "KakaoInviteMobileWebURL") as? String
+            ),
+            iosExecutionParams: ["code": code]
+        )
         let template = TextTemplate(
             text: "오도독에서 같이 식사 목표를 채워요!",
             link: link,
@@ -41,5 +46,14 @@ enum KakaoInviteSharer {
         }
         // shareDefault는 카카오톡으로 넘길 URL만 만들어 준다 — 실제 앱 전환은 직접 연다.
         await UIApplication.shared.open(result.url)
+    }
+
+    static func mobileWebFallbackURL(from rawValue: String?) -> URL? {
+        guard let rawValue else { return nil }
+        let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.contains("$(") else { return nil }
+
+        guard let url = URL(string: trimmed), url.scheme == "https" else { return nil }
+        return url
     }
 }

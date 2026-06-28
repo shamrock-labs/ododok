@@ -11,7 +11,7 @@ settings:
     CODE_SIGN_STYLE: Automatic
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
-    DEVELOPMENT_TEAM: ""
+    DEVELOPMENT_TEAM: 26SRR6SP9B
 
 packages:
   GoogleSignIn:
@@ -81,15 +81,15 @@ targets:
             --org "${SENTRY_ORG}" \
             --project "${SENTRY_PROJECT}" \
             "${DWARF_DSYM_FOLDER_PATH}"
-    # 엔타이틀먼트(Sign in with Apple, APNs 푸시) — 유료 Apple Developer 계정 필요(개인 팀 서명 불가).
-    # 보류로 임시 주석. 유료 계정 + Push 권한 전환 시 아래를 해제하면 서버 식사 푸시(ODO-56)가 활성화된다.
-    # 그 전까지 앱은 registerForRemoteNotifications 실패를 받아 로컬 알림으로 자동 폴백한다(MealPushCoordinator).
-    # entitlements:
-    #   path: ChewChewIOS/ChewChewIOS.entitlements
-    #   properties:
-    #     com.apple.developer.applesignin:
-    #       - Default
-    #     aps-environment: development
+    # 엔타이틀먼트(Sign in with Apple, APNs 푸시). ODO-16: 유료 Apple Developer 계정 등록 완료로 활성화.
+    # 비활성 시엔 앱이 registerForRemoteNotifications 실패를 받아 로컬 알림으로 폴백했다(MealPushCoordinator).
+    # Debug는 APNs sandbox, Release/TestFlight/App Store는 APNs production으로 빌드 설정에서 분리한다.
+    entitlements:
+      path: ChewChewIOS/ChewChewIOS.entitlements
+      properties:
+        com.apple.developer.applesignin:
+          - Default
+        aps-environment: $(APS_ENVIRONMENT)
     configFiles:
       Debug: Config/Secrets.xcconfig
       Release: Config/Secrets.xcconfig
@@ -101,6 +101,7 @@ targets:
         SentryDSN: "$(SENTRY_DSN)"
         AmplitudeAPIKey: "$(AMPLITUDE_API_KEY)"
         BackendBaseURL: "$(BACKEND_BASE_URL)"
+        KakaoInviteMobileWebURL: "$(KAKAO_INVITE_MOBILE_WEB_URL)"
         # Spring staging(HTTP, Tailscale 내부 IP) 연결용 ATS 예외.
         # InsForge(HTTPS)는 영향 없음. staging이 HTTPS 도메인을 갖게 되면 제거.
         NSAppTransportSecurity:
@@ -148,8 +149,10 @@ targets:
       # 여기(project.yml=YAML)에 두는 이유: xcconfig는 //를 주석으로 봐서 https:// 가 잘림. YAML은 안전.
       configs:
         Debug:
+          APS_ENVIRONMENT: development
           BACKEND_BASE_URL: https://sungho-macmini.tail502d5f.ts.net
         Release:
+          APS_ENVIRONMENT: production
           BACKEND_BASE_URL: https://api.ododok.cloud
 
   OdodokWidgets:

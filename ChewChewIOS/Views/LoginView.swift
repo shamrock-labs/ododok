@@ -1,5 +1,51 @@
 import SwiftUI
 
+enum LoginProviderOption: CaseIterable {
+    case apple
+    case google
+    case kakao
+
+    var title: String {
+        switch self {
+        case .apple: "Apple로 계속하기"
+        case .google: "Google로 계속하기"
+        case .kakao: "카카오로 계속하기"
+        }
+    }
+
+    var background: Color {
+        switch self {
+        case .apple: .black
+        case .google: .white
+        case .kakao: Color(red: 254/255, green: 229/255, blue: 0/255)
+        }
+    }
+
+    var foreground: Color {
+        switch self {
+        case .apple: .white
+        case .google: Color(red: 60/255, green: 64/255, blue: 67/255)
+        case .kakao: .black.opacity(0.85)
+        }
+    }
+
+    var border: Color? {
+        switch self {
+        case .apple, .kakao: nil
+        case .google: Color(red: 218/255, green: 220/255, blue: 224/255)
+        }
+    }
+
+    @MainActor
+    func makeProvider() -> SocialLoginProvider {
+        switch self {
+        case .apple: AppleLoginProvider()
+        case .google: GoogleLoginProvider()
+        case .kakao: KakaoLoginProvider()
+        }
+    }
+}
+
 /// 소셜 로그인 화면. Apple/Google/Kakao 중 하나로 로그인 → 서버 JWT 발급 → onLoggedIn().
 /// 일반적인 앱의 소셜 로그인 UI(브랜드 컬러 풀폭 버튼)를 따른다. 온보딩 앞 게이트로 표시.
 struct LoginView: View {
@@ -27,11 +73,9 @@ struct LoginView: View {
             Spacer()
 
             VStack(spacing: 12) {
-                // Apple OAuth는 유료 Apple Developer 계정 필요(개인 팀은 Sign in with Apple 서명 불가).
-                // 보류 — 유료 계정 전환 시 이 줄 + project.yml entitlements + AppleLoginProvider 복구.
-                // socialButton(.apple) { AppleLoginProvider() }
-                socialButton(.google) { GoogleLoginProvider() }
-                socialButton(.kakao) { KakaoLoginProvider() }
+                ForEach(LoginProviderOption.allCases, id: \.self) { option in
+                    socialButton(option)
+                }
             }
 
             if let errorMessage {
@@ -65,48 +109,27 @@ struct LoginView: View {
 
     // MARK: - 브랜드 버튼
 
-    private enum Brand { case apple, google, kakao }
-
     /// 일반 소셜 로그인 버튼 스타일(브랜드 배경색 + 좌측 로고 + 중앙 라벨, 풀폭 라운드).
-    private func socialButton(_ brand: Brand,
-                              provider: @escaping () -> SocialLoginProvider) -> some View {
-        let title: String
-        let background: Color
-        let foreground: Color
-        let border: Color?
-        switch brand {
-        case .apple:
-            title = "Apple로 계속하기"; background = .black; foreground = .white; border = nil
-        case .google:
-            title = "Google로 계속하기"
-            background = .white
-            foreground = Color(red: 60/255, green: 64/255, blue: 67/255)
-            border = Color(red: 218/255, green: 220/255, blue: 224/255)
-        case .kakao:
-            title = "카카오로 계속하기"
-            background = Color(red: 254/255, green: 229/255, blue: 0/255)
-            foreground = .black.opacity(0.85)
-            border = nil
-        }
+    private func socialButton(_ option: LoginProviderOption) -> some View {
         return Button {
-            Task { await signIn(with: provider()) }
+            Task { await signIn(with: option.makeProvider()) }
         } label: {
             ZStack {
-                Text(title).font(.system(size: 16, weight: .semibold))
+                Text(option.title).font(.system(size: 16, weight: .semibold))
                 HStack {
-                    brandIcon(brand).frame(width: 22, height: 22)
+                    brandIcon(option).frame(width: 22, height: 22)
                     Spacer()
                 }
             }
             .padding(.horizontal, 18)
             .frame(maxWidth: .infinity)
             .frame(height: 52)
-            .foregroundStyle(foreground)
-            .background(background)
+            .foregroundStyle(option.foreground)
+            .background(option.background)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(border ?? .clear, lineWidth: 1)
+                    .strokeBorder(option.border ?? .clear, lineWidth: 1)
             )
         }
         .buttonStyle(.plain)
@@ -114,8 +137,8 @@ struct LoginView: View {
 
     /// 브랜드 로고. 공식 멀티컬러 G / 카카오 말풍선 심볼은 에셋 추가 시 교체 권장(지금은 근사).
     @ViewBuilder
-    private func brandIcon(_ brand: Brand) -> some View {
-        switch brand {
+    private func brandIcon(_ option: LoginProviderOption) -> some View {
+        switch option {
         case .apple:
             Image(systemName: "apple.logo").font(.system(size: 18))
         case .google:
