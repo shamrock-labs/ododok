@@ -162,6 +162,40 @@ final class AppState {
     /// 마지막으로 실제 IMU 샘플이 들어온 시각. 백그라운드 수집 검증용.
     var lastIMUSampleAt: Date?
 
+    /// 측정 중 실시간 씹기 횟수. ChewCounter(DSP)가 센 `chewCount`를 0.25초 간격으로
+    /// 폴링해 화면에 노출한다. 세션 종료 시 서버로 보내는 `estimatedTotalChews`와 동일 소스라,
+    /// 식사 중 화면 숫자와 최종 집계가 일치한다. 비측정 구간엔 0.
+    var liveChewCount: Int = 0
+
+    static let chewSensitivityKey = "chewSensitivityV2"
+
+    /// 씹기 감지 튜닝(개별 파라미터). 디버그 슬라이더로 조절하고 UserDefaults(JSON)에 영속한다.
+    /// 변경 시 측정 중이면 ChewCounter에 즉시 반영해 슬라이더 효과를 실시간 확인할 수 있다.
+    var chewSensitivity: ChewSensitivity = AppState.loadChewSensitivity() {
+        didSet {
+            AppState.saveChewSensitivity(chewSensitivity)
+            let s = chewSensitivity
+            Task { await chewCounter?.setSensitivity(s) }
+        }
+    }
+
+    /// 측정 중 실시간 진단(왜 0인지). ChewDebugView가 폴링 값으로 표시한다. 비측정 시 nil.
+    var liveChewDiagnostics: ChewDiagnostics?
+
+    static func loadChewSensitivity() -> ChewSensitivity {
+        guard let data = UserDefaults.standard.data(forKey: chewSensitivityKey),
+              let s = try? JSONDecoder().decode(ChewSensitivity.self, from: data) else {
+            return .defaults
+        }
+        return s
+    }
+
+    static func saveChewSensitivity(_ s: ChewSensitivity) {
+        if let data = try? JSONEncoder().encode(s) {
+            UserDefaults.standard.set(data, forKey: chewSensitivityKey)
+        }
+    }
+
     /// 알림 딥링크(`chewchew://start`) 수신 시 true. 3초 후 자동 false.
     /// HomeView의 MealToggle 강조 스타일 트리거.
     var startButtonHighlighted: Bool = false
@@ -180,6 +214,8 @@ final class AppState {
     /// 실기기에선 식사 시작 시 최초 1회 init.
     @ObservationIgnored private lazy var headphoneMotionService = HeadphoneMotionService()
     @ObservationIgnored private var chewPulseTimer: Timer?
+    /// 측정 중 ChewCounter 카운트를 폴링해 `liveChewCount`로 끌어올리는 타이머.
+    @ObservationIgnored private var chewCountPollTimer: Timer?
     @ObservationIgnored private var demoIMUWaveformTimer: Timer?
     @ObservationIgnored private var imuWaveformPhase: Double = 0
 
@@ -324,10 +360,15 @@ final class AppState {
         // 새 세션 시작 시 IMU 진단 지표 리셋 — 백그라운드 수집 여부 검증에 깨끗한 기준 제공
         imuSampleCount = 0
         lastIMUSampleAt = nil
+        liveChewCount = 0
         // raw IMU 6채널을 모을 봉투 — 식사 종료 시 finalize + 업로드.
         imuSessionRecorder = IMUSessionRecorder(startedAt: now)
         // DSP 씹기 카운터 — 식사 종료 시 chewing_session 분석 5필드 산출용.
-        chewCounter = ChewCounter()
+        // 현재 튜닝(디버그 슬라이더 값)을 주입해 시작한다.
+        chewCounter = ChewCounter(sensitivity: chewSensitivity)
+        liveChewDiagnostics = nil
+        // 같은 카운터를 0.25초 간격으로 폴링해 식사 중 실시간 횟수를 화면에 노출.
+        startLiveChewCountPolling()
         // 다람이 씹기 모션용 고정 주기 펄스 — 식사 내내 일정 간격으로 animKey만 올려
         // 화면 속 다람이가 자연스럽게 우물거리게 한다. 실제 씹기 검출과는 무관.
         startChewAnimationLoop()
@@ -385,6 +426,7 @@ final class AppState {
         eatingStartedAt = nil
         stopHeadphoneMotionLoop()
         stopChewAnimationLoop()
+        stopLiveChewCountPolling()
         stopDemoIMUWaveformLoop()
         // 식사가 끝나면 더 이상 백그라운드 wake가 필요 없으므로 즉시 stop —
         // ambient 오디오 세션이 살아있는 동안엔 다른 앱(타이머/시스템 사운드 등)
@@ -432,6 +474,7 @@ final class AppState {
         eatingStartedAt = nil
         stopHeadphoneMotionLoop()
         stopChewAnimationLoop()
+        stopLiveChewCountPolling()
         stopDemoIMUWaveformLoop()
         backgroundKeepAlive.onInterrupt = nil
         backgroundKeepAlive.stop()
@@ -818,6 +861,26 @@ final class AppState {
     private func stopChewAnimationLoop() {
         chewPulseTimer?.invalidate()
         chewPulseTimer = nil
+    }
+
+    /// 측정 중 ChewCounter(DSP, actor)의 누적 카운트를 0.25초마다 읽어 `liveChewCount`로 노출한다.
+    /// feed(50Hz) 경로는 건드리지 않고 읽기만 하므로 검출 로직·서버 통계에 영향이 없다.
+    /// 0.25초 폴링이면 4fps로 UI가 충분히 부드럽고, 50Hz UI 폭주를 피한다.
+    private func startLiveChewCountPolling() {
+        stopLiveChewCountPolling()
+        chewCountPollTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self, let counter = self.chewCounter else { return }
+                let diag = await counter.diagnostics()
+                self.liveChewCount = diag.chewCount
+                self.liveChewDiagnostics = diag
+            }
+        }
+    }
+
+    private func stopLiveChewCountPolling() {
+        chewCountPollTimer?.invalidate()
+        chewCountPollTimer = nil
     }
 
     // MARK: - Motion permission guard (REQ-01)

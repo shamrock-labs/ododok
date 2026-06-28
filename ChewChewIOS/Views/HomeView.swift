@@ -246,7 +246,20 @@ struct HomeView: View {
                 Text(state.isEating ? "맛있게 먹는 중이에요" : state.status.title)
                     .font(.appFont(.bold, size: 19))
                     .foregroundStyle(Color.ink800)
-                if !state.isEating {
+                if state.isEating {
+                    // 측정 중 실시간 씹기 횟수 — ChewCounter(DSP) 카운트를 그대로 노출.
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text(state.liveChewCount.koLocale)
+                            .font(.appFont(.bold, size: 34))
+                            .foregroundStyle(Color.acorn600)
+                            .monospacedDigit()
+                            .contentTransition(.numericText(value: Double(state.liveChewCount)))
+                        Text("번 씹었어요")
+                            .font(.appFont(.semibold, size: 15))
+                            .foregroundStyle(Color.ink600)
+                    }
+                    .animation(.snappy, value: state.liveChewCount)
+                } else {
                     Text("오늘 \(state.todayRealChewCount.koLocale) / \(Constants.dailyGoal.koLocale)회")
                         .font(.appFont(.semibold, size: 13))
                         .foregroundStyle(Color.ink600)
