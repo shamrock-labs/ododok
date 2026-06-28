@@ -41,6 +41,14 @@ final class BackgroundAudioKeepAlive {
 
     var isRunning: Bool { audioPlayer?.isPlaying == true }
 
+    /// 통화(CXCallObserver) 감지처럼 오디오 인터럽트 없이 측정만 멈출 때 중단 시각을 기록한다.
+    /// `.mixWithOthers` 세션은 통화에 인터럽트를 안 받아 `interruptionBeganAt`이 안 잡히므로,
+    /// AppState가 통화 감지 시 이걸 호출해 "계속하기" 때 통화 구간이 갭으로 빠지게 한다.
+    /// 이미 인터럽트 진행 중이면(began 설정됨) 덮어쓰지 않는다.
+    func markInterruptionBegan() {
+        if interruptionBeganAt == nil { interruptionBeganAt = Date() }
+    }
+
     // MARK: - Lifecycle
 
     func start() {

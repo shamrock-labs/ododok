@@ -356,6 +356,11 @@ final class AppState {
             Task { @MainActor [weak self] in
                 guard let self, self.isEating else { return }
                 self.interruptionWasCall = true
+                // keep-alive 오디오 세션이 .mixWithOthers라 통화엔 인터럽트가 안 와서 onInterrupt가
+                // 안 불린다 → 측정이 안 멈춘다. 통화 감지 시 여기서 직접 IMU 루프를 멈추고(측정 중단),
+                // 중단 시각을 기록해 "계속하기" 시 통화 구간이 갭으로 빠지게 한다.
+                self.backgroundKeepAlive.markInterruptionBegan()
+                self.stopHeadphoneMotionLoop()
                 self.mealActivity.setPaused(true)
                 await MealNotificationService.scheduleInterruptionPrompt()
             }
