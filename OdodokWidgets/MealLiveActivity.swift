@@ -18,19 +18,7 @@ struct MealLiveActivity: Widget {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .background {
                     RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                        .overlay {
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.94),
-                                    Color.mealGlassBase.opacity(0.94),
-                                    Color.mealGlassWarmth.opacity(0.92)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                        }
+                        .fill(Color(red: 1.0, green: 0.992, blue: 0.973).opacity(0.95))
                 }
                 .overlay {
                     RoundedRectangle(cornerRadius: 24, style: .continuous)
@@ -206,15 +194,13 @@ struct MealLiveActivity: Widget {
 }
 
 private extension Color {
-    /// 알림 카드 팔레트. 위젯 타겟엔 Colors.swift가 없어 인라인으로 두되 앱 ink/acorn 값과 정렬한다.
-    /// 텍스트는 시스템 외관과 무관하게 고정 색이라 반투명 머티리얼 위에서도 또렷.
-    static let mealGlassBase = Color(red: 253/255, green: 248/255, blue: 239/255)
-    static let mealGlassWarmth = Color(red: 1, green: 251/255, blue: 244/255)
+    /// 알림 카드 팔레트. 끼니 알림 커스텀 카드(NotificationViewController)의 ink/acorn 값과 정렬한다.
+    /// 잠금화면 Live Activity는 외관 자동적응이 불안정해, 고정 라이트 카드 위 고정 어두운 글자로 양쪽 모드 모두 또렷.
     static let mealAvatarBg = Color(red: 251/255, green: 243/255, blue: 232/255)  // acorn50
     static let mealTitle = Color(red: 45/255, green: 36/255, blue: 24/255)        // ink800
     static let mealBody = Color(red: 92/255, green: 79/255, blue: 62/255)         // ink600
     static let mealFaint = Color(red: 140/255, green: 123/255, blue: 102/255)     // ink400
+    static let mealChip = Color(red: 242/255, green: 237/255, blue: 229/255)      // ink100
     static let mealBrown = Color(red: 156/255, green: 110/255, blue: 71/255)      // acorn600
     static let mealIslandAccent = Color(red: 214/255, green: 171/255, blue: 126/255)
-    static let mealChip = Color(red: 242/255, green: 237/255, blue: 229/255)      // ink100
 }
