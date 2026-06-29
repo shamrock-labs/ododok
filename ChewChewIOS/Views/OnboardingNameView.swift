@@ -67,11 +67,11 @@ struct OnboardingNameView: View {
             } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 13, weight: .bold))
                     Text("다른 계정으로 로그인")
                 }
-                .font(.appFont(.semibold, size: 13))
-                .foregroundStyle(Color.textSecondary)
+                .font(.appFont(.bold, size: 14))
+                .foregroundStyle(Color.ink600)
                 .padding(.vertical, 6)
                 .padding(.horizontal, 10)
             }
