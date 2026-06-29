@@ -277,7 +277,7 @@ struct HomeView: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("IMU 파형")
+                    Text("씹기 파형")
                         .font(.appFont(.bold, size: 13))
                         .foregroundStyle(Color.textPrimary)
                     Text(state.imuWaveformStatusText)
