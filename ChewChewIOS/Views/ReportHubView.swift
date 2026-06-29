@@ -1098,11 +1098,21 @@ private struct ReportCalendarDialog: View {
     }
 }
 
-#Preview {
+#Preview("Light") {
     ScrollView {
         ReportHubView()
             .padding(20)
     }
     .background(LinearGradient.appBackground)
     .environment(AppState())
+}
+
+#Preview("Dark") {
+    ScrollView {
+        ReportHubView()
+            .padding(20)
+    }
+    .background(LinearGradient.appBackground)
+    .environment(AppState())
+    .preferredColorScheme(.dark)
 }

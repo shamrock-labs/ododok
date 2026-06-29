@@ -26,6 +26,9 @@ enum ReportCardRenderer {
                 .padding(.horizontal, 20)
         }
         .frame(width: 360, height: 640)
+        // 공유 PNG는 기기 다크모드와 무관하게 항상 라이트로 렌더(동적 토큰이 dark로 뒤집혀
+        // cream 배경 위에 다크 카드가 그려지는 것 방지).
+        .environment(\.colorScheme, .light)
 
         let renderer = ImageRenderer(content: content)
         renderer.scale = 3.0
