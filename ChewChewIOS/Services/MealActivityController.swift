@@ -20,7 +20,7 @@ final class MealActivityController {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         guard activity == nil else { return }
         let content = ActivityContent(
-            state: MealActivityAttributes.ContentState(isPausedByCall: false),
+            state: MealActivityAttributes.ContentState(isPausedByCall: false, callActive: false),
             staleDate: nil
         )
         activity = try? Activity.request(
@@ -32,14 +32,16 @@ final class MealActivityController {
     }
 
     /// 전화로 멈춤(true) / 재개(false) 상태를 라이브 현황에 반영.
-    func setPaused(_ paused: Bool) {
+    /// 통화 감지 시 앱이 곧 suspend될 수 있어, 업데이트를 fire-and-forget Task로 던지면
+    /// 반영 전에 멈춰 카드가 안 바뀐다. async로 만들어 호출부(onCallStarted)에서 await해 확실히 보낸다.
+    func setPaused(_ paused: Bool, callActive: Bool = false) async {
         #if os(iOS)
         guard let activity else { return }
         let content = ActivityContent(
-            state: MealActivityAttributes.ContentState(isPausedByCall: paused),
+            state: MealActivityAttributes.ContentState(isPausedByCall: paused, callActive: callActive),
             staleDate: nil
         )
-        Task { await activity.update(content) }
+        await activity.update(content)
         #endif
     }
 

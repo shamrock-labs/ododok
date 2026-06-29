@@ -10,6 +10,9 @@ import Foundation
 struct MealActivityAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable {
         var isPausedByCall: Bool
+        /// 통화가 아직 진행 중인지. `isPausedByCall == true`일 때만 의미 있다.
+        /// true=통화 중(버튼 없이 "멈춤"만 표시), false=통화 종료(계속하기·그만하기 노출).
+        var callActive: Bool = false
     }
 
     var startedAt: Date

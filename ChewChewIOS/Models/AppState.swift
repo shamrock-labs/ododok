@@ -1,6 +1,9 @@
 import Foundation
 import Observation
 import CoreMotion
+#if canImport(UIKit)
+import UIKit
+#endif
 
 enum IMUWaveformSource: Equatable {
     case idle
@@ -361,14 +364,35 @@ final class AppState {
         callMonitor.onCallStarted = { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self, self.isEating else { return }
+                // keep-alive 오디오 세션이 .mixWithOthers라 통화는 우리 세션을 인터럽트하지 않는다
+                // (onInterrupt 안 불림) → 측정 정지·카드 갱신을 통화 감지(CXCallObserver) 경로에서 직접 한다.
+                // beginBackgroundTask로 실행시간을 확보해 "측정 정지 → 카드(통화 중 멈춤)"가 suspend 전에 끝나게 한다.
+                // 통화 중엔 버튼·알림을 띄우지 않고(callActive=true), 종료 시점(onCallEnded)에 계속하기 + 알림을 보여준다.
+                #if canImport(UIKit)
+                let bgTask = UIApplication.shared.beginBackgroundTask(withName: "MealCallPause")
+                defer {
+                    if bgTask != .invalid { UIApplication.shared.endBackgroundTask(bgTask) }
+                }
+                #endif
                 self.interruptionWasCall = true
-                // keep-alive 오디오 세션이 .mixWithOthers라 통화엔 인터럽트가 안 와서 onInterrupt가
-                // 안 불린다 → 측정이 안 멈춘다. 통화 감지 시 여기서 직접 IMU 루프를 멈추고(측정 중단),
-                // 중단 시각을 기록해 "계속하기" 시 통화 구간이 갭으로 빠지게 한다.
                 self.backgroundKeepAlive.markInterruptionBegan()
-                self.stopHeadphoneMotionLoop()
-                self.mealActivity.setPaused(true)
-                await MealNotificationService.scheduleInterruptionPrompt()
+                self.stopHeadphoneMotionLoop()                              // 측정 정지
+                await self.mealActivity.setPaused(true, callActive: true)   // 통화 중 → 멈춤(버튼 없음)
+            }
+        }
+        // 통화 종료 → 카드에 계속하기/그만하기 노출 + "이어서 진행할까요?" 알림.
+        // 종료 시점에 앱이 깨어나야(오디오 .ended 또는 CXCallObserver 콜백) 갱신되므로 여기서도 실행시간을 확보한다.
+        callMonitor.onCallEnded = { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.isEating, self.interruptionWasCall else { return }
+                #if canImport(UIKit)
+                let bgTask = UIApplication.shared.beginBackgroundTask(withName: "MealCallEnded")
+                defer {
+                    if bgTask != .invalid { UIApplication.shared.endBackgroundTask(bgTask) }
+                }
+                #endif
+                await self.mealActivity.setPaused(true, callActive: false)  // 통화 끝 → 계속/그만 노출
+                await MealNotificationService.scheduleInterruptionPrompt()  // "이어서 진행할까요?" 알림
             }
         }
         callMonitor.start()
@@ -397,6 +421,7 @@ final class AppState {
         backgroundKeepAlive.onInterrupt = nil
         backgroundKeepAlive.stop()
         callMonitor.onCallStarted = nil
+        callMonitor.onCallEnded = nil
         callMonitor.stop()
         interruptionWasCall = false
         MealNotificationService.cancelInterruptionPrompt()
@@ -441,6 +466,7 @@ final class AppState {
         backgroundKeepAlive.onInterrupt = nil
         backgroundKeepAlive.stop()
         callMonitor.onCallStarted = nil
+        callMonitor.onCallEnded = nil
         callMonitor.stop()
         interruptionWasCall = false
         MealNotificationService.cancelInterruptionPrompt()
@@ -476,7 +502,7 @@ final class AppState {
         #endif
         interruptionWasCall = false
         MealNotificationService.cancelInterruptionPrompt()
-        mealActivity.setPaused(false)
+        Task { await self.mealActivity.setPaused(false) }
         backgroundKeepAlive.resume()
         _ = startHeadphoneMotionLoop()
     }
