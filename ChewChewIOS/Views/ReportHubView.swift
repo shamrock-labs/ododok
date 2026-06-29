@@ -18,7 +18,6 @@ struct ReportHubView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            legacyUITestAnchors
             timelineCard
             sessionListCard
             weeklyComparisonCard
@@ -96,8 +95,10 @@ struct ReportHubView: View {
                 Text(monthRangeLabel)
                     .font(.appFont(.heavy, size: 15))
                     .foregroundStyle(Color.ink800)
+                Text("일별 저작")
+                    .font(.appFont(.bold, size: 11))
+                    .foregroundStyle(Color.ink400)
                 Spacer(minLength: 0)
-                TrendLegend()
                 Button { openCalendar() } label: {
                     Image(systemName: "calendar")
                         .font(.system(size: 17, weight: .semibold))
@@ -288,25 +289,25 @@ struct ReportHubView: View {
                 icon: "calendar.badge.clock",
                 title: "아침·점심·저녁",
                 value: dailySlotSummary,
-                detail: "기록 없는 끼니는 누락이 아니라 아직 식사 기록이 없는 상태로 보여요."
+                detail: "기록된 끼니만 집계해요."
             )
             dailyInsightRow(
                 icon: "arrow.left.arrow.right",
                 title: "어제 대비",
                 value: dailyDeltaSummary,
-                detail: "하루 차이는 컨디션·메뉴와 연관될 수 있어 참고용으로만 봐요."
+                detail: "어제와 같은 기준으로 저작 횟수를 비교한 값이에요."
             )
             dailyInsightRow(
                 icon: "chart.bar.fill",
                 title: "끼니 비교",
                 value: mealComparisonSummary,
-                detail: "한 끼 이상 쌓이면 끼니별 패턴을 비교할 수 있어요."
+                detail: "가장 많이 씹은 끼를 짚어줘요."
             )
             dailyInsightRow(
                 icon: "sum",
                 title: "하루 합계",
-                value: "약 \(selectedDay.chewCount.koLocale)회(추정) · \(selectedDay.minutes)분",
-                detail: "추정 저작 횟수와 식사 시간을 같은 단위로 묶은 요약이에요."
+                value: "약 \(selectedDay.chewCount.koLocale)회 · \(selectedDay.minutes)분",
+                detail: "추정 저작 횟수와 식사 시간 합계예요."
             )
         }
         .padding(14)
@@ -373,6 +374,7 @@ struct ReportHubView: View {
 
     private var weeklyComparisonCard: some View {
         let weeks = weeklyMetrics
+        let hasData = weeks.contains { $0.meals > 0 }
         let maxChews = max(1, weeks.map(\.chews).max() ?? 1)
         let maxMinutes = max(1, weeks.map(\.minutes).max() ?? 1)
 
@@ -382,25 +384,34 @@ struct ReportHubView: View {
                     .font(.appFont(.heavy, size: 16))
                     .foregroundStyle(Color.ink800)
                 Spacer()
-                TrendLegend()
+                if hasData { TrendLegend() }
             }
 
-            HStack(alignment: .bottom, spacing: 18) {
-                ForEach(weeks) { week in
-                    VStack(spacing: 7) {
-                        HStack(alignment: .bottom, spacing: 7) {
-                            metricBar(value: week.chews, maxValue: maxChews, color: Color.acorn500, label: "\(week.chews)")
-                            metricBar(value: week.minutes, maxValue: maxMinutes, color: Color.sage500, label: "\(week.minutes)분")
+            if hasData {
+                HStack(alignment: .bottom, spacing: 18) {
+                    ForEach(weeks) { week in
+                        VStack(spacing: 7) {
+                            HStack(alignment: .bottom, spacing: 7) {
+                                metricBar(value: week.chews, maxValue: maxChews, color: Color.acorn500, label: "\(week.chews)")
+                                metricBar(value: week.minutes, maxValue: maxMinutes, color: Color.sage500, label: "\(week.minutes)분")
+                            }
+                            // 현재 주만 라벨 weight/색으로 표시 — 막대는 비교를 위해 모두 같은 농도로 둔다
+                            // (이전엔 opacity 0.58 + ink400 + 약한 weight 삼중 인코딩으로 과거 주가 안 보였다).
+                            Text(week.label)
+                                .font(.appFont(week.isCurrent ? .heavy : .semibold, size: 12))
+                                .foregroundStyle(week.isCurrent ? Color.ink800 : Color.ink600)
                         }
-                        Text(week.label)
-                            .font(.appFont(week.isCurrent ? .heavy : .semibold, size: 12))
-                            .foregroundStyle(week.isCurrent ? Color.ink800 : Color.ink400)
+                        .frame(maxWidth: .infinity)
                     }
-                    .frame(maxWidth: .infinity)
-                    .opacity(week.isCurrent ? 1 : 0.58)
                 }
+                .frame(height: 116)
+            } else {
+                Text("이번 주 식사 기록이 쌓이면 지난 흐름과 비교해서 보여줄게요.")
+                    .font(.appFont(.semibold, size: 13))
+                    .foregroundStyle(Color.ink600)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 20)
             }
-            .frame(height: 116)
         }
         .padding(16)
         .background(Color.white, in: RoundedRectangle(cornerRadius: 24))
@@ -506,8 +517,11 @@ struct ReportHubView: View {
         let chunks = weeklyDays.chunked(into: 7)
         let labels = ["지지난주", "지난주", "이번 주"]
         return chunks.enumerated().map { index, chunk in
-            let chews = max(1, chunk.map(\.chewCount).reduce(0, +) / max(1, chunk.count))
-            let minutes = max(1, chunk.map(\.minutes).reduce(0, +) / max(1, chunk.count))
+            // 데이터 있는 날 수로만 나눈다(7로 고정 나눗셈 + max(1,…) 가짜 클램프 제거).
+            // 기록 없는 주는 진짜 0으로 둔다.
+            let daysWithData = chunk.filter { $0.mealCount > 0 }.count
+            let chews = daysWithData == 0 ? 0 : chunk.map(\.chewCount).reduce(0, +) / daysWithData
+            let minutes = daysWithData == 0 ? 0 : chunk.map(\.minutes).reduce(0, +) / daysWithData
             let meals = chunk.map(\.mealCount).reduce(0, +)
             return WeeklyMetric(
                 label: labels[min(index, labels.count - 1)],
@@ -524,7 +538,7 @@ struct ReportHubView: View {
         guard let first = weeks.first, let current = weeks.last else {
             return WeeklyCoachInsight(
                 badge: "준비 중",
-                message: "기록이 쌓이면 처음 주와 이번 주를 비교해서 식사 리듬 변화를 알려줄게요.",
+                message: "기록이 쌓이면 지지난주와 이번 주를 비교해서 식사 리듬 변화를 알려줄게요.",
                 chewDeltaText: "기록 대기",
                 minuteDeltaText: "기록 대기",
                 mealDeltaText: "기록 대기",
@@ -555,7 +569,7 @@ struct ReportHubView: View {
         if improvedSignals >= 2 {
             return WeeklyCoachInsight(
                 badge: "개선 중",
-                message: "처음 기록 주보다 이번 주 식사 리듬이 더 여유로워졌어요. 주간 평균 저작은 \(formatPercent(chewPercent)) 변했고, 식사 시간도 \(formatPercent(minutePercent)) 변했어요.",
+                message: "지지난주보다 이번 주 식사 리듬이 더 여유로워졌어요. 주간 평균 저작은 \(formatPercent(chewPercent)) 변했고, 식사 시간도 \(formatPercent(minutePercent)) 변했어요.",
                 chewDeltaText: signedDelta(chewDelta, suffix: "회"),
                 minuteDeltaText: signedDelta(minuteDelta, suffix: "분"),
                 mealDeltaText: signedDelta(mealDelta, suffix: "끼"),
@@ -567,7 +581,7 @@ struct ReportHubView: View {
         if improvedSignals == 1 || abs(chewDelta) < 20 {
             return WeeklyCoachInsight(
                 badge: "유지 중",
-                message: "이번 주는 처음 주와 비슷한 리듬을 유지하고 있어요. 다음 목표는 한 끼에서 조금 더 천천히 씹는 구간을 늘리는 거예요.",
+                message: "이번 주는 지지난주와 비슷한 리듬을 유지하고 있어요. 다음 목표는 한 끼에서 조금 더 천천히 씹는 구간을 늘리는 거예요.",
                 chewDeltaText: signedDelta(chewDelta, suffix: "회"),
                 minuteDeltaText: signedDelta(minuteDelta, suffix: "분"),
                 mealDeltaText: signedDelta(mealDelta, suffix: "끼"),
@@ -578,7 +592,7 @@ struct ReportHubView: View {
 
         return WeeklyCoachInsight(
             badge: "다시 시작",
-            message: "이번 주 식사 리듬은 처음 주보다 조금 짧아졌어요. 다음 식사에서는 첫 5분만 속도를 낮춰서 다시 흐름을 만들어봐요.",
+            message: "이번 주 식사 리듬은 지지난주보다 조금 짧아졌어요. 다음 식사에서는 첫 5분만 속도를 낮춰서 다시 흐름을 만들어봐요.",
             chewDeltaText: signedDelta(chewDelta, suffix: "회"),
             minuteDeltaText: signedDelta(minuteDelta, suffix: "분"),
             mealDeltaText: signedDelta(mealDelta, suffix: "끼"),
@@ -639,7 +653,7 @@ struct ReportHubView: View {
             return "\(slot)만 기록됨"
         }
         guard let top = totals.max(by: { $0.value < $1.value }) else { return "비교 준비 중" }
-        return "\(top.key.label) 약 \(top.value.koLocale)회(추정)"
+        return "\(top.key.label) 약 \(top.value.koLocale)회"
     }
 
     private var previousReportDay: ReportDay? {
@@ -650,21 +664,6 @@ struct ReportHubView: View {
         return daySessions.isEmpty ? ReportDay.empty(date: previousDate) : ReportDay(date: previousDate, sessions: daySessions)
     }
 
-    private var legacyUITestAnchors: some View {
-        VStack(spacing: 0) {
-            Text("오늘의 식사 기록")
-            Text("\(state.todaySessions.count)회")
-            Text("오늘은 아직 식사 전이에요")
-            Text("식사 캘린더")
-            Text(yearMonthLabel)
-        }
-        .font(.system(size: 1))
-        .foregroundStyle(Color.clear)
-        .frame(width: 1, height: 1)
-        .clipped()
-        .accessibilityHidden(false)
-    }
-
     @MainActor
     private func reloadRecentSessions() async {
         await state.fetchTodaySessions()
@@ -672,12 +671,8 @@ struct ReportHubView: View {
         let weeklyStart = mealCalendarCalendar.date(byAdding: .day, value: -(weeklyWindowDays - 1), to: today) ?? today
         let start = min(weeklyStart, windowStart)
         let end = mealCalendarCalendar.date(byAdding: .day, value: 1, to: today) ?? today
-        let merged = await fetchMerged(since: start, until: end, into: recentSessions)
-        if merged.isEmpty {
-            recentSessions = ReportMockData.sessions(start: weeklyStart, days: weeklyWindowDays)
-        } else {
-            recentSessions = merged
-        }
+        // 빈 결과면 진짜 빈 상태를 보여준다. 가짜 세션 주입 금지 — 사용자가 안 한 식사를 보면 안 된다.
+        recentSessions = await fetchMerged(since: start, until: end, into: recentSessions)
     }
 
     /// 타임라인 이동 윈도우 범위를 받아 병합한다.
@@ -758,13 +753,6 @@ struct ReportHubView: View {
         return startMonth == endMonth ? "\(endMonth)월" : "\(startMonth)–\(endMonth)월"
     }
 
-    private var yearMonthLabel: String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ko_KR")
-        f.dateFormat = "yyyy년 M월"
-        return f.string(from: Date())
-    }
-
     private func timeLabel(_ date: Date) -> String {
         let f = DateFormatter()
         f.locale = Locale(identifier: "ko_KR")
@@ -805,14 +793,6 @@ private struct ReportDay: Identifiable {
         self.mealCount = mealCount
     }
 
-    static func demo(date: Date, index: Int, total: Int) -> ReportDay {
-        let chews = [180, 205, 196, 220, 214, 208, 226, 212, 230, 225, 246, 238, 252, 240, 248, 266, 255, 284, 312, 286, 304]
-        let mins = [7, 8, 7, 9, 8, 8, 9, 8, 9, 9, 10, 9, 10, 10, 10, 11, 10, 12, 13, 12, 13]
-        let meals = [1, 2, 2, 3, 2, 2, 3, 1, 2, 2, 3, 2, 3, 2, 2, 3, 2, 3, 3, 2, 3]
-        let i = min(max(0, index), chews.count - 1)
-        return ReportDay(date: date, chewCount: chews[i], minutes: mins[i], mealCount: meals[i])
-    }
-
     static func empty(date: Date) -> ReportDay {
         ReportDay(date: date, chewCount: 0, minutes: 0, mealCount: 0)
     }
@@ -841,7 +821,7 @@ private struct ReportDay: Identifiable {
     }
 
     var summaryLabel: String {
-        "\(chewCount.koLocale)회 · 평균 씹기 시간 \(minutes)분 · \(mealCount)/3끼"
+        "\(chewCount.koLocale)회 · 씹은 시간 \(minutes)분 · \(mealCount)/3끼"
     }
 }
 
@@ -887,68 +867,69 @@ private struct MealCompletionRing: View {
     }
 }
 
+/// 일별 저작 횟수 **단일 시리즈** 스파크라인. 이전엔 저작·시간 두 시리즈를 각자 자기
+/// min/max로 정규화해 겹쳐 그려 값을 읽을 수 없었다. 지금은 0~최댓값 한 축에 한 시리즈만
+/// 그리고, 데이터 있는 날의 평균선("평소")을 깔아 그날이 평소 대비 위/아래인지 읽히게 한다.
 private struct ContinuousTrendChart: View {
     let days: [ReportDay]
     let selectedDate: Date
     let dayWidth: CGFloat
 
+    private let topPad: CGFloat = 18
+    private let bottomPad: CGFloat = 16
+
     var body: some View {
         Canvas { context, size in
-            drawGuides(context: &context, size: size)
-            drawSelectedLine(context: &context, size: size)
-            drawSeries(\.chewCount, color: Color.acorn500, yRange: 18...(size.height * 0.55), context: &context, size: size)
-            drawSeries(\.minutes, color: Color.sage500, yRange: (size.height * 0.42)...(size.height - 18), context: &context, size: size)
-        }
-    }
+            let values = days.map(\.chewCount)
+            let maxValue = max(values.max() ?? 1, 1)
+            let bottom = size.height - bottomPad
 
-    private func drawGuides(context: inout GraphicsContext, size: CGSize) {
-        for fraction in [CGFloat(0.33), CGFloat(0.66)] {
+            func y(_ value: Int) -> CGFloat {
+                bottom - CGFloat(value) / CGFloat(maxValue) * (bottom - topPad)
+            }
+            func x(_ index: Int) -> CGFloat {
+                dayWidth / 2 + CGFloat(index) * dayWidth
+            }
+
+            // 평소(데이터 있는 날 평균) 기준선 — 실제 데이터로 계산한 정직한 참조선.
+            let withData = values.filter { $0 > 0 }
+            if !withData.isEmpty {
+                let mean = withData.reduce(0, +) / withData.count
+                let my = y(mean)
+                var guideLine = Path()
+                guideLine.move(to: CGPoint(x: 0, y: my))
+                guideLine.addLine(to: CGPoint(x: size.width, y: my))
+                context.stroke(guideLine, with: .color(Color.ink400.opacity(0.4)), style: StrokeStyle(lineWidth: 1, dash: [4, 5]))
+                context.draw(
+                    Text("평소 \(mean)회").font(.appFont(.bold, size: 10)).foregroundColor(Color.ink400),
+                    at: CGPoint(x: 4, y: my - 4), anchor: .bottomLeading
+                )
+            }
+
+            // 선택일 세로선
+            if let index = days.firstIndex(where: { mealCalendarCalendar.isDate($0.date, inSameDayAs: selectedDate) }) {
+                var sel = Path()
+                sel.move(to: CGPoint(x: x(index), y: 0))
+                sel.addLine(to: CGPoint(x: x(index), y: size.height))
+                context.stroke(sel, with: .color(Color.ink400.opacity(0.35)), style: StrokeStyle(lineWidth: 1.4, dash: [4, 5]))
+            }
+
+            // 저작 횟수 단일 라인 + 점
+            let points = values.enumerated().map { CGPoint(x: x($0.offset), y: y($0.element)) }
             var path = Path()
-            path.move(to: CGPoint(x: 0, y: size.height * fraction))
-            path.addLine(to: CGPoint(x: size.width, y: size.height * fraction))
-            context.stroke(path, with: .color(Color.ink100.opacity(0.75)), style: StrokeStyle(lineWidth: 1, dash: [3, 5]))
-        }
-    }
-
-    private func drawSelectedLine(context: inout GraphicsContext, size: CGSize) {
-        guard let index = days.firstIndex(where: { mealCalendarCalendar.isDate($0.date, inSameDayAs: selectedDate) }) else { return }
-        let x = dayWidth / 2 + CGFloat(index) * dayWidth
-        var path = Path()
-        path.move(to: CGPoint(x: x, y: 0))
-        path.addLine(to: CGPoint(x: x, y: size.height))
-        context.stroke(path, with: .color(Color.ink400.opacity(0.35)), style: StrokeStyle(lineWidth: 1.4, dash: [4, 5]))
-    }
-
-    private func drawSeries(
-        _ keyPath: KeyPath<ReportDay, Int>,
-        color: Color,
-        yRange: ClosedRange<CGFloat>,
-        context: inout GraphicsContext,
-        size: CGSize
-    ) {
-        let values = days.map { $0[keyPath: keyPath] }
-        let minValue = values.min() ?? 0
-        let maxValue = values.max() ?? 1
-        let points = values.enumerated().map { index, value -> CGPoint in
-            let ratio = maxValue == minValue ? 0.5 : CGFloat(value - minValue) / CGFloat(maxValue - minValue)
-            let y = yRange.upperBound - ratio * (yRange.upperBound - yRange.lowerBound)
-            return CGPoint(x: dayWidth / 2 + CGFloat(index) * dayWidth, y: y)
-        }
-
-        var path = Path()
-        guard let first = points.first else { return }
-        path.move(to: first)
-        for i in 1..<points.count {
-            path.addLine(to: points[i])
-        }
-        context.stroke(path, with: .color(color), style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
-
-        for (index, point) in points.enumerated() {
-            let isSelected = mealCalendarCalendar.isDate(days[index].date, inSameDayAs: selectedDate)
-            let rect = CGRect(x: point.x - (isSelected ? 4.5 : 2.8), y: point.y - (isSelected ? 4.5 : 2.8), width: isSelected ? 9 : 5.6, height: isSelected ? 9 : 5.6)
-            context.fill(Path(ellipseIn: rect), with: .color(isSelected ? color : Color.white))
-            if !isSelected {
-                context.stroke(Path(ellipseIn: rect), with: .color(color), lineWidth: 1.8)
+            if let first = points.first {
+                path.move(to: first)
+                for i in 1..<points.count { path.addLine(to: points[i]) }
+                context.stroke(path, with: .color(Color.acorn500), style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+            }
+            for (index, point) in points.enumerated() {
+                let isSelected = mealCalendarCalendar.isDate(days[index].date, inSameDayAs: selectedDate)
+                let r: CGFloat = isSelected ? 4.5 : 2.8
+                let rect = CGRect(x: point.x - r, y: point.y - r, width: r * 2, height: r * 2)
+                context.fill(Path(ellipseIn: rect), with: .color(isSelected ? Color.acorn500 : Color.white))
+                if !isSelected {
+                    context.stroke(Path(ellipseIn: rect), with: .color(Color.acorn500), lineWidth: 1.8)
+                }
             }
         }
     }
@@ -977,52 +958,6 @@ private extension Array {
         stride(from: 0, to: count, by: size).map {
             Array(self[$0..<Swift.min($0 + size, count)])
         }
-    }
-}
-
-private enum ReportMockData {
-    static func sessions(start: Date, days: Int) -> [ChewingSessionDTO] {
-        (0..<days).flatMap { offset -> [ChewingSessionDTO] in
-            guard let date = mealCalendarCalendar.date(byAdding: .day, value: offset, to: start) else { return [] }
-            let mealCount = mealPattern[offset % mealPattern.count]
-            return Array(slotHours.prefix(mealCount)).enumerated().map { mealIndex, hour in
-                makeSession(on: date, hour: hour, dayIndex: offset, mealIndex: mealIndex)
-            }
-        }
-    }
-
-    private static let mealPattern = [1, 2, 2, 3, 2, 2, 3, 1, 2, 2, 3, 2, 3, 2, 2, 3, 2, 3, 3, 2, 3]
-    private static let slotHours = [8, 12, 18]
-
-    private static func makeSession(on date: Date, hour: Int, dayIndex: Int, mealIndex: Int) -> ChewingSessionDTO {
-        let start = mealCalendarCalendar.date(
-            bySettingHour: hour,
-            minute: [12, 36, 5][mealIndex],
-            second: 0,
-            of: date
-        ) ?? date
-        let duration = Double([620, 780, 860][mealIndex] + (dayIndex % 5) * 24)
-        let chews = [214, 286, 328][mealIndex] + (dayIndex % 7) * 9
-        let chewingSeconds = duration * Double([0.62, 0.68, 0.71][mealIndex])
-        let restSeconds = max(1, duration - chewingSeconds)
-
-        return ChewingSessionDTO(
-            id: UUID(),
-            deviceId: "mock-report",
-            startedAt: start,
-            endedAt: start.addingTimeInterval(duration),
-            durationSec: duration,
-            sensorLocation: "AirPods Pro Mock",
-            sampleCount: Int(duration * 25),
-            sampleRateHz: 25,
-            storagePath: nil,
-            appVersion: "mock",
-            chewingSeconds: chewingSeconds,
-            restSeconds: restSeconds,
-            chewingFraction: chewingSeconds / duration,
-            estimatedTotalChews: chews,
-            modelVersion: "mock-v1"
-        )
     }
 }
 

@@ -5,7 +5,7 @@ import SwiftUI
 struct ReportCardModel: Equatable {
     /// 내부 분석용 점수 0~100. 화면에는 노출하지 않고 mood/caption fallback에만 사용.
     let score: Int
-    /// 내부 분석 등급. 화면에는 점수 대신 평균 대비 분석을 노출한다.
+    /// 내부 분석 등급. 화면에는 씹기 점수 + 권장 기준 대비 분석을 노출한다.
     let grade: Grade
     /// 4대 지표.
     let chewCount: Int
@@ -16,7 +16,7 @@ struct ReportCardModel: Equatable {
     /// 씹기·쉬기 구간 바. 한 끼 중 실제 씹은 시간 / 쉰 시간(초).
     let chewingSeconds: Double
     let restSeconds: Double
-    /// 내부 4요소 분해 (각 0~100). 화면에는 평균 대비 지표로 치환한다.
+    /// 내부 4요소 분해 (각 0~100). 씹기 점수 섹션에서 4축 미니바로 노출한다.
     let speedScore: Int
     let rhythmScore: Int
     let continuityScore: Int
@@ -50,6 +50,13 @@ struct ReportCardModel: Equatable {
     }
 }
 
+/// 점수 카운트업 값. progress 0→1 동안 0→target 선형, 0~1 밖은 클램프.
+/// 씹기 점수 섹션의 카운트업 애니메이션에 쓰이고 `ReportCardModelTests`가 가드한다.
+func scoreCountUpValue(progress: Double, target: Int) -> Int {
+    let clamped = min(max(progress, 0), 1)
+    return Int((clamped * Double(target)).rounded())
+}
+
 /// 식사 후 분석 리포트 카드. 식사 종료 직후 sheet/overlay 표시와 캘린더에서 과거 세션
 /// 재현 양쪽에서 동일하게 사용된다. 1080×1920 PNG 공유도 같은 View를 ImageRenderer로 렌더.
 ///
@@ -58,10 +65,16 @@ struct ReportCardModel: Equatable {
 struct ReportCardView: View {
     let model: ReportCardModel
     var onDeepReport: (() -> Void)? = nil
+    /// PNG(ImageRenderer) 정적 렌더 여부. onAppear가 안 불리는 렌더 경로에서도 점수가
+    /// 카운트업 0이 아니라 완성값으로 찍히게 한다. 기본 false(라이브 카운트업).
+    var rendersStatically: Bool = false
+
+    @State private var scoreProgress: Double = 0
 
     var body: some View {
         VStack(spacing: 18) {
             header
+            scoreSection
             averageOverviewSection
             coachPanel
             averageComparisonGrid
@@ -90,11 +103,80 @@ struct ReportCardView: View {
         }
     }
 
+    // MARK: - 씹기 점수 (SessionScore 노출)
+
+    /// 내부에서 계산만 하고 버리던 0~100 점수 + 4축(속도·리듬·연속·길이)을 실제로 노출한다.
+    /// 흐리멍덩한 형용사 배지의 정량 근거가 된다.
+    private var scoreSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text("씹기 점수")
+                    .font(.appFont(.heavy, size: 15))
+                    .foregroundStyle(Color.ink800)
+                Spacer(minLength: 0)
+                Text("\(scoreCountUpValue(progress: rendersStatically ? 1 : scoreProgress, target: model.score))")
+                    .font(.appFont(.heavy, size: 28))
+                    .foregroundStyle(scoreColor)
+                    .monospacedDigit()
+                    .contentTransition(.numericText())
+                Text("/ 100")
+                    .font(.appFont(.bold, size: 12))
+                    .foregroundStyle(Color.ink400)
+            }
+            VStack(spacing: 8) {
+                scoreAxisRow(label: "속도", value: model.speedScore)
+                scoreAxisRow(label: "리듬", value: model.rhythmScore)
+                scoreAxisRow(label: "연속", value: model.continuityScore)
+                scoreAxisRow(label: "길이", value: model.lengthScore)
+            }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.white, in: RoundedRectangle(cornerRadius: 18))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18)
+                .stroke(Color.ink100, lineWidth: 1)
+        )
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.7)) { scoreProgress = 1 }
+        }
+    }
+
+    private func scoreAxisRow(label: String, value: Int) -> some View {
+        HStack(spacing: 10) {
+            Text(label)
+                .font(.appFont(.bold, size: 12))
+                .foregroundStyle(Color.ink600)
+                .frame(width: 28, alignment: .leading)
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.ink100)
+                    Capsule().fill(scoreColor.opacity(0.85))
+                        .frame(width: max(6, geo.size.width * CGFloat(max(0, min(100, value))) / 100))
+                }
+            }
+            .frame(height: 8)
+            Text("\(value)")
+                .font(.appFont(.heavy, size: 12))
+                .foregroundStyle(Color.ink800)
+                .monospacedDigit()
+                .frame(width: 26, alignment: .trailing)
+        }
+    }
+
+    private var scoreColor: Color {
+        switch model.grade {
+        case .good: Color.sage600
+        case .soso: Color.butter600
+        case .bad:  Color.blush500
+        }
+    }
+
     private var averageOverviewSection: some View {
         let summary = averageComparisonSummary
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                Text("평균 대비 분석")
+                Text("권장 기준 대비")
                     .font(.appFont(.heavy, size: 15))
                     .foregroundStyle(Color.ink800)
                 Spacer(minLength: 0)
@@ -116,7 +198,7 @@ struct ReportCardView: View {
             HStack(spacing: 8) {
                 averageDeltaChip(
                     title: "저작",
-                    value: signedDelta(model.chewCount - AverageBaseline.chewCount, suffix: "회"),
+                    value: signedDelta(model.chewCount - RecommendedBaseline.chewCount, suffix: "회"),
                     color: .acorn700
                 )
                 averageDeltaChip(
@@ -160,7 +242,7 @@ struct ReportCardView: View {
 
     private var averageComparisonGrid: some View {
         VStack(alignment: .leading, spacing: 10) {
-            sectionTitle("평균 대비 세부")
+            sectionTitle("권장 기준 대비 세부")
             LazyVGrid(
                 columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
                 spacing: 12
@@ -168,33 +250,34 @@ struct ReportCardView: View {
                 averageComparisonCell(
                     label: "저작 횟수",
                     current: "약 \(model.chewCount.koLocale)회",
-                    average: "평균 \(AverageBaseline.chewCount.koLocale)회",
-                    delta: signedDelta(model.chewCount - AverageBaseline.chewCount, suffix: "회"),
-                    ratio: Double(model.chewCount - AverageBaseline.chewCount) / 180,
+                    average: "권장 \(RecommendedBaseline.chewCount.koLocale)회",
+                    delta: signedDelta(model.chewCount - RecommendedBaseline.chewCount, suffix: "회"),
+                    // 풀스케일 = 권장 기준의 ±50%. 네 지표가 동일한 상대 논리로 막대를 채운다.
+                    ratio: Double(model.chewCount - RecommendedBaseline.chewCount) / (Double(RecommendedBaseline.chewCount) * 0.5),
                     color: .acorn700
                 )
                 averageComparisonCell(
                     label: "식사 시간",
                     current: formatDurationShort(model.totalDurationSec),
-                    average: "평균 \(formatDurationShort(AverageBaseline.durationSec))",
+                    average: "권장 \(formatDurationShort(RecommendedBaseline.durationSec))",
                     delta: signedDelta(durationDeltaMinutes, suffix: "분"),
-                    ratio: Double(durationDeltaMinutes) / 8,
+                    ratio: Double(durationDeltaMinutes) / (RecommendedBaseline.durationSec / 60 * 0.5),
                     color: .sage600
                 )
                 averageComparisonCell(
                     label: "식사 속도",
                     current: "약 \(Int(model.chewsPerMinute.rounded()))회/분",
-                    average: "평균 \(Int(AverageBaseline.chewsPerMinute))회/분",
-                    delta: signedDelta(Int((model.chewsPerMinute - AverageBaseline.chewsPerMinute).rounded()), suffix: "회/분"),
-                    ratio: (model.chewsPerMinute - AverageBaseline.chewsPerMinute) / 16,
+                    average: "권장 \(Int(RecommendedBaseline.chewsPerMinute))회/분",
+                    delta: signedDelta(Int((model.chewsPerMinute - RecommendedBaseline.chewsPerMinute).rounded()), suffix: "회/분"),
+                    ratio: (model.chewsPerMinute - RecommendedBaseline.chewsPerMinute) / (RecommendedBaseline.chewsPerMinute * 0.5),
                     color: .blush500
                 )
                 averageComparisonCell(
                     label: "씹기 비율",
                     current: "\(Int((model.chewingFraction * 100).rounded()))%",
-                    average: "평균 \(Int(AverageBaseline.chewingFraction * 100))%",
+                    average: "권장 \(Int(RecommendedBaseline.chewingFraction * 100))%",
                     delta: signedDelta(chewingFocusDeltaPercent, suffix: "%"),
-                    ratio: Double(chewingFocusDeltaPercent) / 30,
+                    ratio: Double(chewingFocusDeltaPercent) / (RecommendedBaseline.chewingFraction * 100 * 0.5),
                     color: .butter600
                 )
             }
@@ -372,16 +455,16 @@ struct ReportCardView: View {
     }
 
     private var durationDeltaMinutes: Int {
-        Int(((model.totalDurationSec - AverageBaseline.durationSec) / 60).rounded())
+        Int(((model.totalDurationSec - RecommendedBaseline.durationSec) / 60).rounded())
     }
 
     private var chewingFocusDeltaPercent: Int {
-        Int(((model.chewingFraction - AverageBaseline.chewingFraction) * 100).rounded())
+        Int(((model.chewingFraction - RecommendedBaseline.chewingFraction) * 100).rounded())
     }
 
     private var averageComparisonSummary: AverageComparisonSummary {
-        let chewDelta = model.chewCount - AverageBaseline.chewCount
-        let speedDelta = model.chewsPerMinute - AverageBaseline.chewsPerMinute
+        let chewDelta = model.chewCount - RecommendedBaseline.chewCount
+        let speedDelta = model.chewsPerMinute - RecommendedBaseline.chewsPerMinute
         let minuteDelta = durationDeltaMinutes
         let focusDelta = chewingFocusDeltaPercent
         let positiveSignals = [
@@ -393,9 +476,9 @@ struct ReportCardView: View {
 
         if positiveSignals >= 3 {
             return AverageComparisonSummary(
-                badge: "평균보다 여유",
-                title: "평균보다 천천히, 더 오래 씹은 식사예요",
-                detail: "저작 횟수와 씹기 비율이 기준 평균보다 높아요. 이번 리듬은 다음 식사에서도 재현해볼 만해요.",
+                badge: "권장보다 여유",
+                title: "권장 기준보다 천천히, 더 오래 씹은 식사예요",
+                detail: "저작 횟수와 씹기 비율이 권장 기준보다 높아요. 이번 리듬은 다음 식사에서도 재현해볼 만해요.",
                 coachMessage: "지금처럼 첫 몇 입의 속도를 낮추면 식사 전체 리듬이 안정적으로 이어질 수 있어요.",
                 color: .sage600,
                 imageName: Mood.happy.imageName
@@ -404,9 +487,9 @@ struct ReportCardView: View {
 
         if chewDelta < -80 || minuteDelta < -3 || speedDelta > 8 {
             return AverageComparisonSummary(
-                badge: "평균보다 빠름",
-                title: "평균보다 짧고 빠른 식사였어요",
-                detail: "식사 시간이 기준 평균보다 짧거나 분당 저작 흐름이 빠른 편이에요. 신호 상태와 메뉴 차이도 함께 참고해요.",
+                badge: "권장보다 빠름",
+                title: "권장 기준보다 짧고 빠른 식사였어요",
+                detail: "식사 시간이 권장 기준보다 짧거나 분당 저작 흐름이 빠른 편이에요. 신호 상태와 메뉴 차이도 함께 참고해요.",
                 coachMessage: "다음 식사에서는 첫 5분만 의식적으로 천천히 시작해봐요. 처음 속도가 전체 흐름을 잡아줘요.",
                 color: .blush500,
                 imageName: Mood.sleepy.imageName
@@ -416,8 +499,8 @@ struct ReportCardView: View {
         if chewDelta >= 30 || focusDelta >= 5 {
             return AverageComparisonSummary(
                 badge: "저작 우세",
-                title: "평균보다 씹는 흐름이 많은 식사예요",
-                detail: "총 저작 횟수나 씹기 비율이 기준 평균보다 높아요. 식사 시간이 크게 짧지 않았다면 좋은 흐름으로 볼 수 있어요.",
+                title: "권장 기준보다 씹는 흐름이 많은 식사예요",
+                detail: "총 저작 횟수나 씹기 비율이 권장 기준보다 높아요. 식사 시간이 크게 짧지 않았다면 좋은 흐름으로 볼 수 있어요.",
                 coachMessage: "저작 흐름은 좋아요. 다음에는 중간중간 짧은 쉼을 섞어 더 편안한 리듬을 만들어봐요.",
                 color: .acorn700,
                 imageName: Mood.champ.imageName
@@ -425,9 +508,9 @@ struct ReportCardView: View {
         }
 
         return AverageComparisonSummary(
-            badge: "평균 근처",
-            title: "평균과 비슷한 리듬의 식사예요",
-            detail: "저작 횟수와 식사 시간이 기준 평균 범위 안에 있어요. 꾸준히 쌓이면 나만의 평균과도 비교할 수 있어요.",
+            badge: "권장 근처",
+            title: "권장 기준과 비슷한 리듬의 식사예요",
+            detail: "저작 횟수와 식사 시간이 권장 기준 범위 안에 있어요. 꾸준히 쌓이면 나만의 리듬 변화도 볼 수 있어요.",
             coachMessage: "큰 흔들림 없이 식사했어요. 다음 목표는 한 끼에서 씹기 비율을 조금 더 높여보는 거예요.",
             color: .butter600,
             imageName: Mood.puffy.imageName
@@ -440,9 +523,11 @@ struct ReportCardView: View {
     }
 }
 
-private enum AverageBaseline {
+/// 권장 기준(목표)값. 모집단 평균이 아니라 "한 끼에 이 정도면 충분히 천천히 씹은 것"이라는
+/// 권장 목표다. 개인 평균 집계 인프라가 없으므로 정직하게 '권장 기준'으로 노출한다.
+private enum RecommendedBaseline {
     static let chewCount = 300
-    static let durationSec: Double = 720
+    static let durationSec: Double = 720      // 12분
     static let chewsPerMinute: Double = 28
     static let chewingFraction: Double = 0.6
 }
@@ -577,7 +662,7 @@ extension ReportCardModel {
         let chews = dto.estimatedTotalChews ?? 0
         let chewsPerMin = Double(chews) / mins
         let grade = Grade(scoreGrade: score.grade)
-        let mood = Mood(grade: grade)
+        let mood = Mood(grade: grade, score: score.total)
         let caption = CaptionPool.report(for: grade)
         return ReportCardModel(
             score: score.total,
@@ -610,10 +695,11 @@ private extension ReportCardModel.Grade {
 }
 
 private extension Mood {
-    /// 점수 등급 → 다람이 일러스트 매핑.
-    init(grade: ReportCardModel.Grade) {
+    /// 점수 등급+총점 → 다람이 일러스트 매핑. 결정적(같은 세션은 항상 같은 표정).
+    /// 이전엔 good에서 `Bool.random()`이라 리드로우마다 표정이 바뀌었다.
+    init(grade: ReportCardModel.Grade, score: Int) {
         switch grade {
-        case .good: self = Bool.random() ? .champ : .happy
+        case .good: self = score >= 90 ? .champ : .happy
         case .soso: self = .puffy
         case .bad:  self = .sleepy
         }

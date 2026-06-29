@@ -22,7 +22,7 @@ enum ReportCardRenderer {
     static func render(_ model: ReportCardModel) -> Data? {
         let content = ZStack {
             Color.cream
-            ReportCardView(model: model)
+            ReportCardView(model: model, rendersStatically: true)
                 .padding(.horizontal, 20)
         }
         .frame(width: 360, height: 640)
