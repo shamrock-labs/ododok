@@ -3,7 +3,7 @@ import SwiftUI
 /// 식사 후 분석 리포트 카드의 표시 모델. `ChewingSessionDTO` → 이 모델로 변환하는
 /// 매퍼는 아래 extension에서 노출. UI 컴포넌트가 DTO 변경에 직접 결합되지 않도록 분리.
 struct ReportCardModel: Equatable {
-    /// 내부 분석용 점수 0~100. 화면에는 노출하지 않고 mood/caption fallback에만 사용.
+    /// 분석 점수 0~100. 씹기 점수 섹션에 노출하고 mood/grade 산출에도 쓴다.
     let score: Int
     /// 내부 분석 등급. 화면에는 씹기 점수 + 권장 기준 대비 분석을 노출한다.
     let grade: Grade
@@ -36,15 +36,6 @@ struct ReportCardModel: Equatable {
             case .good: "잘 씹었어요"
             case .soso: "조금 더 천천히"
             case .bad:  "다음엔 천천히"
-            }
-        }
-
-        /// v1.0 헤더 표정 이모지. 프리미엄에서는 다람이 캐릭터로 교체.
-        var emoji: String {
-            switch self {
-            case .good: "😀"
-            case .soso: "😐"
-            case .bad:  "😪"
             }
         }
     }
@@ -439,10 +430,7 @@ struct ReportCardView: View {
     }
 
     private var headerDateLabel: String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ko_KR")
-        formatter.dateFormat = "M월 d일 EEEE · HH:mm"
-        return formatter.string(from: model.endedAt)
+        return KoDate.string(model.endedAt, "M월 d일 EEEE · HH:mm")
     }
 
     private func formatDurationShort(_ seconds: Double) -> String {

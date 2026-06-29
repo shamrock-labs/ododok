@@ -751,10 +751,7 @@ struct ReportHubView: View {
     }
 
     private func timeLabel(_ date: Date) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ko_KR")
-        f.dateFormat = "HH:mm"
-        return f.string(from: date)
+        return KoDate.string(date, "HH:mm")
     }
 
     private func durationLabel(_ seconds: Double) -> String {
@@ -795,10 +792,7 @@ private struct ReportDay: Identifiable {
     }
 
     var weekdayLabel: String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ko_KR")
-        f.dateFormat = "E"
-        return f.string(from: date)
+        return KoDate.string(date, "E")
     }
 
     var dayLabel: String {
@@ -811,10 +805,7 @@ private struct ReportDay: Identifiable {
     }
 
     var shortDateLabel: String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ko_KR")
-        f.dateFormat = "M/d (E)"
-        return f.string(from: date)
+        return KoDate.string(date, "M/d (E)")
     }
 
     var summaryLabel: String {
@@ -1081,10 +1072,7 @@ private struct ReportCalendarDialog: View {
     }
 
     private var monthTitle: String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ko_KR")
-        f.dateFormat = "yyyy년 M월"
-        return f.string(from: month)
+        return KoDate.string(month, "yyyy년 M월")
     }
 
     private var isCurrentMonth: Bool {

@@ -182,10 +182,7 @@ struct MealCalendarGrid: View {
     }
 
     private var monthTitle: String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ko_KR")
-        formatter.dateFormat = "yyyy년 M월"
-        return formatter.string(from: displayedMonth)
+        return KoDate.string(displayedMonth, "yyyy년 M월")
     }
 
     private var monthDays: [Date?] {
@@ -364,10 +361,7 @@ struct DaySessionsView: View {
     }
 
     private var dateLabel: String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ko_KR")
-        f.dateFormat = "M월 d일 EEEE"
-        return f.string(from: date)
+        return KoDate.string(date, "M월 d일 EEEE")
     }
 
     private func sessionRow(_ session: ChewingSessionDTO) -> some View {
@@ -387,10 +381,7 @@ struct DaySessionsView: View {
     }
 
     private func formatTime(_ d: Date) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ko_KR")
-        f.dateFormat = "HH:mm"
-        return f.string(from: d)
+        return KoDate.string(d, "HH:mm")
     }
 
     private func formatDuration(_ seconds: Double) -> String {
@@ -527,10 +518,7 @@ private struct DayInlineSection: View {
     }
 
     private func formatTime12(_ d: Date) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ko_KR")
-        f.dateFormat = "a h:mm"
-        return f.string(from: d)
+        return KoDate.string(d, "a h:mm")
     }
 
     private func formatDuration(_ secs: Double) -> String {
