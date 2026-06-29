@@ -190,7 +190,7 @@ struct MealLiveActivity: Widget {
 }
 
 /// 잠금화면 알약 버튼. colorScheme을 직접 읽어 비채움(그만하기) 버튼 색을 모드별로 다르게 둔다 —
-/// 라이트=따뜻한 브라운 아웃라인, 다크=회색 시맨틱(다크에선 회색이 더 자연스러움).
+/// 라이트=따뜻한 브라운(연한 채움), 다크=회색 시맨틱(다크에선 회색이 더 자연스러움). 테두리 없음.
 /// filled(계속하기)는 양쪽 모두 솔리드 브라운 + 흰 글자.
 private struct PillButton: View {
     @Environment(\.colorScheme) private var scheme
@@ -206,7 +206,6 @@ private struct PillButton: View {
                 .padding(.horizontal, 18)
                 .padding(.vertical, 9)
                 .background(fill, in: Capsule())
-                .overlay { Capsule().stroke(stroke, lineWidth: 1) }
         }
     }
 
@@ -217,10 +216,6 @@ private struct PillButton: View {
     private var fill: Color {
         if filled { return Color.mealBrown }
         return scheme == .dark ? Color.primary.opacity(0.15) : Color.mealBrown.opacity(0.14)
-    }
-    private var stroke: Color {
-        if filled { return Color.white.opacity(0.16) }
-        return scheme == .dark ? Color.primary.opacity(0.16) : Color.mealBrown.opacity(0.30)
     }
 }
 
