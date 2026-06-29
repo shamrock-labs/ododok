@@ -5,10 +5,16 @@ struct ReportHubView: View {
 
     @State private var recentSessions: [ChewingSessionDTO] = []
     @State private var selectedDate: Date = mealCalendarCalendar.startOfDay(for: Date())
+    @State private var pivotDate: Date = mealCalendarCalendar.startOfDay(for: Date())
     @State private var detailSession: ChewingSessionDTO?
+    @State private var showCalendar = false
+    @State private var calendarMonth: Date = mealCalendarCalendar.startOfDay(for: Date())
 
     private let dayWidth: CGFloat = 52
-    private let windowDays = 21
+    /// 타임라인 가로 스트립이 한 번에 보여주는 이동 윈도우 길이.
+    private let windowDays = 14
+    /// 주간 비교·코치 카드용 today-앵커 시리즈 길이(7×3주).
+    private let weeklyWindowDays = 21
 
     var body: some View {
         VStack(spacing: 14) {
@@ -19,28 +25,65 @@ struct ReportHubView: View {
             weeklyCoachCard
         }
         .task { await reloadRecentSessions() }
+        .onChange(of: pivotDate) { _, _ in
+            Task { await loadWindow() }
+        }
         .sheet(item: $detailSession) { session in
             NavigationStack {
                 SessionReportDetailView(dto: session)
             }
         }
+        .sheet(isPresented: $showCalendar) {
+            ReportCalendarDialog(
+                month: $calendarMonth,
+                selectedDate: selectedDate,
+                today: today,
+                mealCount: { mealCount(for: $0) },
+                loadMonth: { await loadMonth($0) },
+                onPick: { date in
+                    pivotDate = date
+                    selectedDate = date
+                    showCalendar = false
+                }
+            )
+            .presentationDetents([.medium, .large])
+        }
     }
 
-    private var days: [ReportDay] {
-        let today = mealCalendarCalendar.startOfDay(for: Date())
-        let start = mealCalendarCalendar.date(byAdding: .day, value: -(windowDays - 1), to: today) ?? today
-        return (0..<windowDays).map { offset in
-            let date = mealCalendarCalendar.date(byAdding: .day, value: offset, to: start) ?? today
-            let sessions = sessions(on: date)
-            if !sessions.isEmpty {
-                return ReportDay(date: date, sessions: sessions)
-            }
-            return ReportDay.empty(date: date)
+    private var today: Date { mealCalendarCalendar.startOfDay(for: Date()) }
+
+    /// 타임라인 윈도우 끝 = (기점+7, 오늘) 중 이른 쪽(미래 빈 칸 방지).
+    private var windowEnd: Date {
+        let plus7 = mealCalendarCalendar.date(byAdding: .day, value: 7, to: pivotDate) ?? pivotDate
+        return min(plus7, today)
+    }
+
+    private var windowStart: Date {
+        mealCalendarCalendar.date(byAdding: .day, value: -(windowDays - 1), to: windowEnd) ?? windowEnd
+    }
+
+    /// 타임라인 가로 스트립용 14일 이동 윈도우.
+    private var timelineDays: [ReportDay] {
+        reportDays(start: windowStart, count: windowDays)
+    }
+
+    /// 주간 비교·코치 카드용 21일 today-앵커 시리즈.
+    private var weeklyDays: [ReportDay] {
+        let start = mealCalendarCalendar.date(byAdding: .day, value: -(weeklyWindowDays - 1), to: today) ?? today
+        return reportDays(start: start, count: weeklyWindowDays)
+    }
+
+    private func reportDays(start: Date, count: Int) -> [ReportDay] {
+        (0..<count).map { offset in
+            let date = mealCalendarCalendar.date(byAdding: .day, value: offset, to: start) ?? start
+            let daySessions = sessions(on: date)
+            return daySessions.isEmpty ? ReportDay.empty(date: date) : ReportDay(date: date, sessions: daySessions)
         }
     }
 
     private var selectedDay: ReportDay {
-        days.first { mealCalendarCalendar.isDate($0.date, inSameDayAs: selectedDate) } ?? days.last ?? .demo(date: Date(), index: 0, total: 1)
+        let daySessions = sessions(on: selectedDate)
+        return daySessions.isEmpty ? ReportDay.empty(date: selectedDate) : ReportDay(date: selectedDate, sessions: daySessions)
     }
 
     private var selectedSessions: [ChewingSessionDTO] {
@@ -49,11 +92,28 @@ struct ReportHubView: View {
 
     private var timelineCard: some View {
         VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 10) {
+                Text(monthRangeLabel)
+                    .font(.appFont(.heavy, size: 15))
+                    .foregroundStyle(Color.ink800)
+                Spacer(minLength: 0)
+                TrendLegend()
+                Button { openCalendar() } label: {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Color.acorn700)
+                        .frame(width: 30, height: 30)
+                        .background(Color.acorn50, in: RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("달력 열기")
+            }
+
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
                     VStack(spacing: 12) {
                         HStack(spacing: 0) {
-                            ForEach(days) { day in
+                            ForEach(timelineDays) { day in
                                 dateRingCell(day)
                                     .frame(width: dayWidth)
                                     .id(day.id)
@@ -61,11 +121,11 @@ struct ReportHubView: View {
                         }
 
                         ContinuousTrendChart(
-                            days: days,
+                            days: timelineDays,
                             selectedDate: selectedDate,
                             dayWidth: dayWidth
                         )
-                        .frame(width: dayWidth * CGFloat(days.count), height: 164)
+                        .frame(width: dayWidth * CGFloat(timelineDays.count), height: 164)
                     }
                     .padding(.horizontal, 4)
                     .contentShape(Rectangle())
@@ -74,22 +134,24 @@ struct ReportHubView: View {
                 .task {
                     proxy.scrollTo(selectedDay.id, anchor: .center)
                 }
+                .onChange(of: selectedDate) { _, _ in
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        proxy.scrollTo(selectedDay.id, anchor: .center)
+                    }
+                }
             }
 
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(selectedDay.shortDateLabel)
-                        .font(.appFont(.heavy, size: 17))
-                        .foregroundStyle(Color.ink800)
-                        .monospacedDigit()
-                    Text(selectedDay.summaryLabel)
-                        .font(.appFont(.semibold, size: 13))
-                        .foregroundStyle(Color.ink600)
-                        .monospacedDigit()
-                }
-                Spacer(minLength: 0)
-                TrendLegend()
+            VStack(alignment: .leading, spacing: 2) {
+                Text(selectedDay.shortDateLabel)
+                    .font(.appFont(.heavy, size: 17))
+                    .foregroundStyle(Color.ink800)
+                    .monospacedDigit()
+                Text(selectedDay.summaryLabel)
+                    .font(.appFont(.semibold, size: 13))
+                    .foregroundStyle(Color.ink600)
+                    .monospacedDigit()
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 2)
         }
         .padding(16)
@@ -441,7 +503,7 @@ struct ReportHubView: View {
     }
 
     private var weeklyMetrics: [WeeklyMetric] {
-        let chunks = days.chunked(into: 7)
+        let chunks = weeklyDays.chunked(into: 7)
         let labels = ["지지난주", "지난주", "이번 주"]
         return chunks.enumerated().map { index, chunk in
             let chews = max(1, chunk.map(\.chewCount).reduce(0, +) / max(1, chunk.count))
@@ -584,7 +646,8 @@ struct ReportHubView: View {
         guard let previousDate = mealCalendarCalendar.date(byAdding: .day, value: -1, to: selectedDate) else {
             return nil
         }
-        return days.first { mealCalendarCalendar.isDate($0.date, inSameDayAs: previousDate) }
+        let daySessions = sessions(on: previousDate)
+        return daySessions.isEmpty ? ReportDay.empty(date: previousDate) : ReportDay(date: previousDate, sessions: daySessions)
     }
 
     private var legacyUITestAnchors: some View {
@@ -605,19 +668,65 @@ struct ReportHubView: View {
     @MainActor
     private func reloadRecentSessions() async {
         await state.fetchTodaySessions()
-        let today = mealCalendarCalendar.startOfDay(for: Date())
-        let start = mealCalendarCalendar.date(byAdding: .day, value: -(windowDays - 1), to: today) ?? today
-        let end = mealCalendarCalendar.date(byAdding: .day, value: 1, to: today)
+        // 주간 카드(21일) + 현재 타임라인 윈도우를 모두 덮는 초기 범위.
+        let weeklyStart = mealCalendarCalendar.date(byAdding: .day, value: -(weeklyWindowDays - 1), to: today) ?? today
+        let start = min(weeklyStart, windowStart)
+        let end = mealCalendarCalendar.date(byAdding: .day, value: 1, to: today) ?? today
+        let merged = await fetchMerged(since: start, until: end, into: recentSessions)
+        if merged.isEmpty {
+            recentSessions = ReportMockData.sessions(start: weeklyStart, days: weeklyWindowDays)
+        } else {
+            recentSessions = merged
+        }
+    }
+
+    /// 타임라인 이동 윈도우 범위를 받아 병합한다.
+    @MainActor
+    private func loadWindow() async {
+        let end = mealCalendarCalendar.date(byAdding: .day, value: 1, to: windowEnd) ?? windowEnd
+        let merged = await fetchMerged(since: windowStart, until: end, into: recentSessions)
+        if !merged.isEmpty { recentSessions = merged }
+    }
+
+    /// 달력에 표시할 달의 범위를 받아 병합한다.
+    @MainActor
+    private func loadMonth(_ month: Date) async {
+        let end = mealCalendarCalendar.date(byAdding: .day, value: 1, to: monthEnd(month)) ?? monthEnd(month)
+        let merged = await fetchMerged(since: monthStart(month), until: end, into: recentSessions)
+        if !merged.isEmpty { recentSessions = merged }
+    }
+
+    /// 범위 세션을 받아 기존 세션과 id 기준으로 병합(중복 제거). 리포트 가능 행만 남긴다.
+    @MainActor
+    private func fetchMerged(since: Date, until: Date, into existing: [ChewingSessionDTO]) async -> [ChewingSessionDTO] {
         let deviceId = DeviceIdentity.shared
-        let rows = (try? await state.remoteStore.fetchChewingSessions(deviceId: deviceId, since: start, until: end)) ?? []
-        let reportableRows = rows.filter { ReportCardModel.from($0) != nil }
-        recentSessions = reportableRows.isEmpty
-            ? ReportMockData.sessions(start: start, days: windowDays)
-            : reportableRows
+        let rows = (try? await state.remoteStore.fetchChewingSessions(deviceId: deviceId, since: since, until: until)) ?? []
+        let reportable = rows.filter { ReportCardModel.from($0) != nil }
+        guard !reportable.isEmpty else { return existing }
+        var byId: [UUID: ChewingSessionDTO] = [:]
+        for session in existing { byId[session.id] = session }
+        for session in reportable { byId[session.id] = session }
+        return Array(byId.values)
     }
 
     private func sessions(on date: Date) -> [ChewingSessionDTO] {
         recentSessions.filter { mealCalendarCalendar.isDate($0.startedAt, inSameDayAs: date) }
+    }
+
+    /// 그 날의 주요 끼 슬롯 수(0~3). 달력·타임라인 링 채움 공용. 같은 슬롯 다회는 1로 캡.
+    private func mealCount(for date: Date) -> Int {
+        let daySessions = sessions(on: date)
+        guard !daySessions.isEmpty else { return 0 }
+        return ReportDay(date: date, sessions: daySessions).mealCount
+    }
+
+    private func monthStart(_ date: Date) -> Date {
+        mealCalendarCalendar.dateInterval(of: .month, for: date)?.start ?? date
+    }
+
+    private func monthEnd(_ date: Date) -> Date {
+        guard let interval = mealCalendarCalendar.dateInterval(of: .month, for: date) else { return date }
+        return mealCalendarCalendar.date(byAdding: .day, value: -1, to: interval.end) ?? interval.end
     }
 
     private func slotTint(_ slot: DayMealSlot) -> Color {
@@ -636,6 +745,17 @@ struct ReportHubView: View {
         case .dinner: Color.blush500
         case .lateNight: Color.acorn700
         }
+    }
+
+    private func openCalendar() {
+        calendarMonth = mealCalendarCalendar.startOfDay(for: selectedDate)
+        showCalendar = true
+    }
+
+    private var monthRangeLabel: String {
+        let startMonth = mealCalendarCalendar.component(.month, from: windowStart)
+        let endMonth = mealCalendarCalendar.component(.month, from: windowEnd)
+        return startMonth == endMonth ? "\(endMonth)월" : "\(startMonth)–\(endMonth)월"
     }
 
     private var yearMonthLabel: String {
@@ -903,6 +1023,146 @@ private enum ReportMockData {
             estimatedTotalChews: chews,
             modelVersion: "mock-v1"
         )
+    }
+}
+
+private struct ReportCalendarDialog: View {
+    @Binding var month: Date
+    let selectedDate: Date
+    let today: Date
+    /// 그 날의 끼 수(0~3). 링 채움에 사용.
+    let mealCount: (Date) -> Int
+    /// 표시 월이 바뀌면 그 달 데이터를 로드한다.
+    let loadMonth: (Date) async -> Void
+    let onPick: (Date) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    private var cal: Calendar { mealCalendarCalendar }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 12) {
+                monthHeader
+                weekdayLabels
+                grid
+                Spacer(minLength: 0)
+            }
+            .padding(20)
+            .background(LinearGradient.appBackground.ignoresSafeArea())
+            .navigationTitle("날짜 선택")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("닫기") { dismiss() }
+                        .foregroundStyle(Color.acorn700)
+                }
+            }
+        }
+        .task { await loadMonth(month) }
+        .onChange(of: month) { _, newMonth in
+            Task { await loadMonth(newMonth) }
+        }
+    }
+
+    private var monthHeader: some View {
+        HStack {
+            Button { shiftMonth(-1) } label: {
+                Image(systemName: "chevron.left")
+                    .font(.appFont(.bold, size: 13))
+                    .frame(width: 32, height: 32)
+                    .background(Color.white.opacity(0.7), in: Circle())
+            }
+            Spacer()
+            Text(monthTitle)
+                .font(.appFont(.heavy, size: 15))
+                .foregroundStyle(Color.ink800)
+            Spacer()
+            Button { shiftMonth(1) } label: {
+                Image(systemName: "chevron.right")
+                    .font(.appFont(.bold, size: 13))
+                    .frame(width: 32, height: 32)
+                    .background(Color.white.opacity(0.7), in: Circle())
+            }
+            .disabled(isCurrentMonth)
+            .opacity(isCurrentMonth ? 0.35 : 1)
+        }
+        .foregroundStyle(Color.acorn700)
+    }
+
+    private var weekdayLabels: some View {
+        let symbols = ["일", "월", "화", "수", "목", "금", "토"]
+        return HStack(spacing: 4) {
+            ForEach(symbols, id: \.self) { sym in
+                Text(sym)
+                    .font(.appFont(.bold, size: 10))
+                    .foregroundStyle(Color.ink400)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private var grid: some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 8) {
+            ForEach(Array(monthDays.enumerated()), id: \.offset) { _, cellDate in
+                if let date = cellDate {
+                    dayCell(date)
+                } else {
+                    Color.clear.frame(height: 46)
+                }
+            }
+        }
+    }
+
+    private func dayCell(_ date: Date) -> some View {
+        let isFuture = date > today
+        let selected = cal.isDate(date, inSameDayAs: selectedDate)
+        return Button {
+            onPick(date)
+        } label: {
+            VStack(spacing: 3) {
+                ZStack {
+                    MealCompletionRing(meals: mealCount(date), selected: selected)
+                    Text("\(cal.component(.day, from: date))")
+                        .font(.appFont(.heavy, size: 13))
+                        .foregroundStyle(selected ? Color.white : (isFuture ? Color.ink400.opacity(0.5) : Color.ink800))
+                        .monospacedDigit()
+                }
+                .frame(width: 36, height: 36)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 46)
+        }
+        .buttonStyle(.plain)
+        .disabled(isFuture)
+    }
+
+    private var monthDays: [Date?] {
+        guard let interval = cal.dateInterval(of: .month, for: month) else { return [] }
+        let firstWeekday = cal.component(.weekday, from: interval.start) // 1=일
+        let leadingEmpty = firstWeekday - 1
+        let daysInMonth = cal.range(of: .day, in: .month, for: month)?.count ?? 0
+        var cells: [Date?] = Array(repeating: nil, count: leadingEmpty)
+        for d in 0..<daysInMonth {
+            cells.append(cal.date(byAdding: .day, value: d, to: interval.start))
+        }
+        return cells
+    }
+
+    private var monthTitle: String {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "ko_KR")
+        f.dateFormat = "yyyy년 M월"
+        return f.string(from: month)
+    }
+
+    private var isCurrentMonth: Bool {
+        cal.isDate(month, equalTo: today, toGranularity: .month)
+    }
+
+    private func shiftMonth(_ delta: Int) {
+        guard let next = cal.date(byAdding: .month, value: delta, to: month) else { return }
+        if delta > 0, next > today, cal.isDate(month, equalTo: today, toGranularity: .month) { return }
+        month = next
     }
 }
 
