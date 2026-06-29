@@ -94,10 +94,10 @@ struct ReportHubView: View {
             HStack(spacing: 10) {
                 Text(monthRangeLabel)
                     .font(.appFont(.heavy, size: 15))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                 Text("일별 저작")
                     .font(.appFont(.bold, size: 11))
-                    .foregroundStyle(Color.ink400)
+                    .foregroundStyle(Color.textTertiary)
                 Spacer(minLength: 0)
                 Button { openCalendar() } label: {
                     Image(systemName: "calendar")
@@ -145,18 +145,18 @@ struct ReportHubView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(selectedDay.shortDateLabel)
                     .font(.appFont(.heavy, size: 17))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                     .monospacedDigit()
                 Text(selectedDay.summaryLabel)
                     .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
                     .monospacedDigit()
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.top, 2)
         }
         .padding(16)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 24))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 24))
         .softShadow(.base)
     }
 
@@ -168,12 +168,12 @@ struct ReportHubView: View {
             VStack(spacing: 5) {
                 Text(day.weekdayLabel)
                     .font(.appFont(.bold, size: 11))
-                    .foregroundStyle(selected ? Color.acorn700 : Color.ink400)
+                    .foregroundStyle(selected ? Color.acorn700 : Color.textTertiary)
                 ZStack {
                     MealCompletionRing(meals: day.mealCount, selected: selected)
                     Text(day.dayLabel)
                         .font(.appFont(.heavy, size: day.dayLabel.contains("/") ? 11 : 14))
-                        .foregroundStyle(selected ? Color.white : Color.ink800)
+                        .foregroundStyle(selected ? Color.white : Color.textPrimary)
                         .monospacedDigit()
                         .minimumScaleFactor(0.75)
                 }
@@ -189,7 +189,7 @@ struct ReportHubView: View {
             HStack {
                 Text("\(selectedDay.shortDateLabel) 끼니")
                     .font(.appFont(.heavy, size: 16))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                 Spacer()
                 Text("\(selectedSessions.count)회")
                     .font(.appFont(.bold, size: 12))
@@ -213,7 +213,7 @@ struct ReportHubView: View {
             }
         }
         .padding(16)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 24))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 24))
         .softShadow(.base)
     }
 
@@ -226,10 +226,10 @@ struct ReportHubView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(mealCalendarCalendar.isDateInToday(selectedDate) ? "오늘은 아직 식사 전이에요" : "이 날은 식사 기록이 없어요")
                     .font(.appFont(.heavy, size: 15))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                 Text("식사를 기록하면 아침·점심·저녁 리포트가 여기에 쌓여요.")
                     .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
             }
             Spacer(minLength: 0)
         }
@@ -250,19 +250,19 @@ struct ReportHubView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(slot.label)
                         .font(.appFont(.heavy, size: 15))
-                        .foregroundStyle(Color.ink800)
+                        .foregroundStyle(Color.textPrimary)
                     Text("\(timeLabel(session.startedAt)) · \((session.estimatedTotalChews ?? 0).koLocale)회")
                         .font(.appFont(.semibold, size: 12))
-                        .foregroundStyle(Color.ink600)
+                        .foregroundStyle(Color.textSecondary)
                 }
                 Spacer(minLength: 0)
                 Text(durationLabel(session.durationSec))
                     .font(.appFont(.bold, size: 13))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
                     .monospacedDigit()
                 Image(systemName: "chevron.right")
                     .font(.appFont(.bold, size: 11))
-                    .foregroundStyle(Color.ink400)
+                    .foregroundStyle(Color.textTertiary)
             }
             .padding(.vertical, 8)
         }
@@ -274,11 +274,11 @@ struct ReportHubView: View {
             HStack(alignment: .firstTextBaseline) {
                 Text("하루 리포트 요약")
                     .font(.appFont(.heavy, size: 15))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                 Spacer(minLength: 0)
                 Text(selectedDay.mealCount == 0 ? "기록 전" : "\(selectedDay.mealCount)/3끼")
                     .font(.appFont(.heavy, size: 11))
-                    .foregroundStyle(selectedDay.mealCount == 0 ? Color.ink400 : Color.acorn700)
+                    .foregroundStyle(selectedDay.mealCount == 0 ? Color.textTertiary : Color.acorn700)
                     .monospacedDigit()
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3)
@@ -331,7 +331,7 @@ struct ReportHubView: View {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(title)
                         .font(.appFont(.bold, size: 12))
-                        .foregroundStyle(Color.ink800)
+                        .foregroundStyle(Color.textPrimary)
                     Text(value)
                         .font(.appFont(.heavy, size: 12))
                         .foregroundStyle(Color.sage600)
@@ -341,7 +341,7 @@ struct ReportHubView: View {
                 }
                 Text(detail)
                     .font(.appFont(.semibold, size: 12))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
                     .lineSpacing(2)
             }
             Spacer(minLength: 0)
@@ -359,7 +359,7 @@ struct ReportHubView: View {
                         .foregroundStyle(Color.acorn700)
                     Text("하루 전체 요약 보기")
                         .font(.appFont(.semibold, size: 12))
-                        .foregroundStyle(Color.ink600)
+                        .foregroundStyle(Color.textSecondary)
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
@@ -382,7 +382,7 @@ struct ReportHubView: View {
             HStack {
                 Text("주간 리포트")
                     .font(.appFont(.heavy, size: 16))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                 Spacer()
                 if hasData { TrendLegend() }
             }
@@ -399,7 +399,7 @@ struct ReportHubView: View {
                             // (이전엔 opacity 0.58 + ink400 + 약한 weight 삼중 인코딩으로 과거 주가 안 보였다).
                             Text(week.label)
                                 .font(.appFont(week.isCurrent ? .heavy : .semibold, size: 12))
-                                .foregroundStyle(week.isCurrent ? Color.ink800 : Color.ink600)
+                                .foregroundStyle(week.isCurrent ? Color.textPrimary : Color.textSecondary)
                         }
                         .frame(maxWidth: .infinity)
                     }
@@ -408,13 +408,13 @@ struct ReportHubView: View {
             } else {
                 Text("이번 주 식사 기록이 쌓이면 지난 흐름과 비교해서 보여줄게요.")
                     .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 20)
             }
         }
         .padding(16)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 24))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 24))
         .softShadow(.base)
     }
 
@@ -432,9 +432,9 @@ struct ReportHubView: View {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text("다람이 코치")
                             .font(.appFont(.heavy, size: 15))
-                            .foregroundStyle(Color.ink800)
+                            .foregroundStyle(Color.textPrimary)
                         Text(insight.badge)
-                            .font(.appFont(.heavy, size: 10))
+                            .font(.appFont(.heavy, size: 11))
                             .foregroundStyle(insight.accent)
                             .padding(.horizontal, 7)
                             .padding(.vertical, 3)
@@ -442,7 +442,7 @@ struct ReportHubView: View {
                     }
                     Text(insight.message)
                         .font(.appFont(.semibold, size: 13))
-                        .foregroundStyle(Color.ink600)
+                        .foregroundStyle(Color.textSecondary)
                         .lineSpacing(2)
                 }
 
@@ -471,11 +471,8 @@ struct ReportHubView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 24))
-        .overlay(
-            RoundedRectangle(cornerRadius: 24)
-                .stroke(Color.sage100.opacity(0.72), lineWidth: 1)
-        )
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 24))
+        // 최상위 카드라 elevation은 섀도우 하나로만 표현(이전엔 섀도우+1px 보더 중복).
         .softShadow(.base)
     }
 
@@ -485,8 +482,8 @@ struct ReportHubView: View {
                 OpenIconView(icon: icon, color: color, lineWidth: 2.1)
                     .frame(width: 13, height: 13)
                 Text(title)
-                    .font(.appFont(.bold, size: 10))
-                    .foregroundStyle(Color.ink600)
+                    .font(.appFont(.bold, size: 11))
+                    .foregroundStyle(Color.textSecondary)
             }
             Text(value)
                 .font(.appFont(.heavy, size: 11))
@@ -504,7 +501,7 @@ struct ReportHubView: View {
     private func metricBar(value: Int, maxValue: Int, color: Color, label: String) -> some View {
         VStack(spacing: 4) {
             Text(label)
-                .font(.appFont(.heavy, size: 10))
+                .font(.appFont(.heavy, size: 11))
                 .foregroundStyle(color)
                 .monospacedDigit()
             RoundedRectangle(cornerRadius: 6)
@@ -853,7 +850,7 @@ private struct MealCompletionRing: View {
             Circle()
                 .fill(selected ? Color.acorn500 : Color.clear)
             Circle()
-                .stroke(Color.ink100, lineWidth: 3)
+                .stroke(Color.hairline, lineWidth: 3)
             ForEach(0..<3, id: \.self) { i in
                 Circle()
                     .trim(from: CGFloat(i) / 3 + 0.018, to: CGFloat(i + 1) / 3 - 0.018)
@@ -899,9 +896,9 @@ private struct ContinuousTrendChart: View {
                 var guideLine = Path()
                 guideLine.move(to: CGPoint(x: 0, y: my))
                 guideLine.addLine(to: CGPoint(x: size.width, y: my))
-                context.stroke(guideLine, with: .color(Color.ink400.opacity(0.4)), style: StrokeStyle(lineWidth: 1, dash: [4, 5]))
+                context.stroke(guideLine, with: .color(Color.textTertiary.opacity(0.4)), style: StrokeStyle(lineWidth: 1, dash: [4, 5]))
                 context.draw(
-                    Text("평소 \(mean)회").font(.appFont(.bold, size: 10)).foregroundColor(Color.ink400),
+                    Text("평소 \(mean)회").font(.appFont(.bold, size: 11)).foregroundColor(Color.textTertiary),
                     at: CGPoint(x: 4, y: my - 4), anchor: .bottomLeading
                 )
             }
@@ -911,7 +908,7 @@ private struct ContinuousTrendChart: View {
                 var sel = Path()
                 sel.move(to: CGPoint(x: x(index), y: 0))
                 sel.addLine(to: CGPoint(x: x(index), y: size.height))
-                context.stroke(sel, with: .color(Color.ink400.opacity(0.35)), style: StrokeStyle(lineWidth: 1.4, dash: [4, 5]))
+                context.stroke(sel, with: .color(Color.textTertiary.opacity(0.35)), style: StrokeStyle(lineWidth: 1.4, dash: [4, 5]))
             }
 
             // 저작 횟수 단일 라인 + 점
@@ -948,7 +945,7 @@ private struct TrendLegend: View {
             Circle().fill(color).frame(width: 7, height: 7)
             Text(label)
                 .font(.appFont(.bold, size: 11))
-                .foregroundStyle(Color.ink600)
+                .foregroundStyle(Color.textSecondary)
         }
     }
 }
@@ -1010,7 +1007,7 @@ private struct ReportCalendarDialog: View {
             Spacer()
             Text(monthTitle)
                 .font(.appFont(.heavy, size: 15))
-                .foregroundStyle(Color.ink800)
+                .foregroundStyle(Color.textPrimary)
             Spacer()
             Button { shiftMonth(1) } label: {
                 Image(systemName: "chevron.right")
@@ -1029,8 +1026,8 @@ private struct ReportCalendarDialog: View {
         return HStack(spacing: 4) {
             ForEach(symbols, id: \.self) { sym in
                 Text(sym)
-                    .font(.appFont(.bold, size: 10))
-                    .foregroundStyle(Color.ink400)
+                    .font(.appFont(.bold, size: 11))
+                    .foregroundStyle(Color.textTertiary)
                     .frame(maxWidth: .infinity)
             }
         }
@@ -1059,7 +1056,7 @@ private struct ReportCalendarDialog: View {
                     MealCompletionRing(meals: mealCount(date), selected: selected)
                     Text("\(cal.component(.day, from: date))")
                         .font(.appFont(.heavy, size: 13))
-                        .foregroundStyle(selected ? Color.white : (isFuture ? Color.ink400.opacity(0.5) : Color.ink800))
+                        .foregroundStyle(selected ? Color.white : (isFuture ? Color.textTertiary.opacity(0.5) : Color.textPrimary))
                         .monospacedDigit()
                 }
                 .frame(width: 36, height: 36)

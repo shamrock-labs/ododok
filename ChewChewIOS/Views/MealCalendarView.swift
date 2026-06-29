@@ -82,7 +82,7 @@ struct MealCalendarGrid: View {
             Spacer()
             Text(monthTitle)
                 .font(.appFont(.heavy, size: 15))
-                .foregroundStyle(Color.ink800)
+                .foregroundStyle(Color.textPrimary)
             Spacer()
             Button { goToMonth(+1) } label: {
                 Image(systemName: "chevron.right")
@@ -99,7 +99,7 @@ struct MealCalendarGrid: View {
         return HStack(spacing: 4) {
             ForEach(symbols, id: \.self) { sym in
                 Text(sym)
-                    .font(.appFont(.bold, size: 10))
+                    .font(.appFont(.bold, size: 11))
                     .foregroundStyle(weekdayLabelColor(sym))
                     .frame(maxWidth: .infinity)
             }
@@ -110,7 +110,7 @@ struct MealCalendarGrid: View {
         switch symbol {
         case "일": Color.blush400
         case "토": Color.acorn600
-        default:   Color.ink400
+        default:   Color.textTertiary
         }
     }
 
@@ -177,7 +177,7 @@ struct MealCalendarGrid: View {
         switch calendar.component(.weekday, from: date) {
         case 1: Color.blush400
         case 7: Color.acorn600
-        default: Color.ink800
+        default: Color.textPrimary
         }
     }
 
@@ -332,7 +332,7 @@ struct DaySessionsView: View {
                     Spacer()
                     Text("이 날은 식사 기록이 없어요.")
                         .font(.appFont(.semibold, size: 15))
-                        .foregroundStyle(Color.ink600)
+                        .foregroundStyle(Color.textSecondary)
                     Spacer()
                 }
             } else {
@@ -374,12 +374,12 @@ struct DaySessionsView: View {
         HStack(spacing: 12) {
             Text(formatTime(session.startedAt))
                 .font(.appFont(.heavy, size: 17))
-                .foregroundStyle(Color.ink800)
+                .foregroundStyle(Color.textPrimary)
                 .monospacedDigit()
             Spacer(minLength: 0)
             Text(formatDuration(session.durationSec))
                 .font(.appFont(.semibold, size: 14))
-                .foregroundStyle(Color.ink600)
+                .foregroundStyle(Color.textSecondary)
                 .monospacedDigit()
         }
         .padding(.horizontal, 4)
@@ -460,7 +460,7 @@ private struct DayInlineSection: View {
         if sessions.isEmpty {
             Text("이 날은 식사 기록이 없어요.")
                 .font(.appFont(.semibold, size: 14))
-                .foregroundStyle(Color.ink600)
+                .foregroundStyle(Color.textSecondary)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.vertical, 14)
         } else {
@@ -480,7 +480,7 @@ private struct DayInlineSection: View {
                     .frame(width: 20, height: 20)
                 Text(slot.label)
                     .font(.appFont(.heavy, size: 16))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                 Spacer(minLength: 0)
             }
             VStack(spacing: 6) {
@@ -498,16 +498,16 @@ private struct DayInlineSection: View {
             HStack(spacing: 12) {
                 Text(formatTime12(session.startedAt))
                     .font(.appFont(.semibold, size: 15))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                     .monospacedDigit()
                 Spacer(minLength: 0)
                 Text(formatDuration(session.durationSec))
                     .font(.appFont(.semibold, size: 14))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
                     .monospacedDigit()
                 Image(systemName: "chevron.right")
                     .font(.appFont(.semibold, size: 12))
-                    .foregroundStyle(Color.ink400)
+                    .foregroundStyle(Color.textTertiary)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)

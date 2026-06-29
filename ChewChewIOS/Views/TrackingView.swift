@@ -56,10 +56,10 @@ struct TrackingView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("AirPods IMU")
                     .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
                 Text(state.imuWaveformStatusText)
                     .font(.appFont(.bold, size: 15))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
             }
@@ -69,14 +69,14 @@ struct TrackingView: View {
             VStack(alignment: .trailing, spacing: 2) {
                 Text("모드")
                     .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
                 Text(state.imuWaveformSource.usesRealMotion ? "LIVE" : "MVP")
                     .font(.appFont(.bold, size: 13))
-                    .foregroundStyle(state.imuWaveformSource.usesRealMotion ? Color.sage600 : Color.ink400)
+                    .foregroundStyle(state.imuWaveformSource.usesRealMotion ? Color.sage600 : Color.textTertiary)
             }
         }
         .padding(16)
-        .background(.white, in: RoundedRectangle(cornerRadius: 18))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 18))
         .neuoShadow(.sm)
     }
 
@@ -100,7 +100,7 @@ struct TrackingView: View {
             Spacer(minLength: 0)
         }
         .font(.appFont(.semibold, size: 13))
-        .foregroundStyle(Color.ink600)
+        .foregroundStyle(Color.textSecondary)
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -109,7 +109,7 @@ struct TrackingView: View {
     }
 
     private var dotSeparator: some View {
-        Text("·").foregroundStyle(Color.ink400.opacity(0.6))
+        Text("·").foregroundStyle(Color.textTertiary.opacity(0.6))
     }
 
     private var imuDebugAccessibilityLabel: String {

@@ -84,7 +84,7 @@ struct ReportCardView: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 28))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 24))
         .softShadow(.base)
 
     }
@@ -94,10 +94,10 @@ struct ReportCardView: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(headerDateLabel)
                     .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
                 Text("식사 리포트")
-                    .font(.appFont(.heavy, size: 22))
-                    .foregroundStyle(Color.ink800)
+                    .font(.appFont(.display))
+                    .foregroundStyle(Color.textPrimary)
             }
             Spacer()
         }
@@ -112,7 +112,7 @@ struct ReportCardView: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text("씹기 점수")
                     .font(.appFont(.heavy, size: 15))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                 Spacer(minLength: 0)
                 Text("\(scoreCountUpValue(progress: rendersStatically ? 1 : scoreProgress, target: model.score))")
                     .font(.appFont(.heavy, size: 28))
@@ -121,7 +121,7 @@ struct ReportCardView: View {
                     .contentTransition(.numericText())
                 Text("/ 100")
                     .font(.appFont(.bold, size: 12))
-                    .foregroundStyle(Color.ink400)
+                    .foregroundStyle(Color.textTertiary)
             }
             VStack(spacing: 8) {
                 scoreAxisRow(label: "속도", value: model.speedScore)
@@ -132,10 +132,10 @@ struct ReportCardView: View {
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 18))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 18))
         .overlay(
             RoundedRectangle(cornerRadius: 18)
-                .stroke(Color.ink100, lineWidth: 1)
+                .stroke(Color.hairline, lineWidth: 1)
         )
         .onAppear {
             withAnimation(.easeOut(duration: 0.7)) { scoreProgress = 1 }
@@ -146,11 +146,11 @@ struct ReportCardView: View {
         HStack(spacing: 10) {
             Text(label)
                 .font(.appFont(.bold, size: 12))
-                .foregroundStyle(Color.ink600)
+                .foregroundStyle(Color.textSecondary)
                 .frame(width: 28, alignment: .leading)
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.ink100)
+                    Capsule().fill(Color.hairline)
                     Capsule().fill(scoreColor.opacity(0.85))
                         .frame(width: max(6, geo.size.width * CGFloat(max(0, min(100, value))) / 100))
                 }
@@ -158,7 +158,7 @@ struct ReportCardView: View {
             .frame(height: 8)
             Text("\(value)")
                 .font(.appFont(.heavy, size: 12))
-                .foregroundStyle(Color.ink800)
+                .foregroundStyle(Color.textPrimary)
                 .monospacedDigit()
                 .frame(width: 26, alignment: .trailing)
         }
@@ -178,7 +178,7 @@ struct ReportCardView: View {
             HStack(alignment: .firstTextBaseline) {
                 Text("권장 기준 대비")
                     .font(.appFont(.heavy, size: 15))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                 Spacer(minLength: 0)
                 Text(summary.badge)
                     .font(.appFont(.heavy, size: 11))
@@ -188,12 +188,12 @@ struct ReportCardView: View {
                     .background(summary.color.opacity(0.14), in: Capsule())
             }
             Text(summary.title)
-                .font(.appFont(.heavy, size: 23))
-                .foregroundStyle(Color.ink800)
+                .font(.appFont(.heavy, size: 20))
+                .foregroundStyle(Color.textPrimary)
                 .lineSpacing(2)
             Text(summary.detail)
                 .font(.appFont(.semibold, size: 13))
-                .foregroundStyle(Color.ink600)
+                .foregroundStyle(Color.textSecondary)
                 .lineSpacing(2)
             HStack(spacing: 8) {
                 averageDeltaChip(
@@ -225,8 +225,8 @@ struct ReportCardView: View {
     private func averageDeltaChip(title: String, value: String, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
-                .font(.appFont(.bold, size: 10))
-                .foregroundStyle(Color.ink600)
+                .font(.appFont(.bold, size: 11))
+                .foregroundStyle(Color.textSecondary)
             Text(value)
                 .font(.appFont(.heavy, size: 12))
                 .foregroundStyle(color)
@@ -296,10 +296,10 @@ struct ReportCardView: View {
             HStack(spacing: 6) {
                 Text(label)
                     .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
                 Spacer(minLength: 0)
                 Text(delta)
-                    .font(.appFont(.heavy, size: 10))
+                    .font(.appFont(.heavy, size: 11))
                     .foregroundStyle(color)
                     .monospacedDigit()
                     .padding(.horizontal, 7)
@@ -308,7 +308,7 @@ struct ReportCardView: View {
             }
             Text(current)
                 .font(.appFont(.heavy, size: 20))
-                .foregroundStyle(Color.ink800)
+                .foregroundStyle(Color.textPrimary)
                 .lineLimit(1)
                 .minimumScaleFactor(0.62)
                 .monospacedDigit()
@@ -316,7 +316,7 @@ struct ReportCardView: View {
                 .frame(height: 12)
             Text(average)
                 .font(.appFont(.semibold, size: 13))
-                .foregroundStyle(Color.ink600.opacity(0.8))
+                .foregroundStyle(Color.textSecondary.opacity(0.8))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
@@ -335,10 +335,10 @@ struct ReportCardView: View {
             VStack(alignment: .leading, spacing: 5) {
                 Text(coachTitle)
                     .font(.appFont(.heavy, size: 15))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                 Text(coachMessage)
                     .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
                     .lineSpacing(2)
             }
             Spacer(minLength: 0)
@@ -381,7 +381,7 @@ struct ReportCardView: View {
             Circle().fill(color).frame(width: 8, height: 8)
             Text(label)
                 .font(.appFont(.semibold, size: 13))
-                .foregroundStyle(Color.ink600)
+                .foregroundStyle(Color.textSecondary)
         }
     }
 
@@ -392,7 +392,7 @@ struct ReportCardView: View {
                 .foregroundStyle(Color.acorn300)
             Text(model.caption ?? "오늘 한 끼 잘 먹었어요.")
                 .font(.appFont(.semibold, size: 15))
-                .foregroundStyle(Color.ink600)
+                .foregroundStyle(Color.textSecondary)
                 .lineSpacing(3)
             Spacer(minLength: 0)
         }
@@ -426,7 +426,7 @@ struct ReportCardView: View {
     private func sectionTitle(_ text: String) -> some View {
         Text(text)
             .font(.appFont(.bold, size: 13))
-            .foregroundStyle(Color.ink600)
+            .foregroundStyle(Color.textSecondary)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -556,9 +556,9 @@ private struct AverageDeltaBar: View {
             let markerX = center + clampedRatio * width * 0.42
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color.ink100.opacity(0.8))
+                    .fill(Color.hairline.opacity(0.8))
                 Rectangle()
-                    .fill(Color.ink400.opacity(0.32))
+                    .fill(Color.textTertiary.opacity(0.32))
                     .frame(width: 1)
                     .offset(x: center)
                 Capsule()
@@ -719,17 +719,17 @@ struct EmptyReportCardView: View {
             Text(emoji).font(.appFont(.regular, size: 40))
             Text(title)
                 .font(.appFont(.heavy, size: 18))
-                .foregroundStyle(Color.ink800)
+                .foregroundStyle(Color.textPrimary)
             Text(subtitle)
                 .font(.appFont(.semibold, size: 15))
-                .foregroundStyle(Color.ink600)
+                .foregroundStyle(Color.textSecondary)
                 .multilineTextAlignment(.center)
                 .lineSpacing(3)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 48)
         .padding(.horizontal, 24)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 28))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 24))
         .softShadow(.base)
     }
 }
