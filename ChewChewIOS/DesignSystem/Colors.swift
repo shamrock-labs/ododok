@@ -32,6 +32,11 @@ extension Color {
     /// 카카오 브랜드 옐로우(공식 #FEE500). 카카오 공유/초대 버튼 전용.
     static let kakaoYellow = Color(hex: 0xFEE500)
 
+    /// Google 브랜드 토큰. Google 로그인 버튼 전용.
+    static let googleText   = Color(hex: 0x3C4043)
+    static let googleBorder = Color(hex: 0xDADCE0)
+    static let googleBlue   = Color(hex: 0x4285F4)
+
     static let blush100 = Color(hex: 0xFCE7E0)
     static let blush200 = Color(hex: 0xF8CFC0)
     static let blush400 = Color(hex: 0xF4A99B)

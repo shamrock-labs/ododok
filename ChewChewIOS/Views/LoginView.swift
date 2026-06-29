@@ -17,14 +17,14 @@ enum LoginProviderOption: CaseIterable {
         switch self {
         case .apple: .black
         case .google: .white
-        case .kakao: Color(red: 254/255, green: 229/255, blue: 0/255)
+        case .kakao: .kakaoYellow
         }
     }
 
     var foreground: Color {
         switch self {
         case .apple: .white
-        case .google: Color(red: 60/255, green: 64/255, blue: 67/255)
+        case .google: .googleText
         case .kakao: .black.opacity(0.85)
         }
     }
@@ -32,7 +32,7 @@ enum LoginProviderOption: CaseIterable {
     var border: Color? {
         switch self {
         case .apple, .kakao: nil
-        case .google: Color(red: 218/255, green: 220/255, blue: 224/255)
+        case .google: .googleBorder
         }
     }
 
@@ -144,7 +144,7 @@ struct LoginView: View {
         case .google:
             Text("G")
                 .font(.system(size: 18, weight: .bold))
-                .foregroundStyle(Color(red: 66/255, green: 133/255, blue: 244/255))
+                .foregroundStyle(Color.googleBlue)
         case .kakao:
             Image(systemName: "message.fill").font(.system(size: 15))
         }
