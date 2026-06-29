@@ -22,8 +22,8 @@ struct OnboardingNameView: View {
             VStack(spacing: 8) {
                 Text("처음 오셨네요!")
                     .font(.appFont(.heavy, size: 22))
-                    .foregroundStyle(Color.textPrimary)
-                Text("어떻게 불러드릴까요?")
+                    .foregroundStyle(Color.ink800)
+                Text("이름을 알려주세요")
                     .font(.appFont(.regular, size: 14))
                     .foregroundStyle(Color.textSecondary)
             }

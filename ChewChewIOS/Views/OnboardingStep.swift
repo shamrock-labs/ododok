@@ -1,50 +1,33 @@
 import SwiftUI
 
-/// 온보딩 튜토리얼 카드 한 장의 데이터. SF Symbol 또는 다람이 일러스트 중 하나를 표시.
-/// asset가 채워져 있으면 다람이 일러스트가 우선되고, 아니면 SF Symbol(`icon`)이 표시된다.
+/// 온보딩 튜토리얼 카드 한 장의 데이터. 비주얼은 `OnboardingTutorialView`가 id로 라우팅해
+/// 실제 앱 컴포넌트(파형·다람이 등) 애니메이션으로 그린다.
 struct OnboardingStep: Identifiable {
     let id: Int
-    let icon: String
-    let asset: String?
     let title: String
     let message: String
 
-    /// 사용법 5단계. 표시 순서대로.
+    /// 사용법 4단계. 표시 순서대로. 본문은 문장 단위로 줄바꿈한다(문장 중간 강제 줄바꿈 금지).
     static let all: [OnboardingStep] = [
         OnboardingStep(
             id: 0,
-            icon: "airpodspro",
-            asset: nil,
-            title: "AirPods를 연결해 주세요",
-            message: "AirPods Pro · 3·4세대 · Max 안의 IMU 센서가\n턱 움직임을 읽어요. 다른 이어폰은 측정되지 않아요."
+            title: "AirPods를 연결해요",
+            message: "씹을 때 생기는 턱 움직임을 AirPods가 읽어요."
         ),
         OnboardingStep(
             id: 1,
-            icon: "fork.knife",
-            asset: "DaramEating",
-            title: "식사 시작 버튼을 누르세요",
-            message: "홈에서 '식사 시작'을 누르고 평소처럼 드세요.\n다 먹으면 '식사 종료' — 그동안의 씹기가 기록돼요."
+            title: "식사 전에 측정을 시작해보세요",
+            message: "시작을 누르고 평소처럼 드세요.\n종료를 누르면 기록이 저장돼요."
         ),
         OnboardingStep(
             id: 2,
-            icon: "mouth.fill",
-            asset: "DaramPuffy",
-            title: "꼭꼭 씹을수록 다람쥐가 자라요",
-            message: "천천히 오래 씹으면 볼이 빵빵해지고\n도토리가 쌓여요. 하루 목표는 400회예요."
+            title: "꼭꼭 씹어서 도토리를 모아보세요",
+            message: "오래 씹을수록 다람쥐가 자라요."
         ),
         OnboardingStep(
             id: 3,
-            icon: "bag.fill",
-            asset: "DaramDotori",
-            title: "도토리로 다람쥐를 꾸며요",
-            message: "모은 도토리로 상점에서 모자·안경·액세서리를\n사서 다람쥐에게 씌워요."
-        ),
-        OnboardingStep(
-            id: 4,
-            icon: "flame.fill",
-            asset: "DaramHeart",
-            title: "매일 들러 연속 출석을 쌓아요",
-            message: "7·30·100일엔 프리즈🛡️ 보너스가 있어요.\n끼니 알림을 켜두면 잊지 않고 챙길 수 있어요."
+            title: "매일 기록을 이어가요",
+            message: "출석한 날이 쌓이고, 오래 모을수록 보너스를 받아요."
         ),
     ]
 }
