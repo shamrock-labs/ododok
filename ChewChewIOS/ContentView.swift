@@ -44,6 +44,19 @@ struct ContentView: View {
                 LoginView(onLoggedIn: { state.completeLogin(onboardingCompleted: $0, method: $1) })
             }
         }
+        // 로그인 직후 프로필 로딩/온보딩 진입 전엔 홈을 크림+스피너로 덮어 홈 깜빡임을 차단한다.
+        // 홈(mainTabs)은 그대로 렌더돼 온보딩 시트가 그 위로 정상 표시되고, 이 커버는 시각적으로만 가린다.
+        // (홈을 replace하면 시트가 뜰 base가 사라져 신규 유저가 스피너에 갇히는 회귀가 있어, overlay로 덮기만 한다.)
+        .overlay {
+            if state.isLoggedIn && !(state.didLoadProfile && state.hasCompletedOnboarding) {
+                ZStack {
+                    Color.cream.ignoresSafeArea()
+                    ProgressView()
+                        .controlSize(.large)
+                        .tint(Color.acorn600)
+                }
+            }
+        }
         // 전역 토스트(딥링크 친구 수락 결과 등) — 로그인 화면/탭 어디서나 위에 뜬다.
         .overlay(alignment: .bottom) {
             if let toast = state.globalToast {
