@@ -5,28 +5,21 @@ struct TrackingView: View {
 
     @State private var feedback: FeedbackLine?
     @State private var fbTimer: Timer?
-    @State private var inlineMonth: Date = .now
-    @State private var inlineMonthSessions: [ChewingSessionDTO] = []
-    /// 인라인 리스트에서 row를 탭하면 sheet으로 띄울 세션. nil이면 sheet 닫힘.
-    @State private var inlineDetailSession: ChewingSessionDTO?
 
     /// 식사 중 여부 — 식사 세션은 AppState가 관리하고 이 화면은 관찰만.
     private var isEating: Bool { state.isEating }
 
     var body: some View {
         VStack(spacing: 14) {
-            header
             // 라이브 IMU 진단(AirPods 상태 + 샘플 카운터)은 식사 중에만 노출.
             if isEating {
                 airpodsCard
                 imuDebugPanel
             }
-            todaySessionsCard
-            calendarSection
-            tipCard
+            ReportHubView()
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 24)
+        .padding(.horizontal, 20)
+        .padding(.top, 18)
         .padding(.bottom, 28)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .overlay(alignment: .bottom) {
@@ -36,27 +29,10 @@ struct TrackingView: View {
                     .transition(.scale.combined(with: .opacity))
             }
         }
-        .task { await state.fetchTodaySessions() }
-        .sheet(item: $inlineDetailSession) { session in
-            NavigationStack {
-                SessionReportDetailView(dto: session)
-            }
-        }
         .onChange(of: isEating) { _, isOn in
             if isOn { startFeedbackLoop() } else { stopFeedbackLoop() }
         }
         .onDisappear { stopFeedbackLoop() }
-    }
-
-    // MARK: Header
-
-    private var header: some View {
-        HStack {
-            Text("트래킹")
-                .font(.appFont(.heavy, size: 22))
-                .foregroundStyle(Color.ink800)
-            Spacer()
-        }
     }
 
     // MARK: AirPods + IMU diagnostics (식사 중에만)
@@ -80,10 +56,10 @@ struct TrackingView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("AirPods IMU")
                     .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
                 Text(state.imuWaveformStatusText)
                     .font(.appFont(.bold, size: 15))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
             }
@@ -93,14 +69,14 @@ struct TrackingView: View {
             VStack(alignment: .trailing, spacing: 2) {
                 Text("모드")
                     .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
                 Text(state.imuWaveformSource.usesRealMotion ? "LIVE" : "MVP")
                     .font(.appFont(.bold, size: 13))
-                    .foregroundStyle(state.imuWaveformSource.usesRealMotion ? Color.sage600 : Color.ink400)
+                    .foregroundStyle(state.imuWaveformSource.usesRealMotion ? Color.sage600 : Color.textTertiary)
             }
         }
         .padding(16)
-        .background(.white, in: RoundedRectangle(cornerRadius: 18))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 18))
         .neuoShadow(.sm)
     }
 
@@ -124,7 +100,7 @@ struct TrackingView: View {
             Spacer(minLength: 0)
         }
         .font(.appFont(.semibold, size: 13))
-        .foregroundStyle(Color.ink600)
+        .foregroundStyle(Color.textSecondary)
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -133,7 +109,7 @@ struct TrackingView: View {
     }
 
     private var dotSeparator: some View {
-        Text("·").foregroundStyle(Color.ink400.opacity(0.6))
+        Text("·").foregroundStyle(Color.textTertiary.opacity(0.6))
     }
 
     private var imuDebugAccessibilityLabel: String {
@@ -142,100 +118,6 @@ struct TrackingView: View {
             return "IMU 진단: \(phase), 샘플 \(state.imuSampleCount)개 수신"
         }
         return "IMU 진단: \(phase), 샘플 수신 안 됨"
-    }
-
-    // MARK: Today sessions — 최신 1개 카드만 표시
-
-    private var todaySessionsCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(trackingDateLabel)
-                        .font(.appFont(.semibold, size: 13))
-                        .foregroundStyle(Color.ink600)
-                    Text("오늘 식사")
-                        .font(.appFont(.bold, size: 18))
-                        .foregroundStyle(Color.ink800)
-                }
-                Spacer()
-                Text("\(state.todaySessions.count)회")
-                    .font(.appFont(.bold, size: 12))
-                    .foregroundStyle(Color.acorn700)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
-                    .background(Color.white.opacity(0.8), in: Capsule())
-            }
-            .padding(.horizontal, 4)
-
-            latestSessionView
-        }
-    }
-
-    @ViewBuilder
-    private var latestSessionView: some View {
-        if let latest = state.todaySessions.last {
-            if let model = ReportCardModel.from(latest) {
-                ReportCardView(model: model)
-            } else {
-                EmptyReportCardView()
-            }
-        } else {
-            EmptyReportCardView(
-                emoji: "🍽️",
-                title: "오늘은 아직 식사 전이에요",
-                subtitle: "홈에서 식사를 시작하면 여기에 기록돼요"
-            )
-        }
-    }
-
-    // MARK: Inline calendar (구 scoreCard 자리)
-
-    private var calendarSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            MealCalendarGrid(
-                displayedMonth: $inlineMonth,
-                monthSessions: $inlineMonthSessions,
-                onTapSession: { session in
-                    inlineDetailSession = session
-                }
-            )
-        }
-        .frame(maxWidth: .infinity)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 24))
-        .neuoShadow(.sm)
-    }
-
-    private var trackingDateLabel: String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ko_KR")
-        formatter.dateFormat = "M월 d일 EEEE"
-        return formatter.string(from: Date())
-    }
-
-    // MARK: Tip card
-
-    private var tipCard: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "lightbulb")
-                .font(.appFont(.medium, size: 18))
-                .foregroundStyle(Color.butter600)
-                .frame(width: 40, height: 40)
-                .background(.white, in: RoundedRectangle(cornerRadius: 12))
-                .neuoShadow(.sm)
-            VStack(alignment: .leading, spacing: 2) {
-                Text("씹기 팁")
-                    .font(.appFont(.bold, size: 12))
-                    .foregroundStyle(Color.ink800)
-                Text("한 입에 30번씩 씹으면 포만감이 오래가요.")
-                    .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.ink600)
-                    .lineSpacing(3)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(16)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 18))
-        .neuoShadow(.sm)
     }
 
     // MARK: Feedback popup

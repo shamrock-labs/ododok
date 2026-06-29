@@ -82,7 +82,7 @@ struct MealCalendarGrid: View {
             Spacer()
             Text(monthTitle)
                 .font(.appFont(.heavy, size: 15))
-                .foregroundStyle(Color.ink800)
+                .foregroundStyle(Color.textPrimary)
             Spacer()
             Button { goToMonth(+1) } label: {
                 Image(systemName: "chevron.right")
@@ -99,7 +99,7 @@ struct MealCalendarGrid: View {
         return HStack(spacing: 4) {
             ForEach(symbols, id: \.self) { sym in
                 Text(sym)
-                    .font(.appFont(.bold, size: 10))
+                    .font(.appFont(.bold, size: 11))
                     .foregroundStyle(weekdayLabelColor(sym))
                     .frame(maxWidth: .infinity)
             }
@@ -110,7 +110,7 @@ struct MealCalendarGrid: View {
         switch symbol {
         case "일": Color.blush400
         case "토": Color.acorn600
-        default:   Color.ink400
+        default:   Color.textTertiary
         }
     }
 
@@ -177,15 +177,12 @@ struct MealCalendarGrid: View {
         switch calendar.component(.weekday, from: date) {
         case 1: Color.blush400
         case 7: Color.acorn600
-        default: Color.ink800
+        default: Color.textPrimary
         }
     }
 
     private var monthTitle: String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ko_KR")
-        formatter.dateFormat = "yyyy년 M월"
-        return formatter.string(from: displayedMonth)
+        return KoDate.string(displayedMonth, "yyyy년 M월")
     }
 
     private var monthDays: [Date?] {
@@ -272,7 +269,7 @@ struct MealCalendarView: View {
                 )
                 .padding(20)
             }
-            .background(Color.cream.ignoresSafeArea())
+            .background(Color.pageBackground.ignoresSafeArea())
             .navigationTitle("식사 캘린더")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -332,7 +329,7 @@ struct DaySessionsView: View {
                     Spacer()
                     Text("이 날은 식사 기록이 없어요.")
                         .font(.appFont(.semibold, size: 15))
-                        .foregroundStyle(Color.ink600)
+                        .foregroundStyle(Color.textSecondary)
                     Spacer()
                 }
             } else {
@@ -358,28 +355,25 @@ struct DaySessionsView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.cream.ignoresSafeArea())
+        .background(Color.pageBackground.ignoresSafeArea())
         .navigationTitle(dateLabel)
         .navigationBarTitleDisplayMode(.inline)
     }
 
     private var dateLabel: String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ko_KR")
-        f.dateFormat = "M월 d일 EEEE"
-        return f.string(from: date)
+        return KoDate.string(date, "M월 d일 EEEE")
     }
 
     private func sessionRow(_ session: ChewingSessionDTO) -> some View {
         HStack(spacing: 12) {
             Text(formatTime(session.startedAt))
                 .font(.appFont(.heavy, size: 17))
-                .foregroundStyle(Color.ink800)
+                .foregroundStyle(Color.textPrimary)
                 .monospacedDigit()
             Spacer(minLength: 0)
             Text(formatDuration(session.durationSec))
                 .font(.appFont(.semibold, size: 14))
-                .foregroundStyle(Color.ink600)
+                .foregroundStyle(Color.textSecondary)
                 .monospacedDigit()
         }
         .padding(.horizontal, 4)
@@ -387,10 +381,7 @@ struct DaySessionsView: View {
     }
 
     private func formatTime(_ d: Date) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ko_KR")
-        f.dateFormat = "HH:mm"
-        return f.string(from: d)
+        return KoDate.string(d, "HH:mm")
     }
 
     private func formatDuration(_ seconds: Double) -> String {
@@ -424,7 +415,7 @@ struct SessionReportDetailView: View {
             }
             .padding(20)
         }
-        .background(Color.cream.ignoresSafeArea())
+        .background(Color.pageBackground.ignoresSafeArea())
         .navigationTitle("식사 리포트")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -460,7 +451,7 @@ private struct DayInlineSection: View {
         if sessions.isEmpty {
             Text("이 날은 식사 기록이 없어요.")
                 .font(.appFont(.semibold, size: 14))
-                .foregroundStyle(Color.ink600)
+                .foregroundStyle(Color.textSecondary)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.vertical, 14)
         } else {
@@ -476,10 +467,11 @@ private struct DayInlineSection: View {
     private func slotBlock(slot: DayMealSlot, sessions: [ChewingSessionDTO]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Text(slot.emoji).font(.appFont(.regular, size: 20))
+                OpenIconView(icon: slot.openIcon, color: slot.iconColor, lineWidth: 2.1)
+                    .frame(width: 20, height: 20)
                 Text(slot.label)
                     .font(.appFont(.heavy, size: 16))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                 Spacer(minLength: 0)
             }
             VStack(spacing: 6) {
@@ -497,16 +489,16 @@ private struct DayInlineSection: View {
             HStack(spacing: 12) {
                 Text(formatTime12(session.startedAt))
                     .font(.appFont(.semibold, size: 15))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                     .monospacedDigit()
                 Spacer(minLength: 0)
                 Text(formatDuration(session.durationSec))
                     .font(.appFont(.semibold, size: 14))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
                     .monospacedDigit()
                 Image(systemName: "chevron.right")
                     .font(.appFont(.semibold, size: 12))
-                    .foregroundStyle(Color.ink400)
+                    .foregroundStyle(Color.textTertiary)
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
@@ -526,10 +518,7 @@ private struct DayInlineSection: View {
     }
 
     private func formatTime12(_ d: Date) -> String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ko_KR")
-        f.dateFormat = "a h:mm"
-        return f.string(from: d)
+        return KoDate.string(d, "a h:mm")
     }
 
     private func formatDuration(_ secs: Double) -> String {
@@ -542,7 +531,7 @@ private struct DayInlineSection: View {
     }
 }
 
-/// 끼니 슬롯 분류. 시각(시간)으로 매핑. UI 라벨/이모지 보관.
+/// 끼니 슬롯 분류. 시각(시간)으로 매핑. UI 라벨/아이콘 보관.
 enum DayMealSlot: CaseIterable, Hashable {
     case morning, lunch, dinner, lateNight
 
@@ -554,12 +543,20 @@ enum DayMealSlot: CaseIterable, Hashable {
         case .lateNight: "야식"
         }
     }
-    var emoji: String {
+    var openIcon: OpenIcon {
         switch self {
-        case .morning:   "🌅"
-        case .lunch:     "🍱"
-        case .dinner:    "🌙"
-        case .lateNight: "🍎"
+        case .morning:   .sunrise
+        case .lunch:     .utensils
+        case .dinner:    .moonStar
+        case .lateNight: .moonStar
+        }
+    }
+    var iconColor: Color {
+        switch self {
+        case .morning:   .butter600
+        case .lunch:     .sage600
+        case .dinner:    .blush500
+        case .lateNight: .acorn700
         }
     }
     init(hour: Int) {

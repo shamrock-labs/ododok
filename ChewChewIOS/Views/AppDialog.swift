@@ -28,7 +28,7 @@ struct AppDialog: View {
             buttonRow
         }
         .frame(maxWidth: 320)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 14))
         .shadow(color: .black.opacity(0.18), radius: 24, y: 8)
     }
 
@@ -36,13 +36,13 @@ struct AppDialog: View {
         VStack(spacing: 6) {
             Text(title)
                 .font(.appFont(.bold, size: 17))
-                .foregroundStyle(Color.ink800)
+                .foregroundStyle(Color.textPrimary)
                 .multilineTextAlignment(.center)
                 .lineSpacing(2)
             if let message {
                 Text(message)
                     .font(.appFont(.semibold, size: 15))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
             }
@@ -52,7 +52,7 @@ struct AppDialog: View {
     }
 
     private var divider: some View {
-        Color.ink100.frame(height: 0.5)
+        Color.hairline.frame(height: 0.5)
     }
 
     @ViewBuilder
@@ -61,7 +61,7 @@ struct AppDialog: View {
             if let secondary {
                 HStack(spacing: 0) {
                     button(secondary, emphasis: .secondary)
-                    Color.ink100.frame(width: 0.5)
+                    Color.hairline.frame(width: 0.5)
                     button(primary, emphasis: .primary)
                 }
             } else {
@@ -91,7 +91,7 @@ struct AppDialog: View {
     private func color(for role: ButtonRole?) -> Color {
         switch role {
         case .destructive: Color.blush500
-        case .cancel:      Color.ink600
+        case .cancel:      Color.textSecondary
         default:           Color.acorn700
         }
     }
@@ -152,7 +152,7 @@ extension View {
 
 #Preview("Destructive") {
     ZStack {
-        Color.cream.ignoresSafeArea()
+        Color.pageBackground.ignoresSafeArea()
         Color.black.opacity(0.32).ignoresSafeArea()
         AppDialog(
             title: "내 데이터를 삭제할까요?",
@@ -167,7 +167,7 @@ extension View {
 
 #Preview("Single button") {
     ZStack {
-        Color.cream.ignoresSafeArea()
+        Color.pageBackground.ignoresSafeArea()
         Color.black.opacity(0.32).ignoresSafeArea()
         AppDialog(
             title: "AirPods를 연결해 주세요",

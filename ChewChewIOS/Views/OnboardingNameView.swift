@@ -22,10 +22,10 @@ struct OnboardingNameView: View {
             VStack(spacing: 8) {
                 Text("처음 오셨네요!")
                     .font(.appFont(.heavy, size: 22))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                 Text("어떻게 불러드릴까요?")
                     .font(.appFont(.regular, size: 14))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
             }
 
             TextField("이름", text: $name)
@@ -47,7 +47,7 @@ struct OnboardingNameView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(
-                        canSubmit ? Color.acorn600 : Color.ink400.opacity(0.4),
+                        canSubmit ? Color.acorn600 : Color.textTertiary.opacity(0.4),
                         in: RoundedRectangle(cornerRadius: 14)
                     )
             }
@@ -58,7 +58,7 @@ struct OnboardingNameView: View {
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.cream.ignoresSafeArea())
+        .background(Color.pageBackground.ignoresSafeArea())
         // 좌상단: 잘못된 계정으로 로그인했을 때 빠져나가는 출구. 서버 refresh 토큰 폐기 후
         // 로컬 세션 종료 → isLoggedIn=false라 ContentView가 LoginView로 돌아간다.
         .overlay(alignment: .topLeading) {
@@ -71,7 +71,7 @@ struct OnboardingNameView: View {
                     Text("다른 계정으로 로그인")
                 }
                 .font(.appFont(.semibold, size: 13))
-                .foregroundStyle(Color.ink600)
+                .foregroundStyle(Color.textSecondary)
                 .padding(.vertical, 6)
                 .padding(.horizontal, 10)
             }

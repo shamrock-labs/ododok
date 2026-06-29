@@ -17,7 +17,7 @@ struct RewardDialogView: View {
 
             Text(grant.kind.title)
                 .font(.appFont(.heavy, size: 18))
-                .foregroundStyle(Color.ink800)
+                .foregroundStyle(Color.textPrimary)
 
             if grant.kind.isAcorn {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
@@ -25,8 +25,8 @@ struct RewardDialogView: View {
                         .font(.appFont(.heavy, size: 36))
                         .foregroundStyle(Color.acorn700)
                         .monospacedDigit()
-                    Text("🌰")
-                        .font(.appFont(.regular, size: 28))
+                    OpenIconView(icon: .acorn, color: .acorn700, lineWidth: 2.2)
+                        .frame(width: 26, height: 26)
                 }
             } else if grant.kind.isFreezeGain {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
@@ -41,14 +41,14 @@ struct RewardDialogView: View {
 
             Text(grant.kind.subtitle)
                 .font(.appFont(.semibold, size: 14))
-                .foregroundStyle(Color.ink600)
+                .foregroundStyle(Color.textSecondary)
                 .multilineTextAlignment(.center)
                 .lineSpacing(3)
         }
         .padding(.vertical, 24)
         .padding(.horizontal, 22)
         .frame(maxWidth: 320)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 28))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 28))
         .neuoShadow(.md)
         .contentShape(Rectangle())
         .onTapGesture { onDismiss() }
@@ -92,10 +92,10 @@ struct RewardGrant: Equatable {
             switch self {
             case .attendance:      "출석 보상"
             case .sessionComplete: "식사 완료"
-            case .streakMilestone(let count): "🔥 \(count)일 연속"
+            case .streakMilestone(let count): "\(count)일 연속"
             case .streakSaved:     "🛡️ 프리즈로 스트릭 유지"
             case .streakReset:     "스트릭이 끊겼어요"
-            case .streakFirstDay:  "🔥 1일째"
+            case .streakFirstDay:  "1일째"
             }
         }
 

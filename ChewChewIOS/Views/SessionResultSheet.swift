@@ -29,7 +29,7 @@ struct SessionResultSheet: View {
                 }
                 .padding(20)
             }
-            .background(Color.cream.ignoresSafeArea())
+            .background(Color.pageBackground.ignoresSafeArea())
             .navigationTitle(dto == nil ? "분석 중" : "식사 리포트")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -46,7 +46,7 @@ struct SessionResultSheet: View {
                     // 사용자가 잠깐 기다리도록 유도. 인터랙티브 dismiss도 같이 차단.
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("닫기") { onClose() }
-                            .foregroundStyle(Color.ink600)
+                            .foregroundStyle(Color.textSecondary)
                     }
                 }
             }
@@ -72,10 +72,10 @@ struct SessionResultSheet: View {
             VStack(spacing: 6) {
                 Text("씹기 분석 중이에요")
                     .font(.appFont(.bold, size: 16))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                 Text("잠시만요")
                     .font(.appFont(.semibold, size: 15))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
             }
             Spacer(minLength: 48)
         }

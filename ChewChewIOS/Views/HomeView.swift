@@ -19,13 +19,12 @@ struct HomeView: View {
     var body: some View {
         VStack(spacing: 14) {
             topBar
-            statRow
             squirrelCard
                 .frame(maxHeight: .infinity)
             mealToggleButton
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 24)
+        .padding(.horizontal, 20)
+        .padding(.top, 18)
         .padding(.bottom, 18)
         .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { newDate in
             nowTick = newDate
@@ -117,21 +116,26 @@ struct HomeView: View {
     // MARK: Top bar
 
     private var topBar: some View {
-        HStack(alignment: .center) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(todayLabel)
-                    .font(.appFont(.semibold, size: 14))
-                    .foregroundStyle(Color.ink600)
-                Text("안녕, \(state.displayName ?? "친구")님")
-                    .font(.appFont(.bold, size: 26))
-                    .foregroundStyle(Color.ink800)
+        AppHeaderView(eyebrow: todayLabel, title: "오도독", subtitle: homeHeaderSubtitle) {
+            HStack(spacing: 7) {
+                HeaderMetricPill(icon: .flame, value: "\(state.currentStreak)", tint: .butter600)
+                HeaderMetricPill(icon: .acorn, value: state.points.koLocale, tint: .acorn700)
+                HeaderIconButton(systemName: "bell", showsBadge: true) {
+                    showMealReminderSettings = true
+                }
+                HeaderIconButton(systemName: "gearshape") {
+                    showSettings = true
+                }
             }
-            Spacer()
-            HStack(spacing: 10) {
-                circleButton("bell.fill") { showMealReminderSettings = true }
-                circleButton("gearshape.fill") { showSettings = true }
-            }
+            .offset(y: -8)
         }
+    }
+
+    private var homeHeaderSubtitle: String {
+        if state.isEating {
+            return state.imuWaveformSource.usesRealMotion ? "식사 중 · AirPods LIVE" : "식사 중 · MVP 모드"
+        }
+        return "오늘 \(state.todayRealChewCount.koLocale) / \(Constants.dailyGoal.koLocale)회"
     }
 
     private var todayLabel: String {
@@ -145,9 +149,9 @@ struct HomeView: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.appFont(.medium, size: 18))
-                .foregroundStyle(Color.ink600)
+                .foregroundStyle(Color.textSecondary)
                 .frame(width: 46, height: 46)
-                .background(Color.white, in: Circle())
+                .background(Color.surface, in: Circle())
         }
         .buttonStyle(.plain)
         .neuoShadow(.sm)
@@ -162,7 +166,8 @@ struct HomeView: View {
                 value: "\(state.currentStreak)일째",
                 iconBG: Color.blush100
             ) {
-                Text("🔥").font(.appFont(.regular, size: 26))
+                OpenIconView(icon: .flame, color: .blush500, lineWidth: 2.2)
+                    .frame(width: 24, height: 24)
             }
 
             statCard(
@@ -170,7 +175,8 @@ struct HomeView: View {
                 value: state.points.koLocale,
                 iconBG: Color.butter100
             ) {
-                Text("🌰").font(.appFont(.regular, size: 26))
+                OpenIconView(icon: .acorn, color: .acorn700, lineWidth: 2.1)
+                    .frame(width: 24, height: 24)
             }
         }
     }
@@ -190,11 +196,11 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
                     .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
                     .lineLimit(1)
                 Text(value)
                     .font(.appFont(.bold, size: 17))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
             }
@@ -202,7 +208,7 @@ struct HomeView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 18))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 18))
         .neuoShadow(.sm)
     }
 
@@ -215,7 +221,7 @@ struct HomeView: View {
             ZStack {
                 if !state.isEating {
                     Circle()
-                        .stroke(Color.ink100, lineWidth: 5)
+                        .stroke(Color.hairline, lineWidth: 5)
                         .frame(width: 220, height: 220)
                     Circle()
                         .trim(from: 0, to: state.todayProgress)
@@ -245,11 +251,11 @@ struct HomeView: View {
             VStack(spacing: 4) {
                 Text(state.isEating ? "맛있게 먹는 중이에요" : state.status.title)
                     .font(.appFont(.bold, size: 19))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                 if !state.isEating {
                     Text("오늘 \(state.todayRealChewCount.koLocale) / \(Constants.dailyGoal.koLocale)회")
                         .font(.appFont(.semibold, size: 13))
-                        .foregroundStyle(Color.ink600)
+                        .foregroundStyle(Color.textSecondary)
                         .monospacedDigit()
                 }
             }
@@ -263,8 +269,8 @@ struct HomeView: View {
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity)
         .frame(minHeight: 390)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 26))
-        .neuoShadow(.md)
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 26))
+        .softShadow(.base)
     }
 
     private var imuWaveformCard: some View {
@@ -273,17 +279,17 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("IMU 파형")
                         .font(.appFont(.bold, size: 13))
-                        .foregroundStyle(Color.ink800)
+                        .foregroundStyle(Color.textPrimary)
                     Text(state.imuWaveformStatusText)
                         .font(.appFont(.semibold, size: 13))
-                        .foregroundStyle(state.isIMUWaveformLive ? Color.sage600 : Color.ink400)
+                        .foregroundStyle(state.isIMUWaveformLive ? Color.sage600 : Color.textTertiary)
                 }
 
                 Spacer()
 
                 Image(systemName: "waveform.path.ecg")
                     .font(.appFont(.bold, size: 15))
-                    .foregroundStyle(state.isIMUWaveformLive ? Color.sage600 : Color.ink400)
+                    .foregroundStyle(state.isIMUWaveformLive ? Color.sage600 : Color.textTertiary)
                     .frame(width: 32, height: 32)
                     .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
             }

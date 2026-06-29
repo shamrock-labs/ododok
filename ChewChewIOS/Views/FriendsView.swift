@@ -23,7 +23,7 @@ struct FriendsView: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
-                    .background(Color.ink800, in: RoundedRectangle(cornerRadius: 16))
+                    .background(Color.textPrimary, in: RoundedRectangle(cornerRadius: 16))
                     .softShadow(.lg)
                     .padding(.bottom, 110)
                     .transition(.scale.combined(with: .opacity))
@@ -37,11 +37,8 @@ struct FriendsView: View {
     // MARK: Header
 
     private var header: some View {
-        HStack {
-            Text("친구")
-                .font(.appFont(.heavy, size: 22))
-                .foregroundStyle(Color.ink800)
-            Spacer()
+        AppHeaderView(eyebrow: "함께 먹는 리듬", title: "친구", subtitle: "초대와 랭킹을 한 곳에서 준비해요") {
+            HeaderMetricPill(icon: .people, value: "준비중", tint: .sage600)
         }
     }
 
@@ -59,7 +56,7 @@ struct FriendsView: View {
                     Text("카카오톡으로 초대하기")
                         .font(.appFont(.heavy, size: 17))
                 }
-                .foregroundStyle(Color.ink800)
+                .foregroundStyle(Color.textPrimary)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 18)
                 .background(Color.kakaoYellow, in: RoundedRectangle(cornerRadius: 18))
@@ -73,7 +70,7 @@ struct FriendsView: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 20)
         .frame(maxWidth: .infinity)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 24))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 24))
         .neuoShadow(.md)
     }
 
@@ -82,11 +79,11 @@ struct FriendsView: View {
         HStack(spacing: 6) {
             Text("내 초대 코드")
                 .font(.appFont(.semibold, size: 12))
-                .foregroundStyle(Color.ink400)
+                .foregroundStyle(Color.textTertiary)
             if let code = state.friendInviteCode {
                 Text(code)
                     .font(.appFont(.bold, size: 13))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
             } else if state.friendAreaLoadState == .failed {
                 Button("다시 시도") {
                     Task { await state.refreshFriendArea() }
@@ -105,7 +102,7 @@ struct FriendsView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text("친구 랭킹")
                 .font(.appFont(.heavy, size: 18))
-                .foregroundStyle(Color.ink800)
+                .foregroundStyle(Color.textPrimary)
             if state.friendAreaLoadState == .loading && state.friendRankings.isEmpty {
                 // 첫 로딩(재시도 포함) 중엔 "없음" 대신 스피너.
                 ProgressView()
@@ -114,22 +111,22 @@ struct FriendsView: View {
                 // 실패 시엔 직전 랭킹이 남아 있어도 성공처럼 보여주지 않는다(stale 노출 방지).
                 Text("잠시 후 다시 시도해 주세요")
                     .font(.appFont(.semibold, size: 14))
-                    .foregroundStyle(Color.ink400)
+                    .foregroundStyle(Color.textTertiary)
             } else if state.friendRankings.isEmpty {
                 Text("아직 랭킹이 없어요. 친구를 초대해 보세요.")
                     .font(.appFont(.semibold, size: 14))
-                    .foregroundStyle(Color.ink400)
+                    .foregroundStyle(Color.textTertiary)
             } else {
                 VStack(spacing: 4) {
                     ForEach(Array(state.friendRankings.enumerated()), id: \.element.id) { index, row in
                         HStack(spacing: 10) {
                             Text("\(index + 1)")
                                 .font(.appFont(.heavy, size: 14))
-                                .foregroundStyle(row.me ? Color.sage600 : Color.ink400)
+                                .foregroundStyle(row.me ? Color.sage600 : Color.textTertiary)
                                 .frame(minWidth: 18)
                             Text(rankingName(row))
                                 .font(.appFont(.bold, size: 14))
-                                .foregroundStyle(Color.ink800)
+                                .foregroundStyle(Color.textPrimary)
                                 .lineLimit(1)
                             Spacer()
                             Text("\(row.points) 도토리")
@@ -150,7 +147,7 @@ struct FriendsView: View {
         .padding(.horizontal, 22)
         .padding(.vertical, 22)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 28))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 28))
         .neuoShadow(.md)
     }
 

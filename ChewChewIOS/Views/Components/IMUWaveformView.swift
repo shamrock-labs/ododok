@@ -33,7 +33,7 @@ struct IMUWaveformView: View {
         var centerLine = Path()
         centerLine.move(to: CGPoint(x: 0, y: midY))
         centerLine.addLine(to: CGPoint(x: size.width, y: midY))
-        context.stroke(centerLine, with: .color(Color.ink400.opacity(0.18)), lineWidth: 1)
+        context.stroke(centerLine, with: .color(Color.textTertiary.opacity(0.18)), lineWidth: 1)
 
         for fraction in [CGFloat(0.25), CGFloat(0.75)] {
             var guide = Path()
@@ -108,8 +108,8 @@ struct IMUWaveformView: View {
             linePath,
             with: .linearGradient(
                 Gradient(colors: [
-                    isLive ? Color.sage600 : Color.ink400.opacity(0.42),
-                    isLive ? Color.acorn500 : Color.ink400.opacity(0.28)
+                    isLive ? Color.sage600 : Color.textTertiary.opacity(0.42),
+                    isLive ? Color.acorn500 : Color.textTertiary.opacity(0.28)
                 ]),
                 startPoint: CGPoint(x: 0, y: midY),
                 endPoint: CGPoint(x: size.width, y: midY)

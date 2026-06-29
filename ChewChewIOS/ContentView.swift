@@ -52,7 +52,7 @@ struct ContentView: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 11)
-                    .background(Color.ink800, in: RoundedRectangle(cornerRadius: 16))
+                    .background(Color.textPrimary, in: RoundedRectangle(cornerRadius: 16))
                     .softShadow(.lg)
                     .padding(.bottom, 100)
                     .transition(.scale.combined(with: .opacity))
@@ -99,7 +99,7 @@ struct ContentView: View {
                 }
                 .tag(Tab.shop)
         }
-        .background(Color.cream.ignoresSafeArea())
+        .background(LinearGradient.appBackground.ignoresSafeArea())
         .tint(Color.acorn600)
         // 성공 케이스는 SessionResultSheet 카드로 표시(PRD #3) — 실패 다이얼로그는 AppDialog로 통일.
         .appDialog(
@@ -225,13 +225,13 @@ struct ContentView: View {
                 content()
                     .frame(minHeight: proxy.size.height, alignment: .top)
             }
-            .background(Color.cream.ignoresSafeArea())
+            .background(LinearGradient.appBackground.ignoresSafeArea())
             // 스크롤 시 콘텐츠가 status bar 영역까지 비쳐 보이는 것을 막기 위해
-            // 상단에 cream 색 반투명 inset을 두어 자연스러운 헤더 buffer를 만든다.
+            // 상단에 앱 배경과 같은 inset을 두어 자연스러운 헤더 buffer를 만든다.
             .safeAreaInset(edge: .top, spacing: 0) {
-                Color.cream
+                LinearGradient.appBackground
                     .frame(height: 12)
-                    .background(Color.cream.ignoresSafeArea(edges: .top))
+                    .background(LinearGradient.appBackground.ignoresSafeArea(edges: .top))
             }
         }
     }

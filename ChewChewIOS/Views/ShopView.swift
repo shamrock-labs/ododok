@@ -33,11 +33,8 @@ private struct ShopPlaceholderView: View {
     }
 
     private var header: some View {
-        HStack {
-            Text("상점")
-                .font(.appFont(.heavy, size: 22))
-                .foregroundStyle(Color.ink800)
-            Spacer()
+        AppHeaderView(eyebrow: "도토리 사용처", title: "상점", subtitle: "꾸미기 아이템을 준비 중이에요") {
+            HeaderMetricPill(icon: .acorn, value: "준비중", tint: .acorn700)
         }
     }
 
@@ -51,11 +48,11 @@ private struct ShopPlaceholderView: View {
             VStack(spacing: 6) {
                 Text("상점을 준비하고 있어요")
                     .font(.appFont(.heavy, size: 21))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                     .multilineTextAlignment(.center)
                 Text("도토리로 다람쥐를 꾸미는 기능을 준비 중이에요.\n그 전엔 저작 트래킹에 집중해요.")
                     .font(.appFont(.semibold, size: 14))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
             }
@@ -63,7 +60,7 @@ private struct ShopPlaceholderView: View {
         .padding(.horizontal, 22)
         .padding(.vertical, 34)
         .frame(maxWidth: .infinity)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 28))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 28))
         .neuoShadow(.md)
     }
 
@@ -129,27 +126,8 @@ private struct ShopGridView: View {
     // MARK: Header
 
     private var header: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("다람쥐 꾸미기")
-                    .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.ink400)
-                Text("상점")
-                    .font(.appFont(.bold, size: 24))
-                    .foregroundStyle(Color.ink800)
-            }
-            Spacer()
-            HStack(spacing: 6) {
-                Text("🌰").font(.appFont(.regular, size: 16))
-                Text(state.points.koLocale)
-                    .font(.appFont(.bold, size: 14))
-                    .foregroundStyle(Color.acorn700)
-                    .monospacedDigit()
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(.white, in: Capsule())
-            .neuoShadow(.sm)
+        AppHeaderView(eyebrow: "다람쥐 꾸미기", title: "상점", subtitle: "모은 도토리로 아이템을 골라요") {
+            HeaderMetricPill(icon: .acorn, value: state.points.koLocale, tint: .acorn700)
         }
     }
 
@@ -170,7 +148,7 @@ private struct ShopGridView: View {
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 8)
-                        .foregroundStyle(category == cat ? .white : Color.ink600)
+                        .foregroundStyle(category == cat ? .white : Color.textSecondary)
                         .background(
                             category == cat
                                 ? AnyShapeStyle(LinearGradient(
@@ -252,11 +230,11 @@ private struct ShopGridView: View {
             VStack(spacing: 2) {
                 Text(item.name)
                     .font(.appFont(.bold, size: 13))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                     .lineLimit(1)
                 Text(typeLabel(item.type))
                     .font(.appFont(.semibold, size: 12))
-                    .foregroundStyle(Color.ink400)
+                    .foregroundStyle(Color.textTertiary)
             }
 
             actionButton(for: item, owned: owned, equipped: equipped, canAfford: canAfford)
@@ -310,7 +288,7 @@ private struct ShopGridView: View {
             Button {
                 switch state.buyItem(item) {
                 case .success:
-                    showToast(ToastMessage(text: "\(item.name) 구매 완료 🌰", kind: .success))
+                    showToast(ToastMessage(text: "\(item.name) 구매 완료", kind: .success))
                 case .notEnoughPoints:
                     showToast(ToastMessage(text: "도토리가 부족해요", kind: .warn))
                 case .alreadyOwned:
@@ -344,12 +322,13 @@ private struct ShopGridView: View {
 
     private func pricePill(_ price: Int, enabled: Bool) -> some View {
         HStack(spacing: 4) {
-            Text("🌰").font(.appFont(.regular, size: 11))
+            OpenIconView(icon: .acorn, color: enabled ? .white : .ink400, lineWidth: 2.2)
+                .frame(width: 12, height: 12)
             Text(price.koLocale)
                 .font(.appFont(.bold, size: 12))
                 .monospacedDigit()
         }
-        .foregroundStyle(enabled ? .white : Color.ink400)
+        .foregroundStyle(enabled ? .white : Color.textTertiary)
         .frame(maxWidth: .infinity)
         .padding(.vertical, 8)
         .background(
@@ -357,7 +336,7 @@ private struct ShopGridView: View {
                 ? AnyShapeStyle(LinearGradient(
                     colors: [Color.acorn400, Color.acorn600],
                     startPoint: .topLeading, endPoint: .bottomTrailing))
-                : AnyShapeStyle(Color.ink100),
+                : AnyShapeStyle(Color.hairline),
             in: RoundedRectangle(cornerRadius: 10)
         )
     }
@@ -371,7 +350,7 @@ private struct ShopGridView: View {
             }
             Text("도토리팩 효과는 추후 자동 연동돼요. 지금은 보유 카운트만 누적됩니다.")
                 .font(.appFont(.regular, size: 11))
-                .foregroundStyle(Color.ink400)
+                .foregroundStyle(Color.textTertiary)
                 .multilineTextAlignment(.center)
                 .padding(.top, 6)
                 .padding(.horizontal, 12)
@@ -393,7 +372,7 @@ private struct ShopGridView: View {
                 HStack(spacing: 6) {
                     Text(pack.name)
                         .font(.appFont(.bold, size: 14))
-                        .foregroundStyle(Color.ink800)
+                        .foregroundStyle(Color.textPrimary)
                     if count > 0 {
                         Text("보유 \(count)")
                             .font(.appFont(.bold, size: 9))
@@ -405,7 +384,7 @@ private struct ShopGridView: View {
                 }
                 Text(pack.effect)
                     .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.ink400)
+                    .foregroundStyle(Color.textTertiary)
             }
 
             Spacer()
@@ -413,7 +392,7 @@ private struct ShopGridView: View {
             Button {
                 switch state.buyAcornPack(pack) {
                 case .success:
-                    showToast(ToastMessage(text: "\(pack.name) 획득 🌰", kind: .success))
+                    showToast(ToastMessage(text: "\(pack.name) 획득", kind: .success))
                 case .notEnoughPoints:
                     showToast(ToastMessage(text: "도토리가 부족해요", kind: .warn))
                 case .alreadyOwned:
@@ -421,12 +400,13 @@ private struct ShopGridView: View {
                 }
             } label: {
                 HStack(spacing: 4) {
-                    Text("🌰").font(.appFont(.regular, size: 11))
+                    OpenIconView(icon: .acorn, color: canAfford ? .white : .ink400, lineWidth: 2.2)
+                        .frame(width: 12, height: 12)
                     Text(pack.price.koLocale)
                         .font(.appFont(.bold, size: 12))
                         .monospacedDigit()
                 }
-                .foregroundStyle(canAfford ? .white : Color.ink400)
+                .foregroundStyle(canAfford ? .white : Color.textTertiary)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
                 .background(
@@ -434,7 +414,7 @@ private struct ShopGridView: View {
                         ? AnyShapeStyle(LinearGradient(
                             colors: [Color.acorn400, Color.acorn600],
                             startPoint: .topLeading, endPoint: .bottomTrailing))
-                        : AnyShapeStyle(Color.ink100),
+                        : AnyShapeStyle(Color.hairline),
                     in: RoundedRectangle(cornerRadius: 12)
                 )
             }
@@ -442,7 +422,7 @@ private struct ShopGridView: View {
             .disabled(!canAfford)
         }
         .padding(14)
-        .background(.white, in: RoundedRectangle(cornerRadius: 18))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 18))
         .neuoShadow(.sm)
     }
 
@@ -494,7 +474,7 @@ private struct ShopGridView: View {
         switch k {
         case .success: Color.sage500
         case .warn:    Color.blush500
-        case .info:    Color.ink800
+        case .info:    Color.textPrimary
         }
     }
 }
@@ -502,5 +482,5 @@ private struct ShopGridView: View {
 #Preview("Placeholder (기본)") {
     ShopView()
         .environment(AppState())
-        .background(Color.cream)
+        .background(Color.pageBackground)
 }

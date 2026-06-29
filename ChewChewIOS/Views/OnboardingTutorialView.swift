@@ -32,7 +32,7 @@ struct OnboardingTutorialView: View {
                 .padding(.bottom, 12)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.cream.ignoresSafeArea())
+        .background(Color.pageBackground.ignoresSafeArea())
         .interactiveDismissDisabled()
     }
 
@@ -42,7 +42,7 @@ struct OnboardingTutorialView: View {
             Button(action: onFinish) {
                 Text("건너뛰기")
                     .font(.appFont(.semibold, size: 14))
-                    .foregroundStyle(Color.ink400)
+                    .foregroundStyle(Color.textTertiary)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
             }
@@ -59,12 +59,12 @@ struct OnboardingTutorialView: View {
 
             Text(step.title)
                 .font(.appFont(.heavy, size: 21))
-                .foregroundStyle(Color.ink800)
+                .foregroundStyle(Color.textPrimary)
                 .multilineTextAlignment(.center)
 
             Text(step.message)
                 .font(.appFont(.regular, size: 14))
-                .foregroundStyle(Color.ink600)
+                .foregroundStyle(Color.textSecondary)
                 .multilineTextAlignment(.center)
                 .lineSpacing(5)
                 .fixedSize(horizontal: false, vertical: true)
