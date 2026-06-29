@@ -51,7 +51,7 @@ struct LoginView: View {
         .padding(.horizontal, 24)
         .padding(.bottom, 28)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.cream.ignoresSafeArea())
+        .background(Color.pageBackground.ignoresSafeArea())
         .disabled(isLoading)
         .overlay {
             if isLoading {

@@ -577,7 +577,7 @@ private struct AverageDeltaBar: View {
 
 #Preview("Good 분석") {
     ZStack {
-        Color.cream.ignoresSafeArea()
+        Color.pageBackground.ignoresSafeArea()
         ReportCardView(model: ReportCardModel(
             score: 82,
             grade: .good,
@@ -601,7 +601,7 @@ private struct AverageDeltaBar: View {
 
 #Preview("Soso 분석") {
     ZStack {
-        Color.cream.ignoresSafeArea()
+        Color.pageBackground.ignoresSafeArea()
         ReportCardView(model: ReportCardModel(
             score: 65,
             grade: .soso,
@@ -625,7 +625,7 @@ private struct AverageDeltaBar: View {
 
 #Preview("Bad 분석") {
     ZStack {
-        Color.cream.ignoresSafeArea()
+        Color.pageBackground.ignoresSafeArea()
         ReportCardView(model: ReportCardModel(
             score: 42,
             grade: .bad,

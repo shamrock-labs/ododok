@@ -13,10 +13,10 @@ struct TabBarView: View {
                     VStack(spacing: 3) {
                         Image(systemName: tab.systemImage)
                             .font(.system(size: 22, weight: active ? .bold : .regular))
-                            .foregroundStyle(active ? Color.acorn600 : Color.ink400)
+                            .foregroundStyle(active ? Color.acorn600 : Color.textTertiary)
                         Text(tab.label)
                             .font(.appFont(.bold, size: 10))
-                            .foregroundStyle(active ? Color.acorn700 : Color.ink400)
+                            .foregroundStyle(active ? Color.acorn700 : Color.textTertiary)
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 6)

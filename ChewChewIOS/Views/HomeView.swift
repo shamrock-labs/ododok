@@ -149,7 +149,7 @@ struct HomeView: View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.appFont(.medium, size: 18))
-                .foregroundStyle(Color.ink600)
+                .foregroundStyle(Color.textSecondary)
                 .frame(width: 46, height: 46)
                 .background(Color.white, in: Circle())
         }
@@ -196,11 +196,11 @@ struct HomeView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
                     .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
                     .lineLimit(1)
                 Text(value)
                     .font(.appFont(.bold, size: 17))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
             }
@@ -208,7 +208,7 @@ struct HomeView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 18))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 18))
         .neuoShadow(.sm)
     }
 
@@ -221,7 +221,7 @@ struct HomeView: View {
             ZStack {
                 if !state.isEating {
                     Circle()
-                        .stroke(Color.ink100, lineWidth: 5)
+                        .stroke(Color.hairline, lineWidth: 5)
                         .frame(width: 220, height: 220)
                     Circle()
                         .trim(from: 0, to: state.todayProgress)
@@ -251,11 +251,11 @@ struct HomeView: View {
             VStack(spacing: 4) {
                 Text(state.isEating ? "맛있게 먹는 중이에요" : state.status.title)
                     .font(.appFont(.bold, size: 19))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                 if !state.isEating {
                     Text("오늘 \(state.todayRealChewCount.koLocale) / \(Constants.dailyGoal.koLocale)회")
                         .font(.appFont(.semibold, size: 13))
-                        .foregroundStyle(Color.ink600)
+                        .foregroundStyle(Color.textSecondary)
                         .monospacedDigit()
                 }
             }
@@ -269,7 +269,7 @@ struct HomeView: View {
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity)
         .frame(minHeight: 390)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 26))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 26))
         .softShadow(.base)
     }
 
@@ -279,17 +279,17 @@ struct HomeView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("IMU 파형")
                         .font(.appFont(.bold, size: 13))
-                        .foregroundStyle(Color.ink800)
+                        .foregroundStyle(Color.textPrimary)
                     Text(state.imuWaveformStatusText)
                         .font(.appFont(.semibold, size: 13))
-                        .foregroundStyle(state.isIMUWaveformLive ? Color.sage600 : Color.ink400)
+                        .foregroundStyle(state.isIMUWaveformLive ? Color.sage600 : Color.textTertiary)
                 }
 
                 Spacer()
 
                 Image(systemName: "waveform.path.ecg")
                     .font(.appFont(.bold, size: 15))
-                    .foregroundStyle(state.isIMUWaveformLive ? Color.sage600 : Color.ink400)
+                    .foregroundStyle(state.isIMUWaveformLive ? Color.sage600 : Color.textTertiary)
                     .frame(width: 32, height: 32)
                     .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
             }

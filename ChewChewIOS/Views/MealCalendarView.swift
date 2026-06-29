@@ -272,7 +272,7 @@ struct MealCalendarView: View {
                 )
                 .padding(20)
             }
-            .background(Color.cream.ignoresSafeArea())
+            .background(Color.pageBackground.ignoresSafeArea())
             .navigationTitle("식사 캘린더")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -358,7 +358,7 @@ struct DaySessionsView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.cream.ignoresSafeArea())
+        .background(Color.pageBackground.ignoresSafeArea())
         .navigationTitle(dateLabel)
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -424,7 +424,7 @@ struct SessionReportDetailView: View {
             }
             .padding(20)
         }
-        .background(Color.cream.ignoresSafeArea())
+        .background(Color.pageBackground.ignoresSafeArea())
         .navigationTitle("식사 리포트")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

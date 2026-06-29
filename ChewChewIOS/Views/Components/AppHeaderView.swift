@@ -30,13 +30,13 @@ struct AppHeaderView<Accessory: View>: View {
                 }
                 Text(title)
                     .font(.appFont(.heavy, size: 24))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
                 if let subtitle {
                     Text(subtitle)
                         .font(.appFont(.semibold, size: 13))
-                        .foregroundStyle(Color.ink600)
+                        .foregroundStyle(Color.textSecondary)
                         .lineLimit(2)
                         .minimumScaleFactor(0.82)
                 }
@@ -119,7 +119,7 @@ struct HeaderIconButton: View {
         Button(action: action) {
             Image(systemName: systemName)
                 .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color.ink600)
+                .foregroundStyle(Color.textSecondary)
                 .frame(width: 32, height: 32)
                 .background(Color.white, in: Circle())
         }

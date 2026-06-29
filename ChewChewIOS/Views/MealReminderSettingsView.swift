@@ -27,7 +27,7 @@ struct MealReminderSettingsView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
             }
-            .background(Color.cream.ignoresSafeArea())
+            .background(Color.pageBackground.ignoresSafeArea())
             .navigationTitle("끼니 알림")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -55,10 +55,10 @@ struct MealReminderSettingsView: View {
         VStack(spacing: 4) {
             Text("알림 권한이 꺼져 있어요")
                 .font(.appFont(.bold, size: 14))
-                .foregroundStyle(Color.ink800)
+                .foregroundStyle(Color.textPrimary)
             Text("iOS 설정 → Ododok → 알림 켜기.")
                 .font(.appFont(.semibold, size: 14))
-                .foregroundStyle(Color.ink600)
+                .foregroundStyle(Color.textSecondary)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
@@ -69,7 +69,7 @@ struct MealReminderSettingsView: View {
     private var footerHint: some View {
         Text("설정한 시각에 다람이가 식사 알림을 보내줘요.\n끄면 해당 끼니는 알림이 안 와요.")
             .font(.appFont(.semibold, size: 14))
-            .foregroundStyle(Color.ink600)
+            .foregroundStyle(Color.textSecondary)
             .multilineTextAlignment(.center)
             .padding(.top, 8)
     }
@@ -84,7 +84,7 @@ struct MealReminderSettingsView: View {
                         .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 11))
                     Text(title)
                         .font(.appFont(.bold, size: 17))
-                        .foregroundStyle(Color.ink800)
+                        .foregroundStyle(Color.textPrimary)
                 }
                 Spacer()
                 Toggle("", isOn: toggleBinding(slot))
@@ -96,7 +96,7 @@ struct MealReminderSettingsView: View {
                 HStack {
                     Text("알림 시각")
                         .font(.appFont(.semibold, size: 15))
-                        .foregroundStyle(Color.ink600)
+                        .foregroundStyle(Color.textSecondary)
                     Spacer()
                     DatePicker(
                         "",
@@ -110,7 +110,7 @@ struct MealReminderSettingsView: View {
             }
         }
         .padding(16)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 18))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 18))
         .neuoShadow(.sm)
     }
 

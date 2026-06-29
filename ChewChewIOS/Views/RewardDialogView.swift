@@ -17,7 +17,7 @@ struct RewardDialogView: View {
 
             Text(grant.kind.title)
                 .font(.appFont(.heavy, size: 18))
-                .foregroundStyle(Color.ink800)
+                .foregroundStyle(Color.textPrimary)
 
             if grant.kind.isAcorn {
                 HStack(alignment: .firstTextBaseline, spacing: 4) {
@@ -41,14 +41,14 @@ struct RewardDialogView: View {
 
             Text(grant.kind.subtitle)
                 .font(.appFont(.semibold, size: 14))
-                .foregroundStyle(Color.ink600)
+                .foregroundStyle(Color.textSecondary)
                 .multilineTextAlignment(.center)
                 .lineSpacing(3)
         }
         .padding(.vertical, 24)
         .padding(.horizontal, 22)
         .frame(maxWidth: 320)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 28))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 28))
         .neuoShadow(.md)
         .contentShape(Rectangle())
         .onTapGesture { onDismiss() }

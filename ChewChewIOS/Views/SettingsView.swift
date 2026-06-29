@@ -26,7 +26,7 @@ struct SettingsView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 12)
             }
-            .background(Color.cream.ignoresSafeArea())
+            .background(Color.pageBackground.ignoresSafeArea())
             .navigationTitle("설정")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -74,20 +74,20 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("측정 기기")
                             .font(.appFont(.semibold, size: 14))
-                            .foregroundStyle(Color.ink600)
+                            .foregroundStyle(Color.textSecondary)
                         Text(airPodsModel.displayName)
                             .font(.appFont(.bold, size: 15))
-                            .foregroundStyle(Color.ink800)
+                            .foregroundStyle(Color.textPrimary)
                     }
 
                     Spacer()
 
                     Image(systemName: "chevron.right")
                         .font(.appFont(.semibold, size: 14))
-                        .foregroundStyle(Color.ink600)
+                        .foregroundStyle(Color.textSecondary)
                 }
                 .padding(16)
-                .background(Color.white, in: RoundedRectangle(cornerRadius: 18))
+                .background(Color.surface, in: RoundedRectangle(cornerRadius: 18))
                 .neuoShadow(.sm)
             }
             .buttonStyle(.plain)
@@ -117,10 +117,10 @@ struct SettingsView: View {
 
                     Image(systemName: "chevron.right")
                         .font(.appFont(.semibold, size: 14))
-                        .foregroundStyle(Color.ink600)
+                        .foregroundStyle(Color.textSecondary)
                 }
                 .padding(16)
-                .background(Color.white, in: RoundedRectangle(cornerRadius: 18))
+                .background(Color.surface, in: RoundedRectangle(cornerRadius: 18))
                 .neuoShadow(.sm)
             }
             .buttonStyle(.plain)
@@ -135,18 +135,18 @@ struct SettingsView: View {
                 HStack {
                     Image(systemName: "rectangle.portrait.and.arrow.right")
                         .font(.appFont(.medium, size: 16))
-                        .foregroundStyle(Color.ink600)
+                        .foregroundStyle(Color.textSecondary)
                         .frame(width: 36, height: 36)
-                        .background(Color.ink100, in: RoundedRectangle(cornerRadius: 10))
+                        .background(Color.hairline, in: RoundedRectangle(cornerRadius: 10))
 
                     Text("로그아웃")
                         .font(.appFont(.medium, size: 16))
-                        .foregroundStyle(Color.ink800)
+                        .foregroundStyle(Color.textPrimary)
 
                     Spacer()
                 }
                 .padding(16)
-                .background(Color.white, in: RoundedRectangle(cornerRadius: 18))
+                .background(Color.surface, in: RoundedRectangle(cornerRadius: 18))
                 .neuoShadow(.sm)
             }
             .buttonStyle(.plain)
@@ -159,7 +159,7 @@ struct SettingsView: View {
         HStack {
             Text(title)
                 .font(.appFont(.semibold, size: 13))
-                .foregroundStyle(Color.ink600)
+                .foregroundStyle(Color.textSecondary)
             Spacer()
         }
         .padding(.bottom, 8)
@@ -189,7 +189,7 @@ private struct AirPodsPickerDialog: View {
             // Header — title only, no body description.
             Text("사용 중인 AirPods 모델을 선택해요.")
                 .font(.appFont(.heavy, size: 17))
-                .foregroundStyle(Color.ink800)
+                .foregroundStyle(Color.textPrimary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 22)
                 .padding(.vertical, 20)
@@ -216,13 +216,13 @@ private struct AirPodsPickerDialog: View {
                 } label: {
                     Text("취소")
                         .font(.appFont(.semibold, size: 16))
-                        .foregroundStyle(Color.ink600)
+                        .foregroundStyle(Color.textSecondary)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
 
-                Color.ink100.frame(width: 0.5)
+                Color.hairline.frame(width: 0.5)
 
                 Button {
                     onConfirm(draft)
@@ -239,12 +239,12 @@ private struct AirPodsPickerDialog: View {
             .padding(.bottom, 8)
         }
         .frame(maxWidth: 320)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 14))
         .shadow(color: .black.opacity(0.18), radius: 24, y: 8)
     }
 
     private var divider: some View {
-        Color.ink100.frame(height: 0.5)
+        Color.hairline.frame(height: 0.5)
     }
 
     private func row(_ model: AirPodsModel) -> some View {
@@ -256,7 +256,7 @@ private struct AirPodsPickerDialog: View {
                 radio(isActive: isActive)
                 Text(model.displayName)
                     .font(.appFont(.semibold, size: 15))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                 Spacer()
             }
             .padding(.horizontal, 22)
@@ -270,7 +270,7 @@ private struct AirPodsPickerDialog: View {
     private func radio(isActive: Bool) -> some View {
         ZStack {
             Circle()
-                .stroke(isActive ? Color.acorn600 : Color.ink400, lineWidth: 1.5)
+                .stroke(isActive ? Color.acorn600 : Color.textTertiary, lineWidth: 1.5)
                 .frame(width: 20, height: 20)
             if isActive {
                 Circle()

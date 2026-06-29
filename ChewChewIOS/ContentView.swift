@@ -52,7 +52,7 @@ struct ContentView: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 11)
-                    .background(Color.ink800, in: RoundedRectangle(cornerRadius: 16))
+                    .background(Color.textPrimary, in: RoundedRectangle(cornerRadius: 16))
                     .softShadow(.lg)
                     .padding(.bottom, 100)
                     .transition(.scale.combined(with: .opacity))
