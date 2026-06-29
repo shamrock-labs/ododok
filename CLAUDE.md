@@ -19,6 +19,12 @@ SwiftUI 기반 오도독 iOS 앱. AirPods IMU 신호를 신호처리(DSP)로 분
 - 테스트 런치 인자(`-useNoopRemote`/`-useInsForge`)는 환경 config와 **직교한 오버라이드**다. 환경 분리(dev/prod)와 섞지 않는다.
 - 신호처리(DSP) 카운터는 `ChewChewIOS/ML/ChewCounter.swift`(actor)다. ML 추론은 폐기됐다.
 
+## 디자인 규칙
+
+- **카드 섹션을 남발하지 않는다.** 한 화면에서 카드를 중첩(카드 안 카드)하거나 비슷한 카드를 반복하지 않는다. 구분이 필요하면 간격·구분선·옅은 배경 톤으로 묶고, 떠 있는 카드 컨테이너는 꼭 필요한 묶음에만 쓴다.
+- **명암을 쓰지 않고 플랫하게 만든다.** `softShadow`·`neuoShadow` 같은 드롭 섀도우/elevation을 기본으로 쓰지 않는다. 위계는 그림자가 아니라 타입(weight/size)·간격·옅은 색 톤으로 표현한다.
+- **색은 상태(valence)에만 쓴다 — 한 색 = 한 의미.** 강조 hue(`sage`/`butter`/`blush`)는 오직 상태에만 배정한다: `sage`=좋음·달성(`accentGood`), `butter`=보통·주의·데이터 경고(`accentFocus`), `blush`=아쉬움·경고(`accentWarn`). 지표(저작·시간·속도·비율)와 끼니 슬롯(아침/점심/저녁/야식)은 **색으로 구분하지 않고 아이콘 형태 + 라벨로만 식별**한다. 데이터 시각화(막대·링·비교선)는 `acorn` 단일 톤(sequential — 진하기로 값 표현), 텍스트·중립 아이콘은 `ink`. **색만으로 의미를 전달하지 않는다** — 상태·증감은 항상 아이콘/라벨을 함께 쓴다(WCAG·적록색맹 대응). 근거: WHOOP·Oura·Apple HIG·IBM Carbon 등 대시보드/헬스 리포트 색 가이드("semantic color는 상태에만, 범주 식별은 별도 축").
+
 ## 커밋·브랜치·PR
 
 - 커밋: `type(ODO-NN): 요약` (type = feat/fix/refactor/docs/test/chore). 한 커밋에 한 가지 목적만. 상세는 `.github/COMMIT_CONVENTION.md`.
