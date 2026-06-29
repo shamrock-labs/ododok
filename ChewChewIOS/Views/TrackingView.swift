@@ -11,7 +11,6 @@ struct TrackingView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            header
             // 라이브 센서 진단(AirPods 상태 + 샘플 카운터)은 식사 중에만 노출.
             if isEating {
                 airpodsCard

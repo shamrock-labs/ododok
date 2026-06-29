@@ -35,7 +35,7 @@ struct SettingsView: View {
         case "apple":  return .black
         case "kakao":  return .kakaoYellow
         case "google": return .white
-        default:       return Color.ink100
+        default:       return Color.hairline
         }
     }
 
@@ -44,7 +44,7 @@ struct SettingsView: View {
         case "apple":  return .white
         case "kakao":  return .black.opacity(0.85)
         case "google": return Color.googleText
-        default:       return Color.ink600
+        default:       return Color.textSecondary
         }
     }
 
@@ -85,7 +85,7 @@ struct SettingsView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("완료") { dismiss() }
-                        .foregroundStyle(Color.acorn600)
+                        .foregroundStyle(Color.tintInteractive)
                         .font(.appFont(.semibold, size: 15))
                 }
             }
@@ -118,7 +118,7 @@ struct SettingsView: View {
         HStack(spacing: 10) {
             Text(state.displayName ?? "이름 없음")
                 .font(.appFont(.heavy, size: 22))
-                .foregroundStyle(Color.ink800)
+                .foregroundStyle(Color.textPrimary)
             providerBadge
             Spacer()
         }
@@ -140,12 +140,12 @@ struct SettingsView: View {
                 HStack {
                     Image(systemName: "rectangle.portrait.and.arrow.right")
                         .font(.appFont(.medium, size: 16))
-                        .foregroundStyle(Color.ink600)
+                        .foregroundStyle(Color.textSecondary)
                         .frame(width: 26)
 
                     Text("로그아웃")
                         .font(.appFont(.semibold, size: 16))
-                        .foregroundStyle(Color.ink800)
+                        .foregroundStyle(Color.textPrimary)
 
                     Spacer()
                 }
@@ -163,17 +163,17 @@ struct SettingsView: View {
                 HStack {
                     Image(systemName: "trash.fill")
                         .font(.appFont(.medium, size: 16))
-                        .foregroundStyle(Color.ink600)
+                        .foregroundStyle(Color.textSecondary)
                         .frame(width: 26)
 
                     Text("내 데이터 삭제")
                         .font(.appFont(.semibold, size: 16))
-                        .foregroundStyle(Color.ink800)
+                        .foregroundStyle(Color.textPrimary)
 
                     Spacer()
                 }
                 .padding(16)
-                .background(Color.white, in: RoundedRectangle(cornerRadius: 18))
+                .background(Color.surface, in: RoundedRectangle(cornerRadius: 18))
                 .neuoShadow(.sm)
             }
             .buttonStyle(.plain)
@@ -236,7 +236,7 @@ struct SettingsView: View {
             HStack {
                 Text("버전 \(AppState.appVersion ?? "-")")
                     .font(.appFont(.regular, size: 13))
-                    .foregroundStyle(Color.ink400)
+                    .foregroundStyle(Color.textTertiary)
                 Spacer()
             }
             .padding(.top, 12)
@@ -255,28 +255,28 @@ struct SettingsView: View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.appFont(.medium, size: 16))
-                .foregroundStyle(Color.ink600)
+                .foregroundStyle(Color.textSecondary)
                 .frame(width: 26)
 
             Text(title)
                 .font(.appFont(.semibold, size: 16))
-                .foregroundStyle(Color.ink800)
+                .foregroundStyle(Color.textPrimary)
 
             Spacer()
 
             Text(value)
                 .font(.appFont(.semibold, size: 16))
-                .foregroundStyle(Color.ink600)
+                .foregroundStyle(Color.textSecondary)
                 .lineLimit(1)
 
             if showsChevron {
                 Image(systemName: "chevron.right")
                     .font(.appFont(.semibold, size: 14))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
             }
         }
         .padding(16)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 18))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 18))
         .neuoShadow(.sm)
     }
 
@@ -286,23 +286,23 @@ struct SettingsView: View {
         HStack {
             Image(systemName: icon)
                 .font(.appFont(.medium, size: 16))
-                .foregroundStyle(Color.ink600)
+                .foregroundStyle(Color.textSecondary)
                 .frame(width: 26)
 
             Text(title)
                 .font(.appFont(.semibold, size: 16))
-                .foregroundStyle(Color.ink800)
+                .foregroundStyle(Color.textPrimary)
 
             Spacer()
 
             if showsChevron {
                 Image(systemName: "chevron.right")
                     .font(.appFont(.semibold, size: 14))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
             }
         }
         .padding(16)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 18))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 18))
         .neuoShadow(.sm)
     }
 
@@ -310,7 +310,7 @@ struct SettingsView: View {
         HStack {
             Text(title)
                 .font(.appFont(.heavy, size: 17))
-                .foregroundStyle(Color.ink800)
+                .foregroundStyle(Color.textPrimary)
             Spacer()
         }
         .padding(.bottom, 10)
@@ -337,7 +337,7 @@ private struct LegalDocumentView: View {
             .padding(.top, 16)
             .padding(.bottom, 32)
         }
-        .background(Color.cream.ignoresSafeArea())
+        .background(Color.pageBackground.ignoresSafeArea())
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -388,29 +388,29 @@ private struct LegalDocumentView: View {
         case .h1(let text):
             Text(text)
                 .font(.appFont(.heavy, size: 20))
-                .foregroundStyle(Color.ink800)
+                .foregroundStyle(Color.textPrimary)
                 .padding(.top, 24)
                 .padding(.bottom, 6)
         case .h2(let text):
             Text(text)
                 .font(.appFont(.heavy, size: 17))
-                .foregroundStyle(Color.ink800)
+                .foregroundStyle(Color.textPrimary)
                 .padding(.top, 20)
                 .padding(.bottom, 4)
         case .h3(let text):
             Text(text)
                 .font(.appFont(.bold, size: 15))
-                .foregroundStyle(Color.ink800)
+                .foregroundStyle(Color.textPrimary)
                 .padding(.top, 14)
                 .padding(.bottom, 2)
         case .bullet(let text):
             HStack(alignment: .top, spacing: 6) {
                 Text("•")
                     .font(.appFont(.regular, size: 14))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
                 Text(text)
                     .font(.appFont(.regular, size: 14))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
                     .lineSpacing(5)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -419,10 +419,10 @@ private struct LegalDocumentView: View {
             HStack(alignment: .top, spacing: 6) {
                 Text("•")
                     .font(.appFont(.regular, size: 14))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
                 Text(text)
                     .font(.appFont(.regular, size: 14))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
                     .lineSpacing(5)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -430,7 +430,7 @@ private struct LegalDocumentView: View {
         case .body(let text):
             Text(text)
                 .font(.appFont(.regular, size: 14))
-                .foregroundStyle(Color.ink600)
+                .foregroundStyle(Color.textSecondary)
                 .lineSpacing(5)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 4)
@@ -681,7 +681,7 @@ private struct AirPodsPickerDialog: View {
                 } label: {
                     Text("확인")
                         .font(.appFont(.bold, size: 16))
-                        .foregroundStyle(Color.acorn700)
+                        .foregroundStyle(Color.tintPrimary)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .contentShape(Rectangle())
                 }
@@ -722,11 +722,11 @@ private struct AirPodsPickerDialog: View {
     private func radio(isActive: Bool) -> some View {
         ZStack {
             Circle()
-                .stroke(isActive ? Color.acorn600 : Color.textTertiary, lineWidth: 1.5)
+                .stroke(isActive ? Color.tintInteractive : Color.textTertiary, lineWidth: 1.5)
                 .frame(width: 20, height: 20)
             if isActive {
                 Circle()
-                    .fill(Color.acorn600)
+                    .fill(Color.tintInteractive)
                     .frame(width: 10, height: 10)
             }
         }

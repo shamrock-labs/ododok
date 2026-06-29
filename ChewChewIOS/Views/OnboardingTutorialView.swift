@@ -66,7 +66,7 @@ struct OnboardingTutorialView: View {
 
             Text(step.message)
                 .font(.appFont(.regular, size: 16))
-                .foregroundStyle(Color.ink600)
+                .foregroundStyle(Color.textSecondary)
                 .multilineTextAlignment(.center)
                 .lineSpacing(6)
                 .fixedSize(horizontal: false, vertical: true)
@@ -91,7 +91,7 @@ struct OnboardingTutorialView: View {
         HStack(spacing: 8) {
             ForEach(0..<steps.count, id: \.self) { i in
                 Capsule()
-                    .fill(i == page ? Color.acorn600 : Color.acorn200)
+                    .fill(i == page ? Color.tintInteractive : Color.hairline)
                     .frame(width: i == page ? 22 : 8, height: 8)
                     .animation(.spring(response: 0.3), value: page)
             }
@@ -111,7 +111,7 @@ struct OnboardingTutorialView: View {
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 15)
-                .background(Color.acorn600, in: RoundedRectangle(cornerRadius: 16))
+                .background(Color.tintInteractive, in: RoundedRectangle(cornerRadius: 16))
         }
         .buttonStyle(PressableButtonStyle())
         .accessibilityIdentifier(isLastPage ? "OnboardingStart" : "OnboardingNext")
@@ -128,7 +128,7 @@ private struct AirPodsConnectDemo: View {
         ZStack {
             ForEach(0..<3, id: \.self) { i in
                 Circle()
-                    .stroke(Color.acorn400.opacity(0.5), lineWidth: 1.5)
+                    .stroke(Color.tintInteractive.opacity(0.5), lineWidth: 1.5)
                     .frame(width: 96, height: 96)
                     .scaleEffect(animate ? 1.9 : 0.72)
                     .opacity(animate ? 0 : 0.55)
@@ -139,12 +139,12 @@ private struct AirPodsConnectDemo: View {
             }
 
             Circle()
-                .fill(Color.acorn50)
+                .fill(Color.surfaceSunken)
                 .frame(width: 116, height: 116)
 
             Image(systemName: "airpodspro")
                 .font(.system(size: 58, weight: .regular))
-                .foregroundStyle(Color.acorn600)
+                .foregroundStyle(Color.tintInteractive)
         }
         .onAppear { animate = true }
     }
@@ -159,17 +159,17 @@ private struct MeasureDemo: View {
                     PulsingDot()
                     Text("측정 중")
                         .font(.appFont(.bold, size: 12))
-                        .foregroundStyle(Color.acorn700)
+                        .foregroundStyle(Color.tintPrimary)
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .background(Color.acorn50, in: Capsule())
+                .background(Color.surfaceSunken, in: Capsule())
 
                 Spacer()
 
                 Text("00:42")
                     .font(.appFont(.bold, size: 14))
-                    .foregroundStyle(Color.ink600)
+                    .foregroundStyle(Color.textSecondary)
             }
 
             WaveformDemo()
@@ -177,7 +177,7 @@ private struct MeasureDemo: View {
         }
         .padding(14)
         .frame(width: 252)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 20))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 20))
         .neuoShadow(.sm)
     }
 }
@@ -203,7 +203,7 @@ private struct PulsingDot: View {
     @State private var on = false
     var body: some View {
         Circle()
-            .fill(Color.acorn500)
+            .fill(Color.accentChew)
             .frame(width: 7, height: 7)
             .opacity(on ? 0.3 : 1)
             .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: on)
@@ -230,16 +230,16 @@ private struct ChewDemo: View {
                 HStack {
                     Text("오늘 씹기")
                         .font(.appFont(.semibold, size: 12))
-                        .foregroundStyle(Color.ink600)
+                        .foregroundStyle(Color.textSecondary)
                     Spacer()
                     Text("312 / 400")
                         .font(.appFont(.bold, size: 12))
-                        .foregroundStyle(Color.acorn700)
+                        .foregroundStyle(Color.tintPrimary)
                 }
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
-                        Capsule().fill(Color.ink100)
-                        Capsule().fill(Color.acorn500).frame(width: geo.size.width * 0.78)
+                        Capsule().fill(Color.hairline)
+                        Capsule().fill(Color.accentChew).frame(width: geo.size.width * 0.78)
                     }
                 }
                 .frame(height: 6)
@@ -247,7 +247,7 @@ private struct ChewDemo: View {
         }
         .padding(14)
         .frame(width: 252)
-        .background(Color.white, in: RoundedRectangle(cornerRadius: 20))
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 20))
         .neuoShadow(.sm)
     }
 }
@@ -286,10 +286,10 @@ private struct StreakDemo: View {
             HStack(spacing: 6) {
                 Image(systemName: "flame.fill")
                     .font(.system(size: 18))
-                    .foregroundStyle(Color.acorn500)
+                    .foregroundStyle(Color.accentChew)
                 Text("7일째")
                     .font(.appFont(.heavy, size: 20))
-                    .foregroundStyle(Color.acorn700)
+                    .foregroundStyle(Color.tintPrimary)
             }
 
             HStack(spacing: 9) {
@@ -297,7 +297,7 @@ private struct StreakDemo: View {
                     VStack(spacing: 5) {
                         ZStack {
                             Circle()
-                                .fill(i < filled ? Color.acorn600 : Color.acorn200)
+                                .fill(i < filled ? Color.tintInteractive : Color.hairline)
                                 .frame(width: 28, height: 28)
                             Image(systemName: "checkmark")
                                 .font(.system(size: 12, weight: .bold))
@@ -306,7 +306,7 @@ private struct StreakDemo: View {
                         }
                         Text(days[i])
                             .font(.appFont(.medium, size: 10))
-                            .foregroundStyle(Color.ink400)
+                            .foregroundStyle(Color.textTertiary)
                     }
                 }
             }

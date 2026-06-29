@@ -22,7 +22,7 @@ struct OnboardingNameView: View {
             VStack(spacing: 8) {
                 Text("처음 오셨네요!")
                     .font(.appFont(.heavy, size: 22))
-                    .foregroundStyle(Color.ink800)
+                    .foregroundStyle(Color.textPrimary)
                 Text("이름을 알려주세요")
                     .font(.appFont(.regular, size: 14))
                     .foregroundStyle(Color.textSecondary)
@@ -47,7 +47,7 @@ struct OnboardingNameView: View {
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(
-                        canSubmit ? Color.acorn600 : Color.textTertiary.opacity(0.4),
+                        canSubmit ? Color.tintInteractive : Color.textTertiary.opacity(0.4),
                         in: RoundedRectangle(cornerRadius: 14)
                     )
             }
@@ -71,7 +71,7 @@ struct OnboardingNameView: View {
                     Text("다른 계정으로 로그인")
                 }
                 .font(.appFont(.bold, size: 14))
-                .foregroundStyle(Color.ink600)
+                .foregroundStyle(Color.textSecondary)
                 .padding(.vertical, 6)
                 .padding(.horizontal, 10)
             }

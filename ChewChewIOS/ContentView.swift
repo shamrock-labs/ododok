@@ -50,10 +50,10 @@ struct ContentView: View {
         .overlay {
             if state.isLoggedIn && !(state.didLoadProfile && state.hasCompletedOnboarding) {
                 ZStack {
-                    Color.cream.ignoresSafeArea()
+                    Color.pageBackground.ignoresSafeArea()
                     ProgressView()
                         .controlSize(.large)
-                        .tint(Color.acorn600)
+                        .tint(Color.tintInteractive)
                 }
             }
         }

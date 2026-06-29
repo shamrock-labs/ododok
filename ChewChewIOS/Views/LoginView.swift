@@ -65,7 +65,7 @@ struct LoginView: View {
             VStack(spacing: 14) {
                 Text("오도독")
                     .font(.system(size: 40, weight: .heavy))
-                    .foregroundStyle(Color.acorn600)
+                    .foregroundStyle(Color.tintInteractive)
                 Text("잘 씹는 습관을 만드는 가장 쉬운 방법")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
