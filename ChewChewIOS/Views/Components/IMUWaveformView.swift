@@ -15,7 +15,7 @@ struct IMUWaveformView: View {
         .background(
             LinearGradient(
                 colors: [
-                    Color.sage50.opacity(isLive ? 0.8 : 0.45),
+                    Color.acorn50.opacity(isLive ? 0.8 : 0.45),
                     Color.acorn50.opacity(0.55),
                 ],
                 startPoint: .topLeading,
@@ -59,7 +59,7 @@ struct IMUWaveformView: View {
             bars,
             with: .linearGradient(
                 Gradient(colors: isLive
-                    ? [Color.blush400, Color.blush500, Color.acorn500]
+                    ? [Color.acorn300, Color.acorn500, Color.acorn700]
                     : [Color.textTertiary.opacity(0.45), Color.textTertiary.opacity(0.3)]),
                 startPoint: CGPoint(x: 0, y: midY),
                 endPoint: CGPoint(x: size.width, y: midY)
