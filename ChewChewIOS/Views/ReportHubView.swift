@@ -90,12 +90,17 @@ struct ReportHubView: View {
     }
 
     private var timelineCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let scale = ChartScale(days: timelineDays)
+        let ringRowHeight: CGFloat = 66   // 날짜행 강제 높이(축 스페이서와 동일값으로 세로 정렬 못박음)
+        let yAxisWidth: CGFloat = 34
+        let bandSpacing: CGFloat = 12     // 날짜행↔차트 간격(축 스페이서와 동일값)
+
+        return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 Text(monthRangeLabel)
                     .font(.appFont(.heavy, size: 15))
                     .foregroundStyle(Color.textPrimary)
-                Text("일별 저작")
+                Text("일별 저작 · 회")
                     .font(.appFont(.bold, size: 11))
                     .foregroundStyle(Color.textTertiary)
                 Spacer(minLength: 0)
@@ -110,34 +115,45 @@ struct ReportHubView: View {
                 .accessibilityLabel("달력 열기")
             }
 
-            ScrollViewReader { proxy in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    VStack(spacing: 12) {
-                        HStack(spacing: 0) {
-                            ForEach(timelineDays) { day in
-                                dateRingCell(day)
-                                    .frame(width: dayWidth)
-                                    .id(day.id)
-                            }
-                        }
+            // 좌측 고정 Y축 + 스크롤(날짜+차트). 축은 ScrollView 밖이라 가로 스크롤에 안 흘러가고,
+            // HStack 좌측 컬럼이라 데이터 점을 가리지 않는다.
+            HStack(alignment: .top, spacing: 0) {
+                YAxisColumn(scale: scale, ringRowHeight: ringRowHeight, bandSpacing: bandSpacing)
+                    .frame(width: yAxisWidth)
 
-                        ContinuousTrendChart(
-                            days: timelineDays,
-                            selectedDate: selectedDate,
-                            dayWidth: dayWidth
-                        )
-                        .frame(width: dayWidth * CGFloat(timelineDays.count), height: 164)
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        VStack(spacing: bandSpacing) {
+                            HStack(spacing: 0) {
+                                ForEach(timelineDays) { day in
+                                    dateRingCell(day)
+                                        .frame(width: dayWidth)
+                                        .id(day.id)
+                                }
+                            }
+                            .frame(height: ringRowHeight)   // 날짜행 높이 강제 → 폰트 메트릭 변동이 정렬을 못 깬다
+
+                            ContinuousTrendChart(
+                                days: timelineDays,
+                                selectedDate: selectedDate,
+                                dayWidth: dayWidth,
+                                scale: scale,
+                                onSelectDate: { selectedDate = $0 }
+                            )
+                            .frame(width: dayWidth * CGFloat(timelineDays.count), height: scale.height)
+                        }
+                        .padding(.vertical, 4)
+                        .padding(.trailing, 4)
+                        .contentShape(Rectangle())
                     }
-                    .padding(.horizontal, 4)
-                    .contentShape(Rectangle())
-                }
-                .scrollTargetBehavior(.viewAligned)
-                .task {
-                    proxy.scrollTo(selectedDay.id, anchor: .center)
-                }
-                .onChange(of: selectedDate) { _, _ in
-                    withAnimation(.easeInOut(duration: 0.25)) {
+                    .scrollTargetBehavior(.viewAligned)
+                    .task {
                         proxy.scrollTo(selectedDay.id, anchor: .center)
+                    }
+                    .onChange(of: selectedDate) { _, _ in
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            proxy.scrollTo(selectedDay.id, anchor: .center)
+                        }
                     }
                 }
             }
@@ -767,6 +783,8 @@ struct ReportHubView: View {
 private struct ReportDay: Identifiable {
     let date: Date
     let chewCount: Int
+    /// 하루 세션 시간의 "세션당 평균"(분). 합계가 아니라 평균이라 끼니 수가 달라도
+    /// "한 끼에 보통 몇 분 씹었나"로 읽힌다.
     let minutes: Int
     let mealCount: Int
 
@@ -775,7 +793,8 @@ private struct ReportDay: Identifiable {
     init(date: Date, sessions: [ChewingSessionDTO]) {
         self.date = date
         chewCount = sessions.reduce(0) { $0 + ($1.estimatedTotalChews ?? 0) }
-        minutes = max(1, Int((sessions.reduce(0) { $0 + $1.durationSec } / 60).rounded()))
+        let totalSec = sessions.reduce(0.0) { $0 + $1.durationSec }
+        minutes = sessions.isEmpty ? 0 : max(1, Int((totalSec / Double(sessions.count) / 60).rounded()))
         let slots = Set(sessions.map { DayMealSlot(hour: mealCalendarCalendar.component(.hour, from: $0.startedAt)) })
         mealCount = min(3, slots.count)
     }
@@ -855,31 +874,73 @@ private struct MealCompletionRing: View {
     }
 }
 
-/// 일별 저작 횟수 **단일 시리즈** 스파크라인. 이전엔 저작·시간 두 시리즈를 각자 자기
-/// min/max로 정규화해 겹쳐 그려 값을 읽을 수 없었다. 지금은 0~최댓값 한 축에 한 시리즈만
-/// 그리고, 데이터 있는 날의 평균선("평소")을 깔아 그날이 평소 대비 위/아래인지 읽히게 한다.
+/// 차트와 좌측 고정 Y축이 공유하는 스케일. y매핑과 보기 좋은 눈금값을 한 곳에서 계산해
+/// Canvas 점/그리드라인과 거터 눈금이 픽셀 단위로 정렬되게 한다.
+private struct ChartScale {
+    let maxValue: Int
+    let topPad: CGFloat
+    let bottomPad: CGFloat
+    let height: CGFloat
+
+    init(days: [ReportDay], topPad: CGFloat = 18, bottomPad: CGFloat = 16, height: CGFloat = 164) {
+        self.maxValue = max(days.map(\.chewCount).max() ?? 1, 1)
+        self.topPad = topPad
+        self.bottomPad = bottomPad
+        self.height = height
+    }
+
+    /// 값 → 밴드 height 안의 y좌표. Canvas와 Y축 거터가 동일하게 쓴다.
+    func y(_ value: Int) -> CGFloat {
+        let bottom = height - bottomPad
+        return bottom - CGFloat(value) / CGFloat(max(maxValue, 1)) * (bottom - topPad)
+    }
+
+    /// 0~maxValue를 1/2/5×10ⁿ 간격으로 끊은 눈금값(0 포함, 실제 최댓값 항상 포함).
+    var tickValues: [Int] {
+        let m = max(maxValue, 1)
+        let rawStep = Double(m) / 4.0
+        let mag = pow(10.0, floor(log10(max(rawStep, 1.0))))
+        let norm = rawStep / mag
+        let niceNorm: Double = norm <= 1 ? 1 : (norm <= 2 ? 2 : (norm <= 5 ? 5 : 10))
+        let step = max(1, Int(niceNorm * mag))
+        var ticks: [Int] = []
+        var v = 0
+        while v < m { ticks.append(v); v += step }
+        ticks.append(m)
+        return ticks
+    }
+}
+
+/// 일별 저작 횟수 단일 시리즈 스파크라인 + 가로 그리드라인. 스케일을 `ChartScale`로 주입받아
+/// 좌측 고정 Y축 거터(`YAxisColumn`)와 눈금이 정확히 정렬된다. 탭하면 가장 가까운 날을 선택한다.
 private struct ContinuousTrendChart: View {
     let days: [ReportDay]
     let selectedDate: Date
     let dayWidth: CGFloat
-
-    private let topPad: CGFloat = 18
-    private let bottomPad: CGFloat = 16
+    let scale: ChartScale
+    let onSelectDate: (Date) -> Void
 
     var body: some View {
         Canvas { context, size in
             let values = days.map(\.chewCount)
-            let maxValue = max(values.max() ?? 1, 1)
-            let bottom = size.height - bottomPad
+            func y(_ value: Int) -> CGFloat { scale.y(value) }
+            func x(_ index: Int) -> CGFloat { dayWidth / 2 + CGFloat(index) * dayWidth }
 
-            func y(_ value: Int) -> CGFloat {
-                bottom - CGFloat(value) / CGFloat(maxValue) * (bottom - topPad)
-            }
-            func x(_ index: Int) -> CGFloat {
-                dayWidth / 2 + CGFloat(index) * dayWidth
+            // 가로 그리드라인 — 좌측 Y축 눈금과 1:1. 0은 실선(바닥), 그 외 점선.
+            for tick in scale.tickValues {
+                let gy = y(tick)
+                let isBaseline = tick == 0
+                var line = Path()
+                line.move(to: CGPoint(x: 0, y: gy))
+                line.addLine(to: CGPoint(x: size.width, y: gy))
+                context.stroke(
+                    line,
+                    with: .color(Color.textTertiary.opacity(isBaseline ? 0.4 : 0.18)),
+                    style: StrokeStyle(lineWidth: isBaseline ? 1 : 0.75, dash: isBaseline ? [] : [3, 4])
+                )
             }
 
-            // 평소(데이터 있는 날 평균) 기준선 — 실제 데이터로 계산한 정직한 참조선.
+            // 평소(데이터 있는 날 평균) 기준선.
             let withData = values.filter { $0 > 0 }
             if !withData.isEmpty {
                 let mean = withData.reduce(0, +) / withData.count
@@ -887,14 +948,14 @@ private struct ContinuousTrendChart: View {
                 var guideLine = Path()
                 guideLine.move(to: CGPoint(x: 0, y: my))
                 guideLine.addLine(to: CGPoint(x: size.width, y: my))
-                context.stroke(guideLine, with: .color(Color.textTertiary.opacity(0.4)), style: StrokeStyle(lineWidth: 1, dash: [4, 5]))
+                context.stroke(guideLine, with: .color(Color.accentChew.opacity(0.6)), style: StrokeStyle(lineWidth: 1, dash: [4, 5]))
                 context.draw(
-                    Text("평소 \(mean)회").font(.appFont(.bold, size: 11)).foregroundColor(Color.textTertiary),
+                    Text("평소 \(mean)회").font(.appFont(.bold, size: 11)).foregroundColor(Color.tintPrimary),
                     at: CGPoint(x: 4, y: my - 4), anchor: .bottomLeading
                 )
             }
 
-            // 선택일 세로선
+            // 선택일 세로선 — x() 불변 → 날짜 동그라미 밑 정렬 유지.
             if let index = days.firstIndex(where: { mealCalendarCalendar.isDate($0.date, inSameDayAs: selectedDate) }) {
                 var sel = Path()
                 sel.move(to: CGPoint(x: x(index), y: 0))
@@ -908,18 +969,61 @@ private struct ContinuousTrendChart: View {
             if let first = points.first {
                 path.move(to: first)
                 for i in 1..<points.count { path.addLine(to: points[i]) }
-                context.stroke(path, with: .color(Color.acorn500), style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                context.stroke(path, with: .color(Color.accentChew), style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
             }
             for (index, point) in points.enumerated() {
                 let isSelected = mealCalendarCalendar.isDate(days[index].date, inSameDayAs: selectedDate)
                 let r: CGFloat = isSelected ? 4.5 : 2.8
                 let rect = CGRect(x: point.x - r, y: point.y - r, width: r * 2, height: r * 2)
-                context.fill(Path(ellipseIn: rect), with: .color(isSelected ? Color.acorn500 : Color.white))
+                context.fill(Path(ellipseIn: rect), with: .color(isSelected ? Color.accentChew : Color.surface))
                 if !isSelected {
-                    context.stroke(Path(ellipseIn: rect), with: .color(Color.acorn500), lineWidth: 1.8)
+                    context.stroke(Path(ellipseIn: rect), with: .color(Color.accentChew), lineWidth: 1.8)
                 }
             }
         }
+        .contentShape(Rectangle())
+        // 그래프를 탭하면 가장 가까운 날짜로 이동 — 날짜 동그라미 탭과 동일.
+        .gesture(
+            SpatialTapGesture().onEnded { value in
+                guard !days.isEmpty else { return }
+                let raw = (value.location.x - dayWidth / 2) / dayWidth
+                let idx = max(0, min(days.count - 1, Int(raw.rounded())))
+                onSelectDate(days[idx].date)
+            }
+        )
+    }
+}
+
+/// 차트 좌측에 화면 고정되는 Y축 컬럼. 데이터를 가리지 않게 HStack 좌측으로 분리돼 있고,
+/// 날짜행 높이 + 밴드 간격만큼 비운 뒤 차트 밴드와 같은 스케일로 눈금을 그린다.
+private struct YAxisColumn: View {
+    let scale: ChartScale
+    let ringRowHeight: CGFloat
+    let bandSpacing: CGFloat
+
+    var body: some View {
+        VStack(spacing: 0) {
+            // 날짜행 + 밴드 간격 + 상단 padding(4)만큼 비워 차트 밴드 상단에 정렬.
+            Color.clear.frame(height: ringRowHeight + bandSpacing + 4)
+            Canvas { context, size in
+                for tick in scale.tickValues {
+                    let yy = scale.y(tick)
+                    var t = Path()
+                    t.move(to: CGPoint(x: size.width - 5, y: yy))
+                    t.addLine(to: CGPoint(x: size.width, y: yy))
+                    context.stroke(t, with: .color(Color.textTertiary.opacity(0.5)), lineWidth: 1)
+                    if tick > 0 {
+                        context.draw(
+                            Text("\(tick)").font(.appFont(.bold, size: 10)).foregroundColor(Color.textTertiary),
+                            at: CGPoint(x: size.width - 7, y: yy), anchor: .trailing
+                        )
+                    }
+                }
+            }
+            .frame(height: scale.height)
+            Spacer(minLength: 0)
+        }
+        .accessibilityHidden(true)
     }
 }
 
