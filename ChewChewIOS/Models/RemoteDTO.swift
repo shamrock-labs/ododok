@@ -112,7 +112,7 @@ struct UserStatsDTO: Codable, Equatable {
 /// `chewing_session` row와 1:1 DTO. 클라이언트가 한 끼 식사 종료 시 INSERT.
 /// raw IMU는 별도로 imu-sessions 버킷에 gzip CSV로 올리고 `storagePath`에 경로만 보관.
 ///
-/// 분석 5필드(`chewingSeconds`/`restSeconds`/`chewingFraction`/`estimatedTotalChews`/`modelVersion`)는
+/// 분석 6필드(`chewingSeconds`/`restSeconds`/`chewingFraction`/`estimatedTotalChews`/`modelVersion`/`chewingTimeline`)는
 /// 온디바이스 DSP 감지(`ChewCounter`)가 동작한 세션에서만 채워진다. 시뮬레이터/AirPods 미연결 등
 /// 감지가 돌지 않은 세션은 모두 nil — DB 컬럼도 nullable.
 struct ChewingSessionDTO: Codable, Equatable, Identifiable {
@@ -132,6 +132,7 @@ struct ChewingSessionDTO: Codable, Equatable, Identifiable {
     var chewingFraction: Double?
     var estimatedTotalChews: Int?
     var modelVersion: String?
+    var chewingTimeline: String?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -150,6 +151,7 @@ struct ChewingSessionDTO: Codable, Equatable, Identifiable {
         case chewingFraction
         case estimatedTotalChews
         case modelVersion
+        case chewingTimeline
     }
 
     init(
@@ -168,6 +170,7 @@ struct ChewingSessionDTO: Codable, Equatable, Identifiable {
         chewingFraction: Double?,
         estimatedTotalChews: Int?,
         modelVersion: String?,
+        chewingTimeline: String? = nil,
         userId: String? = nil
     ) {
         self.id = id
@@ -186,6 +189,7 @@ struct ChewingSessionDTO: Codable, Equatable, Identifiable {
         self.chewingFraction = chewingFraction
         self.estimatedTotalChews = estimatedTotalChews
         self.modelVersion = modelVersion
+        self.chewingTimeline = chewingTimeline
     }
 
     init(from decoder: Decoder) throws {
@@ -206,6 +210,7 @@ struct ChewingSessionDTO: Codable, Equatable, Identifiable {
         chewingFraction = try container.decodeIfPresent(Double.self, forKey: .chewingFraction)
         estimatedTotalChews = try container.decodeIfPresent(Int.self, forKey: .estimatedTotalChews)
         modelVersion = try container.decodeIfPresent(String.self, forKey: .modelVersion)
+        chewingTimeline = try container.decodeIfPresent(String.self, forKey: .chewingTimeline)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -225,6 +230,7 @@ struct ChewingSessionDTO: Codable, Equatable, Identifiable {
         try container.encodeIfPresent(chewingFraction, forKey: .chewingFraction)
         try container.encodeIfPresent(estimatedTotalChews, forKey: .estimatedTotalChews)
         try container.encodeIfPresent(modelVersion, forKey: .modelVersion)
+        try container.encodeIfPresent(chewingTimeline, forKey: .chewingTimeline)
     }
 }
 

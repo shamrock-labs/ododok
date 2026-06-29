@@ -6,7 +6,8 @@ final class ReportCardModelTests: XCTestCase {
     private func makeDTO(
         chews: Int? = 300,
         fraction: Double? = 0.7,
-        durationSec: Double = 600
+        durationSec: Double = 600,
+        chewingTimeline: String? = nil
     ) -> ChewingSessionDTO {
         ChewingSessionDTO(
             id: UUID(),
@@ -23,7 +24,8 @@ final class ReportCardModelTests: XCTestCase {
             restSeconds: 168,
             chewingFraction: fraction,
             estimatedTotalChews: chews,
-            modelVersion: "test"
+            modelVersion: "test",
+            chewingTimeline: chewingTimeline
         )
     }
 
@@ -45,6 +47,17 @@ final class ReportCardModelTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(model.score, 0)
             XCTAssertLessThanOrEqual(model.score, 100)
         }
+    }
+
+    func testFrom_chewingTimeline_mapsToCompressedSegments() {
+        let dto = makeDTO(chewingTimeline: "111001")
+        let model = ReportCardModel.from(dto)
+
+        XCTAssertEqual(model?.chewRestSegments, [
+            ReportCardModel.ChewRestSegment(isChewing: true, durationSec: 3),
+            ReportCardModel.ChewRestSegment(isChewing: false, durationSec: 2),
+            ReportCardModel.ChewRestSegment(isChewing: true, durationSec: 1),
+        ])
     }
 
     func testFrom_score_in_0to100() {
