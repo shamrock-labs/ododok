@@ -24,4 +24,15 @@ enum KoDate {
         }
         return formatter.string(from: date)
     }
+
+    /// 사용자에게 보여줄 시각 — 12시간제 + 오전/오후(영점 패딩). 서버에서 받은 시간을 화면에
+    /// 표시할 땐 항상 이 함수를 쓴다(표기 일관성의 단일 소스). 예: 17:28 → "오후 05:28".
+    static func clockTime(_ date: Date) -> String {
+        string(date, "a hh:mm")
+    }
+
+    /// 날짜 + 시각 한 줄. 예: "6월 28일 일요일 · 오후 05:28". 시각부는 `clockTime`을 재사용.
+    static func dateWithClock(_ date: Date, dateFormat: String = "M월 d일 EEEE") -> String {
+        "\(string(date, dateFormat)) · \(clockTime(date))"
+    }
 }

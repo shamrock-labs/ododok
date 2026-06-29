@@ -7,6 +7,7 @@ struct ReportHubView: View {
     @State private var selectedDate: Date = mealCalendarCalendar.startOfDay(for: Date())
     @State private var pivotDate: Date = mealCalendarCalendar.startOfDay(for: Date())
     @State private var detailSession: ChewingSessionDTO?
+    @State private var showDailyReport = false
     @State private var showCalendar = false
     @State private var calendarMonth: Date = mealCalendarCalendar.startOfDay(for: Date())
 
@@ -19,9 +20,9 @@ struct ReportHubView: View {
     var body: some View {
         VStack(spacing: 14) {
             timelineCard
-            sessionListCard
             weeklyComparisonCard
-            weeklyCoachCard
+            // 다람이 코치 카드는 UI에서 임시 제외(로직 유지, 추후 수정 예정).
+            // weeklyCoachCard
         }
         .task { await reloadRecentSessions() }
         .onChange(of: pivotDate) { _, _ in
@@ -31,6 +32,13 @@ struct ReportHubView: View {
             NavigationStack {
                 SessionReportDetailView(dto: session)
             }
+        }
+        .sheet(isPresented: $showDailyReport) {
+            DailyReportView(
+                date: selectedDate,
+                sessions: selectedSessions,
+                previousSessions: previousDaySessions
+            )
         }
         .sheet(isPresented: $showCalendar) {
             ReportCalendarDialog(
@@ -100,9 +108,6 @@ struct ReportHubView: View {
                 Text(monthRangeLabel)
                     .font(.appFont(.heavy, size: 15))
                     .foregroundStyle(Color.textPrimary)
-                Text("한 끼 평균 저작 · 회")
-                    .font(.appFont(.bold, size: 11))
-                    .foregroundStyle(Color.textTertiary)
                 Spacer(minLength: 0)
                 Button { openCalendar() } label: {
                     Image(systemName: "calendar")
@@ -158,22 +163,33 @@ struct ReportHubView: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(selectedDay.shortDateLabel)
-                    .font(.appFont(.heavy, size: 17))
-                    .foregroundStyle(Color.textPrimary)
-                    .monospacedDigit()
-                Text(selectedDay.summaryLabel)
-                    .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.textSecondary)
-                    .monospacedDigit()
+            // 날짜만 — 평균/시간/끼니 요약·횟수 뱃지는 제거.
+            Text(selectedDay.shortDateLabel)
+                .font(.appFont(.heavy, size: 17))
+                .foregroundStyle(Color.textPrimary)
+                .monospacedDigit()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 2)
+
+            Rectangle()
+                .fill(Color.hairline)
+                .frame(height: 1)
+                .padding(.vertical, 2)
+
+            // 끼니 목록 — 날짜 헤더는 위와 중복이라 뺀다(그래프 카드와 합쳐진 한 카드).
+            if selectedSessions.isEmpty {
+                emptySessionState
+            } else {
+                VStack(spacing: 6) {
+                    ForEach(selectedSessions) { session in
+                        sessionRow(session)
+                    }
+                    dailyReportRow
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, 2)
         }
         .padding(16)
         .background(Color.surface, in: RoundedRectangle(cornerRadius: 24))
-        .softShadow(.base)
     }
 
     private func dateRingCell(_ day: ReportDay) -> some View {
@@ -200,45 +216,11 @@ struct ReportHubView: View {
         .accessibilityLabel("\(day.shortDateLabel), \(day.mealCount)끼 기록")
     }
 
-    private var sessionListCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("\(selectedDay.shortDateLabel) 끼니")
-                    .font(.appFont(.heavy, size: 16))
-                    .foregroundStyle(Color.textPrimary)
-                Spacer()
-                Text("\(selectedSessions.count)회")
-                    .font(.appFont(.bold, size: 12))
-                    .foregroundStyle(Color.acorn700)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
-                    .background(Color.acorn50, in: Capsule())
-            }
-
-            if selectedSessions.isEmpty {
-                emptySessionState
-                dailyInsightCard
-            } else {
-                VStack(spacing: 6) {
-                    ForEach(selectedSessions) { session in
-                        sessionRow(session)
-                    }
-                    dailyReportRow
-                    dailyInsightCard
-                }
-            }
-        }
-        .padding(16)
-        .background(Color.surface, in: RoundedRectangle(cornerRadius: 24))
-        .softShadow(.base)
-    }
-
     private var emptySessionState: some View {
         HStack(spacing: 12) {
             Text("🍽️")
                 .font(.appFont(.regular, size: 24))
                 .frame(width: 42, height: 42)
-                .background(Color.acorn50, in: RoundedRectangle(cornerRadius: 14))
             VStack(alignment: .leading, spacing: 3) {
                 Text(mealCalendarCalendar.isDateInToday(selectedDate) ? "오늘은 아직 식사 전이에요" : "이 날은 식사 기록이 없어요")
                     .font(.appFont(.heavy, size: 15))
@@ -249,8 +231,7 @@ struct ReportHubView: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(14)
-        .background(Color.acorn50.opacity(0.55), in: RoundedRectangle(cornerRadius: 16))
+        .padding(.vertical, 4)
     }
 
     private func sessionRow(_ session: ChewingSessionDTO) -> some View {
@@ -364,9 +345,17 @@ struct ReportHubView: View {
         }
     }
 
+    /// 어제(선택일 직전 날) 세션 — 일간 리포트의 "어제 대비" 비교 입력.
+    private var previousDaySessions: [ChewingSessionDTO] {
+        guard let previousDate = mealCalendarCalendar.date(byAdding: .day, value: -1, to: selectedDate) else {
+            return []
+        }
+        return sessions(on: previousDate)
+    }
+
     private var dailyReportRow: some View {
         Button {
-            detailSession = selectedSessions.last
+            showDailyReport = true
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -430,9 +419,7 @@ struct ReportHubView: View {
             }
         }
         .padding(16)
-        .background(Color.surface, in: RoundedRectangle(cornerRadius: 24))
-        .softShadow(.base)
-    }
+        .background(Color.surface, in: RoundedRectangle(cornerRadius: 24))    }
 
     private var weeklyCoachCard: some View {
         let insight = weeklyCoachInsight
@@ -488,8 +475,6 @@ struct ReportHubView: View {
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.surface, in: RoundedRectangle(cornerRadius: 24))
-        // 최상위 카드라 elevation은 섀도우 하나로만 표현(이전엔 섀도우+1px 보더 중복).
-        .softShadow(.base)
     }
 
     private func coachMetricPill(title: String, value: String, icon: OpenIcon, color: Color) -> some View {
@@ -767,7 +752,7 @@ struct ReportHubView: View {
     }
 
     private func timeLabel(_ date: Date) -> String {
-        return KoDate.string(date, "HH:mm")
+        return KoDate.clockTime(date)
     }
 
     private func durationLabel(_ seconds: Double) -> String {

@@ -381,7 +381,7 @@ struct DaySessionsView: View {
     }
 
     private func formatTime(_ d: Date) -> String {
-        return KoDate.string(d, "HH:mm")
+        return KoDate.clockTime(d)
     }
 
     private func formatDuration(_ seconds: Double) -> String {
@@ -413,7 +413,9 @@ struct SessionReportDetailView: View {
                     EmptyReportCardView()
                 }
             }
-            .padding(20)
+            // 식사 리포트 카드를 더 넓게 — 좌우 여백을 줄인다.
+            .padding(.horizontal, 10)
+            .padding(.vertical, 16)
         }
         .background(Color.pageBackground.ignoresSafeArea())
         .navigationTitle("식사 리포트")
@@ -518,7 +520,7 @@ private struct DayInlineSection: View {
     }
 
     private func formatTime12(_ d: Date) -> String {
-        return KoDate.string(d, "a h:mm")
+        return KoDate.clockTime(d)
     }
 
     private func formatDuration(_ secs: Double) -> String {

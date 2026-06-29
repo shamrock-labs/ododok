@@ -11,11 +11,7 @@ struct TrackingView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            // 라이브 센서 진단(AirPods 상태 + 샘플 카운터)은 식사 중에만 노출.
-            if isEating {
-                airpodsCard
-                imuDebugPanel
-            }
+            // 라이브 IMU 진단 카드(AirPods 수신 상태 + FG 샘플 카운터)는 UI에서 제외(로직 유지).
             ReportHubView()
         }
         .padding(.horizontal, 20)

@@ -1,20 +1,22 @@
 import SwiftUI
 
+/// 오디오 비주얼라이저식 IMU 파형. 중앙선을 기준으로 위아래로 뻗는 세로 막대들이
+/// 샘플 에너지에 따라 높이를 바꾼다. 샘플 배열(`imuWaveformSamples`)이 좌→우로
+/// 흐르며 갱신되고, 0.07초 선형 애니메이션이 높이 변화를 이어 붙여 막대가
+/// 흐르듯 움직인다. 양 끝은 스무스스텝으로 줄여 가장자리에서 뚝 끊기지 않게 한다.
 struct IMUWaveformView: View {
     let samples: [Double]
     let isLive: Bool
 
     var body: some View {
         Canvas { context, size in
-            var context = context
-            drawGrid(in: &context, size: size)
-            drawWaveform(in: &context, size: size)
+            drawBars(context, size: size)
         }
         .background(
             LinearGradient(
                 colors: [
-                    Color.sage50.opacity(isLive ? 0.8 : 0.45),
-                    Color.acorn50.opacity(0.55)
+                    Color.acorn50.opacity(isLive ? 0.8 : 0.45),
+                    Color.acorn50.opacity(0.55),
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
@@ -28,104 +30,63 @@ struct IMUWaveformView: View {
         .animation(.linear(duration: 0.07), value: samples)
     }
 
-    private func drawGrid(in context: inout GraphicsContext, size: CGSize) {
-        let midY = size.height / 2
-        var centerLine = Path()
-        centerLine.move(to: CGPoint(x: 0, y: midY))
-        centerLine.addLine(to: CGPoint(x: size.width, y: midY))
-        context.stroke(centerLine, with: .color(Color.textTertiary.opacity(0.18)), lineWidth: 1)
-
-        for fraction in [CGFloat(0.25), CGFloat(0.75)] {
-            var guide = Path()
-            let y = size.height * fraction
-            guide.move(to: CGPoint(x: 0, y: y))
-            guide.addLine(to: CGPoint(x: size.width, y: y))
-            context.stroke(guide, with: .color(Color.white.opacity(0.45)), lineWidth: 1)
-        }
-    }
-
-    private func drawWaveform(in context: inout GraphicsContext, size: CGSize) {
+    private func drawBars(_ context: GraphicsContext, size: CGSize) {
         guard samples.count > 1 else { return }
 
-        let visualGain = isLive ? 1.45 : 1.2
-        let clampedSamples = samples.map { min(1.0, max(0.0, $0 * visualGain)) }
-        let stepX = size.width / CGFloat(clampedSamples.count - 1)
+        let visualGain = isLive ? 1.5 : 1.15
+        let clamped = samples.map { min(1.0, max(0.0, $0 * visualGain)) }
+        let count = clamped.count
+        let slot = size.width / CGFloat(count)
+        let barWidth = min(slot * 0.5, 3.5)
         let midY = size.height / 2
-        let amplitude = size.height * 0.49
+        let maxAmp = size.height * 0.46   // 중앙선 기준 한쪽 최대 진폭
 
-        // 샘플을 (x, y) 점으로 변환한 뒤 Catmull-Rom 형식의 cubic Bezier로 보간해
-        // 각진 polyline 대신 부드러운 곡선으로 렌더.
-        let points: [CGPoint] = clampedSamples.indices.map { i in
-            let x = CGFloat(i) * stepX
-            let phase = Double(i) * 0.58
-            // 연속 sine — 부호 점프 없이 부드러운 파형. Catmull-Rom 보간과 결합되어
-            // 자연스럽게 흐르는 곡선이 된다.
-            let y = midY - CGFloat(clampedSamples[i] * sin(phase)) * amplitude
-            return CGPoint(x: x, y: y)
-        }
-
-        var fillPath = Path()
-        var linePath = Path()
-        linePath.move(to: points[0])
-        fillPath.move(to: CGPoint(x: points[0].x, y: midY))
-        fillPath.addLine(to: points[0])
-
-        for i in 1..<points.count {
-            let p1 = points[i - 1]
-            let p2 = points[i]
-            let p0 = i - 2 >= 0 ? points[i - 2] : p1
-            let p3 = i + 1 < points.count ? points[i + 1] : p2
-
-            // Catmull-Rom → cubic Bezier 변환. 텐션 1/6이 표준.
-            let c1 = CGPoint(
-                x: p1.x + (p2.x - p0.x) / 6,
-                y: p1.y + (p2.y - p0.y) / 6
+        var bars = Path()
+        for i in 0..<count {
+            let xCenter = slot * (CGFloat(i) + 0.5)
+            let value = clamped[i] * edgeWindow(index: i, count: count)
+            let half = max(1.0, CGFloat(value) * maxAmp)
+            let rect = CGRect(
+                x: xCenter - barWidth / 2,
+                y: midY - half,
+                width: barWidth,
+                height: half * 2
             )
-            let c2 = CGPoint(
-                x: p2.x - (p3.x - p1.x) / 6,
-                y: p2.y - (p3.y - p1.y) / 6
-            )
-            linePath.addCurve(to: p2, control1: c1, control2: c2)
-            fillPath.addCurve(to: p2, control1: c1, control2: c2)
+            bars.addRoundedRect(in: rect, cornerSize: CGSize(width: barWidth / 2, height: barWidth / 2))
         }
-
-        fillPath.addLine(to: CGPoint(x: size.width, y: midY))
-        fillPath.closeSubpath()
 
         context.fill(
-            fillPath,
+            bars,
             with: .linearGradient(
-                Gradient(colors: [
-                    Color.sage400.opacity(isLive ? 0.24 : 0.12),
-                    Color.acorn300.opacity(isLive ? 0.12 : 0.06)
-                ]),
-                startPoint: CGPoint(x: 0, y: 0),
-                endPoint: CGPoint(x: size.width, y: size.height)
-            )
-        )
-
-        context.stroke(
-            linePath,
-            with: .linearGradient(
-                Gradient(colors: [
-                    isLive ? Color.sage600 : Color.textTertiary.opacity(0.42),
-                    isLive ? Color.acorn500 : Color.textTertiary.opacity(0.28)
-                ]),
+                Gradient(colors: isLive
+                    ? [Color.acorn300, Color.acorn500, Color.acorn700]
+                    : [Color.textTertiary.opacity(0.45), Color.textTertiary.opacity(0.3)]),
                 startPoint: CGPoint(x: 0, y: midY),
                 endPoint: CGPoint(x: size.width, y: midY)
-            ),
-            style: StrokeStyle(lineWidth: isLive ? 3.6 : 3, lineCap: .round, lineJoin: .round)
+            )
         )
+    }
+
+    /// 양 끝 16% 구간을 스무스스텝으로 0→1 줄여 막대 높이를 가장자리에서 부드럽게 감쇠.
+    private func edgeWindow(index: Int, count: Int) -> CGFloat {
+        guard count > 1 else { return 1 }
+        let t = CGFloat(index) / CGFloat(count - 1)
+        let fade: CGFloat = 0.16
+        let e = min(min(t, 1 - t) / fade, 1)
+        return e * e * (3 - 2 * e)
     }
 }
 
 #Preview {
     IMUWaveformView(
         samples: (0..<54).map { i in
-            0.12 + pow(max(0, sin(Double(i) * 0.4)), 2.4) * 0.75
+            let envelope = pow(max(0, sin(Double(i) * 0.12 + 0.6)), 1.6)
+            let detail = pow(max(0, sin(Double(i) * 0.9)), 2.0)
+            return 0.06 + envelope * detail * 0.9
         },
         isLive: true
     )
-    .frame(width: 320, height: 76)
+    .frame(width: 320, height: 64)
     .padding()
+    .background(Color.pageBackground)
 }

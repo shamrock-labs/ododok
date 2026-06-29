@@ -61,23 +61,36 @@ struct ReportCardView: View {
     var rendersStatically: Bool = false
 
     @State private var scoreProgress: Double = 0
+    @State private var showScoreGuide = false
 
     var body: some View {
         VStack(spacing: 18) {
             header
+            sectionDivider
             scoreSection
-            recommendedOverviewSection
-            coachPanel
-            recommendedComparisonGrid
+            sectionDivider
+            recommendedSection
+            sectionDivider
             chewRestSection
-            captionSection
-            if onDeepReport != nil { deepReportCTA }
+            if onDeepReport != nil {
+                sectionDivider
+                deepReportCTA
+            }
         }
         .padding(24)
         .frame(maxWidth: .infinity)
         .background(Color.surface, in: RoundedRectangle(cornerRadius: 24))
-        .softShadow(.base)
+        .sheet(isPresented: $showScoreGuide) {
+            ScoreGuideView()
+        }
+    }
 
+    /// 섹션 사이 실선 구분선(배경 카드 대신). 점선은 섹션 안 영역 구분에만 따로 쓴다.
+    private var sectionDivider: some View {
+        Rectangle()
+            .fill(Color.hairline)
+            .frame(height: 1)
+            .frame(maxWidth: .infinity)
     }
 
     private var header: some View {
@@ -100,10 +113,19 @@ struct ReportCardView: View {
     /// 흐리멍덩한 형용사 배지의 정량 근거가 된다.
     private var scoreSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("씹기 점수")
                     .font(.appFont(.heavy, size: 15))
                     .foregroundStyle(Color.textPrimary)
+                if !rendersStatically {
+                    Button { showScoreGuide = true } label: {
+                        Image(systemName: "info.circle")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(Color.textTertiary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("씹기 점수 설명 보기")
+                }
                 Spacer(minLength: 0)
                 Text("\(scoreCountUpValue(progress: rendersStatically ? 1 : scoreProgress, target: model.score))")
                     .font(.appFont(.heavy, size: 28))
@@ -114,20 +136,16 @@ struct ReportCardView: View {
                     .font(.appFont(.bold, size: 12))
                     .foregroundStyle(Color.textTertiary)
             }
+            // 라벨은 실제 측정값과 1:1로 맞춘다(점수 4축 = 권장 4지표와 동일 대상):
+            // speed=분당 속도, rhythm=씹은 시간 비율, continuity=총 저작 횟수, length=식사 시간.
             VStack(spacing: 8) {
                 scoreAxisRow(label: "속도", value: model.speedScore)
-                scoreAxisRow(label: "리듬", value: model.rhythmScore)
-                scoreAxisRow(label: "연속", value: model.continuityScore)
-                scoreAxisRow(label: "길이", value: model.lengthScore)
+                scoreAxisRow(label: "비율", value: model.rhythmScore)
+                scoreAxisRow(label: "횟수", value: model.continuityScore)
+                scoreAxisRow(label: "시간", value: model.lengthScore)
             }
         }
-        .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.surface, in: RoundedRectangle(cornerRadius: 18))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(Color.hairline, lineWidth: 1)
-        )
         .onAppear {
             withAnimation(.easeOut(duration: 0.7)) { scoreProgress = 1 }
         }
@@ -163,80 +181,22 @@ struct ReportCardView: View {
         }
     }
 
-    private var recommendedOverviewSection: some View {
+    /// 권장 기준과 비교 — 요약 헤더 + 4지표를 한 섹션에서 보여준다.
+    /// 이전엔 "권장 기준 대비"(요약)와 "권장 기준 대비 세부"(그리드) 두 섹션으로 제목·지표가
+    /// 중복됐다. 단일 헤더 + 4지표 그리드로 합쳐 워딩 중복을 없앤다.
+    private var recommendedSection: some View {
         let summary = recommendedComparisonSummary
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("권장 기준 대비")
-                    .font(.appFont(.heavy, size: 15))
-                    .foregroundStyle(Color.textPrimary)
-                Spacer(minLength: 0)
-                Text(summary.badge)
-                    .font(.appFont(.heavy, size: 11))
-                    .foregroundStyle(summary.color)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(summary.color.opacity(0.14), in: Capsule())
-            }
+        return VStack(alignment: .leading, spacing: 16) {
+            // 헤더 — "권장 기준보다 ~~한 식사였어요" 한 줄만(배지 제거). 색은 카드 배경으로만 준다(플랫).
             Text(summary.title)
-                .font(.appFont(.heavy, size: 20))
+                .font(.appFont(.heavy, size: 19))
                 .foregroundStyle(Color.textPrimary)
-                .lineSpacing(2)
-            Text(summary.detail)
-                .font(.appFont(.semibold, size: 13))
-                .foregroundStyle(Color.textSecondary)
-                .lineSpacing(2)
-            HStack(spacing: 8) {
-                recommendedDeltaChip(
-                    title: "저작",
-                    value: signedDelta(model.chewCount - RecommendedBaseline.chewCount, suffix: "회"),
-                    color: .acorn700
-                )
-                recommendedDeltaChip(
-                    title: "시간",
-                    value: signedDelta(durationDeltaMinutes, suffix: "분"),
-                    color: .sage600
-                )
-                recommendedDeltaChip(
-                    title: "집중",
-                    value: signedDelta(chewingFocusDeltaPercent, suffix: "%"),
-                    color: .butter600
-                )
-            }
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(summary.color.opacity(0.08), in: RoundedRectangle(cornerRadius: 18))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(summary.color.opacity(0.18), lineWidth: 1)
-        )
-    }
+                .lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
 
-    private func recommendedDeltaChip(title: String, value: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title)
-                .font(.appFont(.bold, size: 11))
-                .foregroundStyle(Color.textSecondary)
-            Text(value)
-                .font(.appFont(.heavy, size: 12))
-                .foregroundStyle(color)
-                .monospacedDigit()
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 12))
-    }
-
-    private var recommendedComparisonGrid: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionTitle("권장 기준 대비 세부")
             LazyVGrid(
-                columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
-                spacing: 12
+                columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)],
+                spacing: 18
             ) {
                 recommendedComparisonCell(
                     label: "저작 횟수",
@@ -273,6 +233,8 @@ struct ReportCardView: View {
                 )
             }
         }
+        // 섹션 배경 제거 — 섹션 구분은 body의 실선이 담당한다(내부 헤더↔지표 점선은 유지).
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func recommendedComparisonCell(
@@ -430,7 +392,7 @@ struct ReportCardView: View {
     }
 
     private var headerDateLabel: String {
-        return KoDate.string(model.endedAt, "M월 d일 EEEE · HH:mm")
+        return KoDate.dateWithClock(model.endedAt)
     }
 
     private func formatDurationShort(_ seconds: Double) -> String {
@@ -560,6 +522,98 @@ private struct RecommendedDeltaBar: View {
                     .offset(x: min(max(0, markerX - 6), width - 12))
             }
         }
+    }
+}
+
+/// 씹기 점수 산정 방식 가이드. "씹기 점수" 옆 ⓘ 버튼이 시트로 띄운다.
+/// 내용은 `SessionScore.compute(_:)`의 4요소(속도·리듬·연속·길이)와 등급 기준을 사용자 언어로 설명.
+private struct ScoreGuideView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("씹기 점수는 한 끼를 얼마나 천천히·꼼꼼히 씹었는지를 0~100으로 나타낸 값이에요. 아래 네 요소를 각각 0~100으로 매기고 평균낸 점수예요.")
+                        .font(.appFont(.semibold, size: 14))
+                        .foregroundStyle(Color.textSecondary)
+                        .lineSpacing(3)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    VStack(spacing: 10) {
+                        guideRow("속도", "분당 저작 횟수예요. 권장(약 28회/분)에 가까울수록 높고, 너무 빠르거나 느리면 낮아져요.", .blush500)
+                        guideRow("비율", "식사 중 실제로 씹은 시간의 비율(씹기 비율)이에요. 50% 이상이면 만점에 가까워요.", .butter600)
+                        guideRow("횟수", "한 끼의 총 저작 횟수예요. 약 200회 이상이면 만점에 가까워요.", .acorn700)
+                        guideRow("시간", "식사에 들인 시간이에요. 약 12분 근처에서 가장 높아요.", .sage600)
+                    }
+
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("등급 기준")
+                            .font(.appFont(.heavy, size: 14))
+                            .foregroundStyle(Color.textPrimary)
+                        Text("80점 이상은 잘 씹은 식사, 60~79점은 보통, 60점 미만은 조금 빠른 편이에요.")
+                            .font(.appFont(.semibold, size: 13))
+                            .foregroundStyle(Color.textSecondary)
+                            .lineSpacing(2)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Text("AirPods 모션 센서 신호를 기기 안에서 분석해 추정한 값이라, 정확한 측정값이 아닌 참고용 지표예요.")
+                        .font(.appFont(.medium, size: 12))
+                        .foregroundStyle(Color.textTertiary)
+                        .lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .background(Color.pageBackground.ignoresSafeArea())
+            .navigationTitle("씹기 점수 가이드")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("닫기") { dismiss() }
+                        .font(.appFont(.bold, size: 15))
+                        .foregroundStyle(Color.acorn700)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func guideRow(_ title: String, _ desc: String, _ color: Color) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text(title)
+                .font(.appFont(.heavy, size: 14))
+                .foregroundStyle(color)
+                .frame(width: 36, alignment: .leading)
+            Text(desc)
+                .font(.appFont(.semibold, size: 13))
+                .foregroundStyle(Color.textSecondary)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+    }
+}
+
+/// 얕은 점선 구분선. 카드를 중첩하지 않고 섹션 안에서 영역만 가볍게 가른다.
+struct DashedDivider: View {
+    var color: Color = Color.textTertiary.opacity(0.25)
+
+    var body: some View {
+        GeometryReader { geo in
+            Path { path in
+                path.move(to: CGPoint(x: 0, y: 0.5))
+                path.addLine(to: CGPoint(x: geo.size.width, y: 0.5))
+            }
+            .stroke(style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
+            .foregroundStyle(color)
+        }
+        .frame(height: 1)
     }
 }
 
@@ -718,6 +772,5 @@ struct EmptyReportCardView: View {
         .padding(.vertical, 48)
         .padding(.horizontal, 24)
         .background(Color.surface, in: RoundedRectangle(cornerRadius: 24))
-        .softShadow(.base)
     }
 }
