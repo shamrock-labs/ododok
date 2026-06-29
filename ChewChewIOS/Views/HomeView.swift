@@ -151,7 +151,7 @@ struct HomeView: View {
                 .font(.appFont(.medium, size: 18))
                 .foregroundStyle(Color.textSecondary)
                 .frame(width: 46, height: 46)
-                .background(Color.white, in: Circle())
+                .background(Color.surface, in: Circle())
         }
         .buttonStyle(.plain)
         .neuoShadow(.sm)

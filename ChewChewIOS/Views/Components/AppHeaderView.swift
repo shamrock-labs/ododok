@@ -121,7 +121,7 @@ struct HeaderIconButton: View {
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(Color.textSecondary)
                 .frame(width: 32, height: 32)
-                .background(Color.white, in: Circle())
+                .background(Color.surface, in: Circle())
         }
         .buttonStyle(.plain)
         .overlay(alignment: .topTrailing) {

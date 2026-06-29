@@ -66,9 +66,9 @@ struct ReportCardView: View {
         VStack(spacing: 18) {
             header
             scoreSection
-            averageOverviewSection
+            recommendedOverviewSection
             coachPanel
-            averageComparisonGrid
+            recommendedComparisonGrid
             chewRestSection
             captionSection
             if onDeepReport != nil { deepReportCTA }
@@ -157,14 +157,14 @@ struct ReportCardView: View {
 
     private var scoreColor: Color {
         switch model.grade {
-        case .good: Color.sage600
-        case .soso: Color.butter600
-        case .bad:  Color.blush500
+        case .good: Color.accentGood
+        case .soso: Color.accentFocus
+        case .bad:  Color.accentWarn
         }
     }
 
-    private var averageOverviewSection: some View {
-        let summary = averageComparisonSummary
+    private var recommendedOverviewSection: some View {
+        let summary = recommendedComparisonSummary
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
                 Text("권장 기준 대비")
@@ -187,17 +187,17 @@ struct ReportCardView: View {
                 .foregroundStyle(Color.textSecondary)
                 .lineSpacing(2)
             HStack(spacing: 8) {
-                averageDeltaChip(
+                recommendedDeltaChip(
                     title: "저작",
                     value: signedDelta(model.chewCount - RecommendedBaseline.chewCount, suffix: "회"),
                     color: .acorn700
                 )
-                averageDeltaChip(
+                recommendedDeltaChip(
                     title: "시간",
                     value: signedDelta(durationDeltaMinutes, suffix: "분"),
                     color: .sage600
                 )
-                averageDeltaChip(
+                recommendedDeltaChip(
                     title: "집중",
                     value: signedDelta(chewingFocusDeltaPercent, suffix: "%"),
                     color: .butter600
@@ -213,7 +213,7 @@ struct ReportCardView: View {
         )
     }
 
-    private func averageDeltaChip(title: String, value: String, color: Color) -> some View {
+    private func recommendedDeltaChip(title: String, value: String, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title)
                 .font(.appFont(.bold, size: 11))
@@ -231,42 +231,42 @@ struct ReportCardView: View {
         .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 12))
     }
 
-    private var averageComparisonGrid: some View {
+    private var recommendedComparisonGrid: some View {
         VStack(alignment: .leading, spacing: 10) {
             sectionTitle("권장 기준 대비 세부")
             LazyVGrid(
                 columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
                 spacing: 12
             ) {
-                averageComparisonCell(
+                recommendedComparisonCell(
                     label: "저작 횟수",
                     current: "약 \(model.chewCount.koLocale)회",
-                    average: "권장 \(RecommendedBaseline.chewCount.koLocale)회",
+                    recommended: "권장 \(RecommendedBaseline.chewCount.koLocale)회",
                     delta: signedDelta(model.chewCount - RecommendedBaseline.chewCount, suffix: "회"),
                     // 풀스케일 = 권장 기준의 ±50%. 네 지표가 동일한 상대 논리로 막대를 채운다.
                     ratio: Double(model.chewCount - RecommendedBaseline.chewCount) / (Double(RecommendedBaseline.chewCount) * 0.5),
                     color: .acorn700
                 )
-                averageComparisonCell(
+                recommendedComparisonCell(
                     label: "식사 시간",
                     current: formatDurationShort(model.totalDurationSec),
-                    average: "권장 \(formatDurationShort(RecommendedBaseline.durationSec))",
+                    recommended: "권장 \(formatDurationShort(RecommendedBaseline.durationSec))",
                     delta: signedDelta(durationDeltaMinutes, suffix: "분"),
                     ratio: Double(durationDeltaMinutes) / (RecommendedBaseline.durationSec / 60 * 0.5),
                     color: .sage600
                 )
-                averageComparisonCell(
+                recommendedComparisonCell(
                     label: "식사 속도",
                     current: "약 \(Int(model.chewsPerMinute.rounded()))회/분",
-                    average: "권장 \(Int(RecommendedBaseline.chewsPerMinute))회/분",
+                    recommended: "권장 \(Int(RecommendedBaseline.chewsPerMinute))회/분",
                     delta: signedDelta(Int((model.chewsPerMinute - RecommendedBaseline.chewsPerMinute).rounded()), suffix: "회/분"),
                     ratio: (model.chewsPerMinute - RecommendedBaseline.chewsPerMinute) / (RecommendedBaseline.chewsPerMinute * 0.5),
                     color: .blush500
                 )
-                averageComparisonCell(
+                recommendedComparisonCell(
                     label: "씹기 비율",
                     current: "\(Int((model.chewingFraction * 100).rounded()))%",
-                    average: "권장 \(Int(RecommendedBaseline.chewingFraction * 100))%",
+                    recommended: "권장 \(Int(RecommendedBaseline.chewingFraction * 100))%",
                     delta: signedDelta(chewingFocusDeltaPercent, suffix: "%"),
                     ratio: Double(chewingFocusDeltaPercent) / (RecommendedBaseline.chewingFraction * 100 * 0.5),
                     color: .butter600
@@ -275,10 +275,10 @@ struct ReportCardView: View {
         }
     }
 
-    private func averageComparisonCell(
+    private func recommendedComparisonCell(
         label: String,
         current: String,
-        average: String,
+        recommended: String,
         delta: String,
         ratio: Double,
         color: Color
@@ -303,9 +303,9 @@ struct ReportCardView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.62)
                 .monospacedDigit()
-            AverageDeltaBar(ratio: ratio, color: color)
+            RecommendedDeltaBar(ratio: ratio, color: color)
                 .frame(height: 12)
-            Text(average)
+            Text(recommended)
                 .font(.appFont(.semibold, size: 13))
                 .foregroundStyle(Color.textSecondary.opacity(0.8))
                 .lineLimit(1)
@@ -316,7 +316,7 @@ struct ReportCardView: View {
     }
 
     private var coachPanel: some View {
-        let summary = averageComparisonSummary
+        let summary = recommendedComparisonSummary
         return HStack(spacing: 12) {
             Image(summary.imageName)
                 .resizable()
@@ -422,11 +422,11 @@ struct ReportCardView: View {
     }
 
     private var coachTitle: String {
-        "다람이 코치: \(averageComparisonSummary.badge)"
+        "다람이 코치: \(recommendedComparisonSummary.badge)"
     }
 
     private var coachMessage: String {
-        averageComparisonSummary.coachMessage
+        recommendedComparisonSummary.coachMessage
     }
 
     private var headerDateLabel: String {
@@ -450,7 +450,7 @@ struct ReportCardView: View {
         Int(((model.chewingFraction - RecommendedBaseline.chewingFraction) * 100).rounded())
     }
 
-    private var averageComparisonSummary: AverageComparisonSummary {
+    private var recommendedComparisonSummary: RecommendedComparisonSummary {
         let chewDelta = model.chewCount - RecommendedBaseline.chewCount
         let speedDelta = model.chewsPerMinute - RecommendedBaseline.chewsPerMinute
         let minuteDelta = durationDeltaMinutes
@@ -463,7 +463,7 @@ struct ReportCardView: View {
         ].filter { $0 }.count
 
         if positiveSignals >= 3 {
-            return AverageComparisonSummary(
+            return RecommendedComparisonSummary(
                 badge: "권장보다 여유",
                 title: "권장 기준보다 천천히, 더 오래 씹은 식사예요",
                 detail: "저작 횟수와 씹기 비율이 권장 기준보다 높아요. 이번 리듬은 다음 식사에서도 재현해볼 만해요.",
@@ -474,7 +474,7 @@ struct ReportCardView: View {
         }
 
         if chewDelta < -80 || minuteDelta < -3 || speedDelta > 8 {
-            return AverageComparisonSummary(
+            return RecommendedComparisonSummary(
                 badge: "권장보다 빠름",
                 title: "권장 기준보다 짧고 빠른 식사였어요",
                 detail: "식사 시간이 권장 기준보다 짧거나 분당 저작 흐름이 빠른 편이에요. 신호 상태와 메뉴 차이도 함께 참고해요.",
@@ -485,7 +485,7 @@ struct ReportCardView: View {
         }
 
         if chewDelta >= 30 || focusDelta >= 5 {
-            return AverageComparisonSummary(
+            return RecommendedComparisonSummary(
                 badge: "저작 우세",
                 title: "권장 기준보다 씹는 흐름이 많은 식사예요",
                 detail: "총 저작 횟수나 씹기 비율이 권장 기준보다 높아요. 식사 시간이 크게 짧지 않았다면 좋은 흐름으로 볼 수 있어요.",
@@ -495,7 +495,7 @@ struct ReportCardView: View {
             )
         }
 
-        return AverageComparisonSummary(
+        return RecommendedComparisonSummary(
             badge: "권장 근처",
             title: "권장 기준과 비슷한 리듬의 식사예요",
             detail: "저작 횟수와 식사 시간이 권장 기준 범위 안에 있어요. 꾸준히 쌓이면 나만의 리듬 변화도 볼 수 있어요.",
@@ -520,7 +520,7 @@ private enum RecommendedBaseline {
     static let chewingFraction: Double = 0.6
 }
 
-private struct AverageComparisonSummary {
+private struct RecommendedComparisonSummary {
     let badge: String
     let title: String
     let detail: String
@@ -529,7 +529,7 @@ private struct AverageComparisonSummary {
     let imageName: String
 }
 
-private struct AverageDeltaBar: View {
+private struct RecommendedDeltaBar: View {
     let ratio: Double
     let color: Color
 

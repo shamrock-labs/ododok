@@ -7,18 +7,21 @@ enum KoDate {
     private static var cache: [String: DateFormatter] = [:]
     private static let lock = NSLock()
 
-    static func formatter(_ format: String) -> DateFormatter {
-        lock.lock(); defer { lock.unlock() }
-        if let cached = cache[format] { return cached }
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ko_KR")
-        f.dateFormat = format
-        cache[format] = f
-        return f
-    }
-
     /// `date`를 ko_KR + `format`으로 문자열화. 포맷터는 재사용된다.
+    /// `DateFormatter.string(from:)`은 스레드 불안전이라 캐시 조회·포매팅을 모두 락 안에서
+    /// 수행한다(전제를 호출자에 의존하지 않고 코드로 못박음). 호출은 거의 메인 스레드라 경합 미미.
     static func string(_ date: Date, _ format: String) -> String {
-        formatter(format).string(from: date)
+        lock.lock(); defer { lock.unlock() }
+        let formatter: DateFormatter
+        if let cached = cache[format] {
+            formatter = cached
+        } else {
+            let f = DateFormatter()
+            f.locale = Locale(identifier: "ko_KR")
+            f.dateFormat = format
+            cache[format] = f
+            formatter = f
+        }
+        return formatter.string(from: date)
     }
 }
