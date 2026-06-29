@@ -131,11 +131,12 @@ struct HomeView: View {
         }
     }
 
-    private var homeHeaderSubtitle: String {
+    private var homeHeaderSubtitle: String? {
         if state.isEating {
             return state.imuWaveformSource.usesRealMotion ? "식사 중 · AirPods LIVE" : "식사 중 · MVP 모드"
         }
-        return "오늘 \(state.todayRealChewCount.koLocale) / \(Constants.dailyGoal.koLocale)회"
+        // 오늘 저작 횟수는 화면 중앙 표시와 중복이라 헤더 서브타이틀에서 제외.
+        return nil
     }
 
     private var todayLabel: String {
@@ -274,31 +275,10 @@ struct HomeView: View {
     }
 
     private var imuWaveformCard: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("씹기 파형")
-                        .font(.appFont(.bold, size: 13))
-                        .foregroundStyle(Color.textPrimary)
-                    Text(state.imuWaveformStatusText)
-                        .font(.appFont(.semibold, size: 13))
-                        .foregroundStyle(state.isIMUWaveformLive ? Color.sage600 : Color.textTertiary)
-                }
-
-                Spacer()
-
-                Image(systemName: "waveform.path.ecg")
-                    .font(.appFont(.bold, size: 15))
-                    .foregroundStyle(state.isIMUWaveformLive ? Color.sage600 : Color.textTertiary)
-                    .frame(width: 32, height: 32)
-                    .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
-            }
-
-            IMUWaveformView(samples: state.imuWaveformSamples, isLive: state.isIMUWaveformLive)
-                .frame(height: 44)
-        }
-        .padding(12)
-        .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 16))
+        IMUWaveformView(samples: state.imuWaveformSamples, isLive: state.isIMUWaveformLive)
+            .frame(height: 64)
+            .padding(12)
+            .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 16))
     }
 
     // MARK: Meal toggle button
