@@ -14,6 +14,9 @@ final class CallInterruptionMonitor: NSObject {
     /// 활성 통화가 새로 감지될 때 호출. `setDelegate` 큐(`.main`)에서 불린다.
     var onCallStarted: (() -> Void)?
 
+    /// 활성 통화가 모두 종료될 때(active→ended) 호출. 통화 종료 후 "계속하기" 노출·알림 트리거용.
+    var onCallEnded: (() -> Void)?
+
     #if os(iOS) && !targetEnvironment(simulator)
     private let observer = CXCallObserver()
     private var hasActiveCall = false
@@ -41,6 +44,8 @@ extension CallInterruptionMonitor: CXCallObserverDelegate {
         hasActiveCall = active
         if active && !wasActive {
             onCallStarted?()
+        } else if !active && wasActive {
+            onCallEnded?()
         }
     }
 }

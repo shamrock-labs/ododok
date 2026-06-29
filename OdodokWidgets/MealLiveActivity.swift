@@ -11,23 +11,12 @@ struct MealLiveActivity: Widget {
 
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: MealActivityAttributes.self) { context in
-            // 잠금화면 기본 머티리얼은 다크 모드에서 텍스트 대비가 흔들릴 수 있다.
-            // 끼니 푸시 알림처럼 반투명 크림 카드 위에 고정 팔레트를 올려 양쪽 모드 모두 읽히게 한다.
+            // 시스템 기본 잠금화면 배경을 그대로 쓴다 — 라이트=흰/다크=검정으로 자동 적응(교통앱 등과 동일).
+            // 커스텀 불투명 배경(머티리얼·고정 크림)을 깔면 그 적응을 못 받아 한쪽 모드에서 글자가 묻힌다.
+            // 그래서 배경은 시스템에 맡기고, 글자·요소만 적응형 색(.primary/.secondary)으로 둔다.
             lockScreen(context)
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background {
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(Color(red: 1.0, green: 0.992, blue: 0.973).opacity(0.95))
-                }
-                .overlay {
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.62), lineWidth: 1)
-                }
-                .shadow(color: Color.black.opacity(0.14), radius: 18, x: 0, y: 8)
-                .padding(.horizontal, 2)
-                .activityBackgroundTint(.clear)
-                .activitySystemActionForegroundColor(Color.mealBrown)
         } dynamicIsland: { context in
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
@@ -50,10 +39,13 @@ struct MealLiveActivity: Widget {
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     if context.state.isPausedByCall {
-                        Link(destination: Self.resumeURL) {
-                            Text("계속")
-                                .font(.caption.weight(.bold))
-                                .foregroundStyle(Color.mealIslandAccent)
+                        // 통화 종료 후에만 계속 노출, 통화 중엔 비움
+                        if !context.state.callActive {
+                            Link(destination: Self.resumeURL) {
+                                Text("계속")
+                                    .font(.caption.weight(.bold))
+                                    .foregroundStyle(Color.mealIslandAccent)
+                            }
                         }
                     } else {
                         Text(context.attributes.startedAt, style: .timer)
@@ -65,17 +57,22 @@ struct MealLiveActivity: Widget {
                 }
                 DynamicIslandExpandedRegion(.bottom) {
                     HStack(spacing: 10) {
-                        Text(context.state.isPausedByCall
-                             ? "이어가거나 오늘 식사를 마무리할 수 있어요."
-                             : "천천히 맛있게 드세요.")
+                        Text(!context.state.isPausedByCall
+                             ? "천천히 맛있게 드세요."
+                             : (context.state.callActive
+                                ? "통화가 끝나면 이어집니다."
+                                : "이어가거나 오늘 식사를 마무리할 수 있어요."))
                             .font(.caption2)
                             .foregroundStyle(.white.opacity(0.72))
                             .lineLimit(2)
                             .frame(maxWidth: .infinity, alignment: .leading)
 
                         if context.state.isPausedByCall {
-                            dynamicIslandPill("그만", url: Self.stopURL, filled: false)
-                            dynamicIslandPill("계속", url: Self.resumeURL, filled: true)
+                            // 통화 중엔 버튼 없음, 종료 후 그만/계속
+                            if !context.state.callActive {
+                                dynamicIslandPill("그만", url: Self.stopURL, filled: false)
+                                dynamicIslandPill("계속", url: Self.resumeURL, filled: true)
+                            }
                         } else {
                             dynamicIslandPill("그만하기", url: Self.stopURL, filled: false)
                         }
@@ -106,6 +103,7 @@ struct MealLiveActivity: Widget {
     @ViewBuilder
     private func lockScreen(_ context: ActivityViewContext<MealActivityAttributes>) -> some View {
         let paused = context.state.isPausedByCall
+        let callActive = paused && context.state.callActive   // 통화 진행 중 — 버튼 없이 "멈춤"만
         HStack(alignment: .top, spacing: 12) {
             avatar
 
@@ -113,7 +111,7 @@ struct MealLiveActivity: Widget {
                 HStack(spacing: 6) {
                     Text("오도독")
                         .font(.footnote.weight(.bold))
-                        .foregroundStyle(Color.mealBrown)
+                        .foregroundStyle(.secondary)
                     Spacer(minLength: 4)
                     if paused {
                         Text("지금")
@@ -127,46 +125,48 @@ struct MealLiveActivity: Widget {
                     }
                 }
 
-                Text(paused ? "식사 측정이 중단되었어요!" : "식사 측정 중이에요")
+                Text(Self.lockTitle(paused: paused, callActive: callActive))
                     .font(.system(size: 19, weight: .heavy))
                     .foregroundStyle(Color.mealTitle)
 
-                Text(paused
-                     ? "방금 알림이나 전화가 왔나요? 식사 기록을 이어서 계속 진행할까요?"
-                     : "다람이가 꼭꼭 씹는 걸 지켜보고 있어요. 천천히 맛있게 드세요.")
+                Text(Self.lockBody(paused: paused, callActive: callActive))
                     .font(.footnote)
                     .foregroundStyle(Color.mealBody)
                     .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
 
-                HStack(spacing: 8) {
-                    Spacer(minLength: 0)
-                    if paused {
+                // 측정 중=그만하기 / 통화 중=버튼 없음 / 통화 종료=그만하기+계속하기
+                if !callActive {
+                    HStack(spacing: 8) {
+                        Spacer(minLength: 0)
                         pillButton("그만하기", url: Self.stopURL, filled: false)
-                        pillButton("계속하기", url: Self.resumeURL, filled: true)
-                    } else {
-                        pillButton("그만하기", url: Self.stopURL, filled: false)
+                        if paused {
+                            pillButton("계속하기", url: Self.resumeURL, filled: true)
+                        }
                     }
+                    .padding(.top, 4)
                 }
-                .padding(.top, 4)
             }
         }
     }
 
-    /// 잠금화면 카드용 알약 버튼. filled=브라운(주요 액션), 아니면 연회색 칩.
-    /// Live Activity의 Link는 탭 시 앱을 열어 딥링크(stop/resume)를 수행한다.
+    /// 잠금화면 제목 — 측정 중 / 통화 중 멈춤 / 통화 종료.
+    private static func lockTitle(paused: Bool, callActive: Bool) -> String {
+        if !paused { return "식사 측정 중이에요" }
+        return callActive ? "측정이 멈췄어요" : "식사 측정이 중단되었어요!"
+    }
+
+    /// 잠금화면 본문 — 통화 중엔 "끝나면 이어진다"만, 종료 후엔 이어가기 안내.
+    private static func lockBody(paused: Bool, callActive: Bool) -> String {
+        if !paused { return "다람이가 꼭꼭 씹는 걸 지켜보고 있어요. 천천히 맛있게 드세요." }
+        return callActive
+            ? "통화가 끝나면 이어서 측정할 수 있어요."
+            : "방금 알림이나 전화가 왔나요? 식사 기록을 이어서 계속 진행할까요?"
+    }
+
+    /// 잠금화면 카드용 알약 버튼(PillButton 래퍼). 탭 시 앱을 열어 딥링크(stop/resume) 수행.
     private func pillButton(_ title: String, url: URL, filled: Bool) -> some View {
-        Link(destination: url) {
-            Text(title)
-                .font(.subheadline.weight(.bold))
-                .foregroundStyle(filled ? Color.white : Color.mealBody)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 9)
-                .background(filled ? Color.mealBrown : Color.mealChip.opacity(0.78), in: Capsule())
-                .overlay {
-                    Capsule().stroke(Color.white.opacity(filled ? 0.16 : 0.34), lineWidth: 1)
-                }
-        }
+        PillButton(title: title, url: url, filled: filled)
     }
 
     private func dynamicIslandPill(_ title: String, url: URL, filled: Bool) -> some View {
@@ -181,26 +181,50 @@ struct MealLiveActivity: Widget {
     }
 
     private var avatar: some View {
+        // 배경 박스·테두리 없이 다람이(앱 아이콘 마스코트)만 — 라이트/다크 카드 공통으로 자연스럽게 얹힌다.
         Image("DaramAvatar")
             .resizable()
             .scaledToFit()
-            .padding(6)
             .frame(width: 48, height: 48)
-            .background(Color.mealAvatarBg.opacity(0.86), in: Circle())
-            .overlay {
-                Circle().stroke(Color.white.opacity(0.42), lineWidth: 1)
-            }
+    }
+}
+
+/// 잠금화면 알약 버튼. colorScheme을 직접 읽어 비채움(그만하기) 버튼 색을 모드별로 다르게 둔다 —
+/// 라이트=따뜻한 브라운(연한 채움), 다크=회색 시맨틱(다크에선 회색이 더 자연스러움). 테두리 없음.
+/// filled(계속하기)는 양쪽 모두 솔리드 브라운 + 흰 글자.
+private struct PillButton: View {
+    @Environment(\.colorScheme) private var scheme
+    let title: String
+    let url: URL
+    let filled: Bool
+
+    var body: some View {
+        Link(destination: url) {
+            Text(title)
+                .font(.subheadline.weight(.bold))
+                .foregroundStyle(textColor)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 9)
+                .background(fill, in: Capsule())
+        }
+    }
+
+    private var textColor: Color {
+        if filled { return .white }
+        return scheme == .dark ? Color.mealBody : Color.mealBrown
+    }
+    private var fill: Color {
+        if filled { return Color.mealBrown }
+        return scheme == .dark ? Color.primary.opacity(0.15) : Color.mealBrown.opacity(0.14)
     }
 }
 
 private extension Color {
-    /// 알림 카드 팔레트. 끼니 알림 커스텀 카드(NotificationViewController)의 ink/acorn 값과 정렬한다.
-    /// 잠금화면 Live Activity는 외관 자동적응이 불안정해, 고정 라이트 카드 위 고정 어두운 글자로 양쪽 모드 모두 또렷.
-    static let mealAvatarBg = Color(red: 251/255, green: 243/255, blue: 232/255)  // acorn50
-    static let mealTitle = Color(red: 45/255, green: 36/255, blue: 24/255)        // ink800
-    static let mealBody = Color(red: 92/255, green: 79/255, blue: 62/255)         // ink600
-    static let mealFaint = Color(red: 140/255, green: 123/255, blue: 102/255)     // ink400
-    static let mealChip = Color(red: 242/255, green: 237/255, blue: 229/255)      // ink100
-    static let mealBrown = Color(red: 156/255, green: 110/255, blue: 71/255)      // acorn600
-    static let mealIslandAccent = Color(red: 214/255, green: 171/255, blue: 126/255)
+    /// 잠금화면 카드 팔레트. 배경이 시스템 기본(라이트=흰/다크=검정 자동 적응)이라, 글자·칩도 시스템
+    /// 시맨틱 색을 써서 같이 적응시킨다(라이트=어두운 글자 / 다크=밝은 글자). 채워진 버튼·아일랜드만 고정 액센트.
+    static let mealTitle = Color.primary
+    static let mealBody = Color.primary.opacity(0.80)
+    static let mealFaint = Color.secondary
+    static let mealBrown = Color(red: 156/255, green: 110/255, blue: 71/255)      // acorn600 — 버튼 액센트(솔리드/아웃라인, 양쪽 OK)
+    static let mealIslandAccent = Color(red: 214/255, green: 171/255, blue: 126/255)  // 다이내믹 아일랜드(항상 다크)
 }

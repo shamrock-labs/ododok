@@ -11,7 +11,7 @@ struct TrackingView: View {
 
     var body: some View {
         VStack(spacing: 14) {
-            // 라이브 IMU 진단(AirPods 상태 + 샘플 카운터)은 식사 중에만 노출.
+            // 라이브 센서 진단(AirPods 상태 + 샘플 카운터)은 식사 중에만 노출.
             if isEating {
                 airpodsCard
                 imuDebugPanel
@@ -54,7 +54,7 @@ struct TrackingView: View {
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("AirPods IMU")
+                Text("AirPods 센서")
                     .font(.appFont(.semibold, size: 13))
                     .foregroundStyle(Color.textSecondary)
                 Text(state.imuWaveformStatusText)
@@ -115,9 +115,9 @@ struct TrackingView: View {
     private var imuDebugAccessibilityLabel: String {
         let phase = state.isInForeground ? "foreground" : "background"
         if state.lastIMUSampleAt != nil {
-            return "IMU 진단: \(phase), 샘플 \(state.imuSampleCount)개 수신"
+            return "센서 진단: \(phase), 샘플 \(state.imuSampleCount)개 수신"
         }
-        return "IMU 진단: \(phase), 샘플 수신 안 됨"
+        return "센서 진단: \(phase), 샘플 수신 안 됨"
     }
 
     // MARK: Feedback popup

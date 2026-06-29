@@ -1,6 +1,9 @@
 import Foundation
 import Observation
 import CoreMotion
+#if canImport(UIKit)
+import UIKit
+#endif
 
 enum IMUWaveformSource: Equatable {
     case idle
@@ -20,9 +23,9 @@ enum IMUWaveformSource: Equatable {
         case .simulator:
             "시뮬레이터 · 데모 파형"
         case .connecting:
-            "AirPods IMU 연결 중"
+            "AirPods 연결 중"
         case .live:
-            "AirPods IMU 수신 중"
+            "AirPods 신호 수신 중"
         case .demo:
             "AirPods 없음 · 데모 파형"
         case .unavailable:
@@ -32,7 +35,7 @@ enum IMUWaveformSource: Equatable {
         case .restricted:
             "모션 사용 제한됨 · 데모 파형"
         case .error:
-            "IMU 수신 오류 · 데모 파형"
+            "센서 수신 오류 · 데모 파형"
         }
     }
 
@@ -82,6 +85,19 @@ final class AppState {
         }
     }
 
+    /// 로그인에 사용한 소셜 provider 식별자("apple"/"kakao"/"google"). 설정 화면의
+    /// "로그인 계정" 표시용. `completeLogin(method:)`에서 set, 로그아웃/세션 클리어 시 nil.
+    /// didSet에서 UserDefaults 캐시 갱신 — cold-start에 즉시 복원한다.
+    var loginMethod: String? {
+        didSet {
+            if let method = loginMethod {
+                UserDefaults.standard.set(method, forKey: Self.loginMethodKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.loginMethodKey)
+            }
+        }
+    }
+
     var friendInviteCode: String?
     var friendInviteDeepLink: String?
     var friendRankings: [FriendRankingDTO] = []
@@ -122,6 +138,7 @@ final class AppState {
     }
 
     private static let displayNameKey = "ChewChewIOS.AppState.displayName"
+    private static let loginMethodKey = "ChewChewIOS.AppState.loginMethod"
     private static let onboardingCompleteKey = "ChewChewIOS.AppState.hasCompletedOnboarding"
     private static let pendingInviteCodeKey = "ChewChewIOS.AppState.pendingInviteCode"
 
@@ -290,6 +307,8 @@ final class AppState {
         // displayName은 game state(`PersistedSnapshot`)과 다른 별도 캐시 키 — cold-start
         // 시 UserDefaults에서 즉시 read해 HomeView가 빈 이름으로 깜빡이지 않도록.
         displayName = UserDefaults.standard.string(forKey: Self.displayNameKey)
+        // 로그인 provider도 같은 캐시 키 방식으로 복원 — 설정 화면이 즉시 표시할 수 있게.
+        loginMethod = UserDefaults.standard.string(forKey: Self.loginMethodKey)
         // 온보딩 완료 플래그 로드. 신규 키라, 이미 이름이 있는 기존 사용자(앱 업데이트로 이 키가
         // 아직 없는 상태)는 사용법 튜토리얼을 본 적 없어도 다시 띄우지 않도록 true로 마이그레이션.
         // init 내 대입은 didSet을 발동시키지 않으므로 UserDefaults write는 명시적으로 한다.
@@ -361,14 +380,35 @@ final class AppState {
         callMonitor.onCallStarted = { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self, self.isEating else { return }
+                // keep-alive 오디오 세션이 .mixWithOthers라 통화는 우리 세션을 인터럽트하지 않는다
+                // (onInterrupt 안 불림) → 측정 정지·카드 갱신을 통화 감지(CXCallObserver) 경로에서 직접 한다.
+                // beginBackgroundTask로 실행시간을 확보해 "측정 정지 → 카드(통화 중 멈춤)"가 suspend 전에 끝나게 한다.
+                // 통화 중엔 버튼·알림을 띄우지 않고(callActive=true), 종료 시점(onCallEnded)에 계속하기 + 알림을 보여준다.
+                #if canImport(UIKit)
+                let bgTask = UIApplication.shared.beginBackgroundTask(withName: "MealCallPause")
+                defer {
+                    if bgTask != .invalid { UIApplication.shared.endBackgroundTask(bgTask) }
+                }
+                #endif
                 self.interruptionWasCall = true
-                // keep-alive 오디오 세션이 .mixWithOthers라 통화엔 인터럽트가 안 와서 onInterrupt가
-                // 안 불린다 → 측정이 안 멈춘다. 통화 감지 시 여기서 직접 IMU 루프를 멈추고(측정 중단),
-                // 중단 시각을 기록해 "계속하기" 시 통화 구간이 갭으로 빠지게 한다.
                 self.backgroundKeepAlive.markInterruptionBegan()
-                self.stopHeadphoneMotionLoop()
-                self.mealActivity.setPaused(true)
-                await MealNotificationService.scheduleInterruptionPrompt()
+                self.stopHeadphoneMotionLoop()                              // 측정 정지
+                await self.mealActivity.setPaused(true, callActive: true)   // 통화 중 → 멈춤(버튼 없음)
+            }
+        }
+        // 통화 종료 → 카드에 계속하기/그만하기 노출 + "이어서 진행할까요?" 알림.
+        // 종료 시점에 앱이 깨어나야(오디오 .ended 또는 CXCallObserver 콜백) 갱신되므로 여기서도 실행시간을 확보한다.
+        callMonitor.onCallEnded = { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self, self.isEating, self.interruptionWasCall else { return }
+                #if canImport(UIKit)
+                let bgTask = UIApplication.shared.beginBackgroundTask(withName: "MealCallEnded")
+                defer {
+                    if bgTask != .invalid { UIApplication.shared.endBackgroundTask(bgTask) }
+                }
+                #endif
+                await self.mealActivity.setPaused(true, callActive: false)  // 통화 끝 → 계속/그만 노출
+                await MealNotificationService.scheduleInterruptionPrompt()  // "이어서 진행할까요?" 알림
             }
         }
         callMonitor.start()
@@ -397,6 +437,7 @@ final class AppState {
         backgroundKeepAlive.onInterrupt = nil
         backgroundKeepAlive.stop()
         callMonitor.onCallStarted = nil
+        callMonitor.onCallEnded = nil
         callMonitor.stop()
         interruptionWasCall = false
         MealNotificationService.cancelInterruptionPrompt()
@@ -441,6 +482,7 @@ final class AppState {
         backgroundKeepAlive.onInterrupt = nil
         backgroundKeepAlive.stop()
         callMonitor.onCallStarted = nil
+        callMonitor.onCallEnded = nil
         callMonitor.stop()
         interruptionWasCall = false
         MealNotificationService.cancelInterruptionPrompt()
@@ -476,7 +518,7 @@ final class AppState {
         #endif
         interruptionWasCall = false
         MealNotificationService.cancelInterruptionPrompt()
-        mealActivity.setPaused(false)
+        Task { await self.mealActivity.setPaused(false) }
         backgroundKeepAlive.resume()
         _ = startHeadphoneMotionLoop()
     }
@@ -658,6 +700,7 @@ final class AppState {
         todaySessions = []
         lastCompletedSession = nil
         displayName = nil
+        loginMethod = nil
         didLoadProfile = false
         // 로컬 스냅샷 + 원격 데이터 삭제 (clearPersistedSnapshot이 remoteStore.deleteUserData 포함)
         clearPersistedSnapshot()
@@ -678,6 +721,7 @@ final class AppState {
         todaySessions = []
         lastCompletedSession = nil
         displayName = nil
+        loginMethod = nil
         hasCompletedOnboarding = false
         freezeInventory = 0
         TokenManager.clear()
@@ -697,6 +741,8 @@ final class AppState {
         // clearLocalSessionCache가 hasCompletedOnboarding을 false로 리셋하므로 그 뒤에 세팅한다.
         // 서버 응답이 완료라고 하면 즉시 온보딩 sheet을 스킵 — 재로그인 시 재노출 회귀 차단.
         if onboardingCompleted { hasCompletedOnboarding = true }
+        // 로그인 provider 저장 — clearLocalSessionCache가 nil로 비운 뒤라 여기서 세팅한다.
+        loginMethod = method
         isLoggedIn = true
         let deviceIdForLogin = DeviceIdentity.shared
         analytics.setUserId(deviceIdForLogin)
@@ -1068,6 +1114,7 @@ final class AppState {
         sessionUploadErrorMessage = nil
         pendingUpload = nil
         displayName = nil
+        loginMethod = nil
         didLoadProfile = false
         hasCompletedOnboarding = false
         serverHome = nil
@@ -1540,7 +1587,8 @@ final class AppState {
         sessionUploadErrorMessage = nil
     }
 
-    private static let appVersion: String? = {
+    /// 표시용 앱 버전(`CFBundleShortVersionString`). 설정 화면이 "앱 버전" row에 사용.
+    static let appVersion: String? = {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
     }()
 }
