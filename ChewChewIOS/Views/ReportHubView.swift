@@ -100,7 +100,7 @@ struct ReportHubView: View {
                 Text(monthRangeLabel)
                     .font(.appFont(.heavy, size: 15))
                     .foregroundStyle(Color.textPrimary)
-                Text("일별 저작 · 회")
+                Text("한 끼 평균 저작 · 회")
                     .font(.appFont(.bold, size: 11))
                     .foregroundStyle(Color.textTertiary)
                 Spacer(minLength: 0)
@@ -320,10 +320,10 @@ struct ReportHubView: View {
                 detail: "가장 많이 씹은 끼를 짚어줘요."
             )
             dailyInsightRow(
-                icon: "sum",
-                title: "하루 합계",
-                value: "약 \(selectedDay.chewCount.koLocale)회 · \(selectedDay.minutes)분",
-                detail: "추정 저작 횟수와 식사 시간 합계예요."
+                icon: "fork.knife",
+                title: "한 끼 평균",
+                value: "약 \(selectedDay.avgChewCount.koLocale)회 · \(selectedDay.minutes)분",
+                detail: "한 끼 기준 평균 저작 횟수와 식사 시간이에요."
             )
         }
         .padding(14)
@@ -533,7 +533,7 @@ struct ReportHubView: View {
             // 데이터 있는 날 수로만 나눈다(7로 고정 나눗셈 + max(1,…) 가짜 클램프 제거).
             // 기록 없는 주는 진짜 0으로 둔다.
             let daysWithData = chunk.filter { $0.mealCount > 0 }.count
-            let chews = daysWithData == 0 ? 0 : chunk.map(\.chewCount).reduce(0, +) / daysWithData
+            let chews = daysWithData == 0 ? 0 : chunk.map(\.avgChewCount).reduce(0, +) / daysWithData
             let minutes = daysWithData == 0 ? 0 : chunk.map(\.minutes).reduce(0, +) / daysWithData
             let meals = chunk.map(\.mealCount).reduce(0, +)
             return WeeklyMetric(
@@ -646,7 +646,7 @@ struct ReportHubView: View {
         guard let previous = previousReportDay, previous.mealCount > 0 else {
             return "어제 기록 없음"
         }
-        let diff = selectedDay.chewCount - previous.chewCount
+        let diff = selectedDay.avgChewCount - previous.avgChewCount
         if abs(diff) < 20 { return "어제와 비슷해요" }
         return diff > 0
             ? "어제보다 약 \(diff.koLocale)회 많아요"
@@ -782,32 +782,38 @@ struct ReportHubView: View {
 
 private struct ReportDay: Identifiable {
     let date: Date
+    /// 하루 저작 횟수 합계(원자료). 화면 표시는 한 끼 평균(avgChewCount)을 쓴다.
     let chewCount: Int
-    /// 하루 세션 시간의 "세션당 평균"(분). 합계가 아니라 평균이라 끼니 수가 달라도
-    /// "한 끼에 보통 몇 분 씹었나"로 읽힌다.
+    /// 하루 세션 시간의 "세션당 평균"(분). "한 끼에 보통 몇 분 씹었나".
     let minutes: Int
+    /// 하루 저작 횟수의 "세션당 평균"(회). "한 끼에 보통 몇 번 씹었나".
+    let avgChewCount: Int
     let mealCount: Int
 
     var id: Date { date }
 
     init(date: Date, sessions: [ChewingSessionDTO]) {
         self.date = date
-        chewCount = sessions.reduce(0) { $0 + ($1.estimatedTotalChews ?? 0) }
+        let count = sessions.count
+        let totalChews = sessions.reduce(0) { $0 + ($1.estimatedTotalChews ?? 0) }
         let totalSec = sessions.reduce(0.0) { $0 + $1.durationSec }
-        minutes = sessions.isEmpty ? 0 : max(1, Int((totalSec / Double(sessions.count) / 60).rounded()))
+        chewCount = totalChews
+        avgChewCount = count == 0 ? 0 : Int((Double(totalChews) / Double(count)).rounded())
+        minutes = count == 0 ? 0 : max(1, Int((totalSec / Double(count) / 60).rounded()))
         let slots = Set(sessions.map { DayMealSlot(hour: mealCalendarCalendar.component(.hour, from: $0.startedAt)) })
         mealCount = min(3, slots.count)
     }
 
-    private init(date: Date, chewCount: Int, minutes: Int, mealCount: Int) {
+    private init(date: Date, chewCount: Int, minutes: Int, avgChewCount: Int, mealCount: Int) {
         self.date = date
         self.chewCount = chewCount
         self.minutes = minutes
+        self.avgChewCount = avgChewCount
         self.mealCount = mealCount
     }
 
     static func empty(date: Date) -> ReportDay {
-        ReportDay(date: date, chewCount: 0, minutes: 0, mealCount: 0)
+        ReportDay(date: date, chewCount: 0, minutes: 0, avgChewCount: 0, mealCount: 0)
     }
 
     var weekdayLabel: String {
@@ -828,7 +834,7 @@ private struct ReportDay: Identifiable {
     }
 
     var summaryLabel: String {
-        "\(chewCount.koLocale)회 · 씹은 시간 \(minutes)분 · \(mealCount)/3끼"
+        "\(avgChewCount.koLocale)회 · 씹은 시간 \(minutes)분 · \(mealCount)/3끼"
     }
 }
 
@@ -883,7 +889,7 @@ private struct ChartScale {
     let height: CGFloat
 
     init(days: [ReportDay], topPad: CGFloat = 18, bottomPad: CGFloat = 16, height: CGFloat = 164) {
-        self.maxValue = max(days.map(\.chewCount).max() ?? 1, 1)
+        self.maxValue = max(days.map(\.avgChewCount).max() ?? 1, 1)
         self.topPad = topPad
         self.bottomPad = bottomPad
         self.height = height
@@ -911,7 +917,7 @@ private struct ChartScale {
     }
 }
 
-/// 일별 저작 횟수 단일 시리즈 스파크라인 + 가로 그리드라인. 스케일을 `ChartScale`로 주입받아
+/// 한 끼 평균 저작 횟수 단일 시리즈 스파크라인 + 가로 그리드라인. 스케일을 `ChartScale`로 주입받아
 /// 좌측 고정 Y축 거터(`YAxisColumn`)와 눈금이 정확히 정렬된다. 탭하면 가장 가까운 날을 선택한다.
 private struct ContinuousTrendChart: View {
     let days: [ReportDay]
@@ -922,7 +928,7 @@ private struct ContinuousTrendChart: View {
 
     var body: some View {
         Canvas { context, size in
-            let values = days.map(\.chewCount)
+            let values = days.map(\.avgChewCount)
             func y(_ value: Int) -> CGFloat { scale.y(value) }
             func x(_ index: Int) -> CGFloat { dayWidth / 2 + CGFloat(index) * dayWidth }
 
