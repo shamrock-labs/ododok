@@ -10,6 +10,7 @@ struct ReportHubView: View {
     @State private var showDailyReport = false
     @State private var showCalendar = false
     @State private var calendarMonth: Date = mealCalendarCalendar.startOfDay(for: Date())
+    @State private var hasTrackedReportTabView = false
 
     private let dayWidth: CGFloat = 52
     /// 타임라인 가로 스트립이 한 번에 보여주는 이동 윈도우 길이.
@@ -24,7 +25,10 @@ struct ReportHubView: View {
             // 다람이 코치 카드는 UI에서 임시 제외(로직 유지, 추후 수정 예정).
             // weeklyCoachCard
         }
-        .task { await reloadRecentSessions() }
+        .task {
+            await reloadRecentSessions()
+            trackReportTabViewIfNeeded()
+        }
         .onChange(of: pivotDate) { _, _ in
             Task { await loadWindow() }
         }
@@ -49,7 +53,7 @@ struct ReportHubView: View {
                 loadMonth: { await loadMonth($0) },
                 onPick: { date in
                     pivotDate = date
-                    selectedDate = date
+                    selectDate(date, source: "calendar")
                     showCalendar = false
                 }
             )
@@ -143,7 +147,7 @@ struct ReportHubView: View {
                                 selectedDate: selectedDate,
                                 dayWidth: dayWidth,
                                 scale: scale,
-                                onSelectDate: { selectedDate = $0 }
+                                onSelectDate: { selectDate($0, source: "trend_chart") }
                             )
                             .frame(width: dayWidth * CGFloat(timelineDays.count), height: scale.height)
                         }
@@ -195,7 +199,7 @@ struct ReportHubView: View {
     private func dateRingCell(_ day: ReportDay) -> some View {
         let selected = mealCalendarCalendar.isDate(day.date, inSameDayAs: selectedDate)
         return Button {
-            selectedDate = day.date
+            selectDate(day.date, source: "date_ring")
         } label: {
             VStack(spacing: 5) {
                 Text(day.weekdayLabel)
@@ -237,6 +241,7 @@ struct ReportHubView: View {
     private func sessionRow(_ session: ChewingSessionDTO) -> some View {
         let slot = DayMealSlot(hour: mealCalendarCalendar.component(.hour, from: session.startedAt))
         return Button {
+            trackMealReportOpened(session, source: "report_hub")
             detailSession = session
         } label: {
             HStack(spacing: 12) {
@@ -741,8 +746,58 @@ struct ReportHubView: View {
     }
 
     private func openCalendar() {
+        state.analytics.track(.reportCalendarOpened(
+            selectedDate: analyticsDateString(selectedDate),
+            daysFromToday: daysFromToday(selectedDate),
+            mealCount: selectedDay.mealCount
+        ))
         calendarMonth = mealCalendarCalendar.startOfDay(for: selectedDate)
         showCalendar = true
+    }
+
+    private func selectDate(_ date: Date, source: String) {
+        let normalizedDate = mealCalendarCalendar.startOfDay(for: date)
+        selectedDate = normalizedDate
+        state.analytics.track(.reportDateSelected(
+            source: source,
+            selectedDate: analyticsDateString(normalizedDate),
+            daysFromToday: daysFromToday(normalizedDate),
+            mealCount: mealCount(for: normalizedDate)
+        ))
+    }
+
+    private func trackReportTabViewIfNeeded() {
+        guard !hasTrackedReportTabView else { return }
+        hasTrackedReportTabView = true
+        state.analytics.track(.reportTabViewed(
+            selectedDate: analyticsDateString(selectedDate),
+            daysFromToday: daysFromToday(selectedDate),
+            mealCount: selectedDay.mealCount
+        ))
+    }
+
+    private func trackMealReportOpened(_ session: ChewingSessionDTO, source: String) {
+        let date = mealCalendarCalendar.startOfDay(for: session.startedAt)
+        let slot = DayMealSlot(hour: mealCalendarCalendar.component(.hour, from: session.startedAt))
+        let score = ReportCardModel.from(session)?.score
+        state.analytics.track(.mealReportOpened(
+            source: source,
+            selectedDate: analyticsDateString(date),
+            daysFromToday: daysFromToday(date),
+            mealSlot: slot.analyticsValue,
+            score: score,
+            estimatedTotalChews: session.estimatedTotalChews,
+            durationSec: Int(session.durationSec.rounded())
+        ))
+    }
+
+    private func analyticsDateString(_ date: Date) -> String {
+        KoDate.string(date, "yyyy-MM-dd")
+    }
+
+    private func daysFromToday(_ date: Date) -> Int {
+        let normalizedDate = mealCalendarCalendar.startOfDay(for: date)
+        return mealCalendarCalendar.dateComponents([.day], from: today, to: normalizedDate).day ?? 0
     }
 
     private var monthRangeLabel: String {

@@ -27,11 +27,7 @@ enum SentryService {
         SentrySDK.start { options in
             options.dsn = dsn
 
-            #if DEBUG
-            options.environment = "debug"
-            #else
-            options.environment = "production"
-            #endif
+            options.environment = AppRuntimeEnvironment.name
 
             // 릴리스 식별 — 이슈를 버전별로 묶고 regression을 추적한다. 형식: ododok@<버전>+<빌드>.
             if let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,

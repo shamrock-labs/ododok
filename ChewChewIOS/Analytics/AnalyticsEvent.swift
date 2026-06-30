@@ -92,4 +92,79 @@ extension AnalyticsEvent {
     static func acornPackPurchased(packId: String, price: Int) -> AnalyticsEvent {
         .init("acorn_pack_purchased", ["pack_id": packId, "price": price])
     }
+
+    /// 기록/리포트 탭 진입. 리포트 허브 퍼널의 시작점.
+    static func reportTabViewed(selectedDate: String, daysFromToday: Int, mealCount: Int) -> AnalyticsEvent {
+        .init("report_tab_viewed", [
+            "selected_date": selectedDate,
+            "days_from_today": daysFromToday,
+            "meal_count": mealCount
+        ])
+    }
+
+    /// 리포트 탭에서 날짜를 선택함. source: date_ring | trend_chart | calendar.
+    static func reportDateSelected(
+        source: String,
+        selectedDate: String,
+        daysFromToday: Int,
+        mealCount: Int
+    ) -> AnalyticsEvent {
+        .init("report_date_selected", [
+            "source": source,
+            "selected_date": selectedDate,
+            "days_from_today": daysFromToday,
+            "meal_count": mealCount
+        ])
+    }
+
+    /// 날짜 선택 달력 sheet 열기.
+    static func reportCalendarOpened(selectedDate: String, daysFromToday: Int, mealCount: Int) -> AnalyticsEvent {
+        .init("report_calendar_opened", [
+            "selected_date": selectedDate,
+            "days_from_today": daysFromToday,
+            "meal_count": mealCount
+        ])
+    }
+
+    /// 하루 종합 리포트 열기.
+    static func dailyReportOpened(
+        selectedDate: String,
+        daysFromToday: Int,
+        mealCount: Int,
+        sessionCount: Int,
+        dayScore: Int?,
+        grade: String?
+    ) -> AnalyticsEvent {
+        var properties: [String: Any] = [
+            "selected_date": selectedDate,
+            "days_from_today": daysFromToday,
+            "meal_count": mealCount,
+            "session_count": sessionCount
+        ]
+        if let dayScore { properties["day_score"] = dayScore }
+        if let grade { properties["grade"] = grade }
+        return .init("daily_report_opened", properties)
+    }
+
+    /// 단건 식사 리포트 열기. source: report_hub | daily_report.
+    static func mealReportOpened(
+        source: String,
+        selectedDate: String,
+        daysFromToday: Int,
+        mealSlot: String,
+        score: Int?,
+        estimatedTotalChews: Int?,
+        durationSec: Int
+    ) -> AnalyticsEvent {
+        var properties: [String: Any] = [
+            "source": source,
+            "selected_date": selectedDate,
+            "days_from_today": daysFromToday,
+            "meal_slot": mealSlot,
+            "duration_sec": durationSec
+        ]
+        if let score { properties["score"] = score }
+        if let estimatedTotalChews { properties["estimated_total_chews"] = estimatedTotalChews }
+        return .init("meal_report_opened", properties)
+    }
 }

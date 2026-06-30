@@ -324,6 +324,7 @@ struct DailyReportView: View {
     let sessions: [ChewingSessionDTO]
     let previousSessions: [ChewingSessionDTO]
 
+    @Environment(AppState.self) private var state
     @Environment(\.dismiss) private var dismiss
 
     private var model: DailyReportModel? {
@@ -361,6 +362,9 @@ struct DailyReportView: View {
                 if let dto = sessions.first(where: { $0.id == id }) {
                     SessionReportDetailView(dto: dto)
                 }
+            }
+            .task {
+                trackDailyReportOpened()
             }
         }
     }
@@ -530,6 +534,9 @@ struct DailyReportView: View {
                         note: "가장 안정적으로 씹은 끼니예요."
                     )
                 }
+                .simultaneousGesture(TapGesture().onEnded {
+                    trackMealReportOpened(best.representative)
+                })
                 .buttonStyle(.plain)
             }
             if let worst = model.worstMeal {
@@ -541,6 +548,9 @@ struct DailyReportView: View {
                         note: "다음엔 이 끼니부터 천천히 시작해봐요."
                     )
                 }
+                .simultaneousGesture(TapGesture().onEnded {
+                    trackMealReportOpened(worst.representative)
+                })
                 .buttonStyle(.plain)
             }
         }
@@ -781,5 +791,51 @@ struct DailyReportView: View {
         if mins == 0 { return "\(secs)초" }
         if secs == 0 { return "\(mins)분" }
         return "\(mins)분 \(secs)초"
+    }
+
+    private func trackDailyReportOpened() {
+        state.analytics.track(.dailyReportOpened(
+            selectedDate: analyticsDateString(date),
+            daysFromToday: daysFromToday(date),
+            mealCount: model?.mealCount ?? 0,
+            sessionCount: model?.sessionCount ?? sessions.count,
+            dayScore: model?.dayScore,
+            grade: model?.grade.analyticsValue
+        ))
+    }
+
+    private func trackMealReportOpened(_ session: ChewingSessionDTO) {
+        let sessionDate = mealCalendarCalendar.startOfDay(for: session.startedAt)
+        let slot = DayMealSlot(hour: mealCalendarCalendar.component(.hour, from: session.startedAt))
+        let score = ReportCardModel.from(session)?.score
+        state.analytics.track(.mealReportOpened(
+            source: "daily_report",
+            selectedDate: analyticsDateString(sessionDate),
+            daysFromToday: daysFromToday(sessionDate),
+            mealSlot: slot.analyticsValue,
+            score: score,
+            estimatedTotalChews: session.estimatedTotalChews,
+            durationSec: Int(session.durationSec.rounded())
+        ))
+    }
+
+    private func analyticsDateString(_ date: Date) -> String {
+        KoDate.string(date, "yyyy-MM-dd")
+    }
+
+    private func daysFromToday(_ date: Date) -> Int {
+        let today = mealCalendarCalendar.startOfDay(for: Date())
+        let normalizedDate = mealCalendarCalendar.startOfDay(for: date)
+        return mealCalendarCalendar.dateComponents([.day], from: today, to: normalizedDate).day ?? 0
+    }
+}
+
+private extension ReportCardModel.Grade {
+    var analyticsValue: String {
+        switch self {
+        case .good: "good"
+        case .soso: "soso"
+        case .bad: "bad"
+        }
     }
 }

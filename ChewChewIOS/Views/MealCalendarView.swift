@@ -545,6 +545,14 @@ enum DayMealSlot: CaseIterable, Hashable {
         case .lateNight: "야식"
         }
     }
+    var analyticsValue: String {
+        switch self {
+        case .morning:   "morning"
+        case .lunch:     "lunch"
+        case .dinner:    "dinner"
+        case .lateNight: "late_night"
+        }
+    }
     var openIcon: OpenIcon {
         switch self {
         case .morning:   .sunrise
