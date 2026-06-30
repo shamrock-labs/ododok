@@ -6,7 +6,8 @@ final class ReportCardModelTests: XCTestCase {
     private func makeDTO(
         chews: Int? = 300,
         fraction: Double? = 0.7,
-        durationSec: Double = 600
+        durationSec: Double = 600,
+        chewingTimeline: String? = nil
     ) -> ChewingSessionDTO {
         ChewingSessionDTO(
             id: UUID(),
@@ -23,7 +24,8 @@ final class ReportCardModelTests: XCTestCase {
             restSeconds: 168,
             chewingFraction: fraction,
             estimatedTotalChews: chews,
-            modelVersion: "test"
+            modelVersion: "test",
+            chewingTimeline: chewingTimeline
         )
     }
 
@@ -45,6 +47,17 @@ final class ReportCardModelTests: XCTestCase {
             XCTAssertGreaterThanOrEqual(model.score, 0)
             XCTAssertLessThanOrEqual(model.score, 100)
         }
+    }
+
+    func testFrom_chewingTimeline_mapsToCompressedSegments() {
+        let dto = makeDTO(chewingTimeline: "111001")
+        let model = ReportCardModel.from(dto)
+
+        XCTAssertEqual(model?.chewRestSegments, [
+            ReportCardModel.ChewRestSegment(isChewing: true, durationSec: 3),
+            ReportCardModel.ChewRestSegment(isChewing: false, durationSec: 2),
+            ReportCardModel.ChewRestSegment(isChewing: true, durationSec: 1),
+        ])
     }
 
     func testFrom_score_in_0to100() {
@@ -166,5 +179,55 @@ final class ReportCardModelTests: XCTestCase {
 
     func testScoreCountUp_clamps_below0() {
         XCTAssertEqual(scoreCountUpValue(progress: -0.5, target: 100), 0)
+    }
+
+    // MARK: - ChewRestSegment.dominantRuns
+
+    private func mkSeg(_ chewing: Bool, _ durationSec: Double) -> ReportCardModel.ChewRestSegment {
+        ReportCardModel.ChewRestSegment(isChewing: chewing, durationSec: durationSec)
+    }
+
+    func testDominantRuns_emptyOrZeroColumns_returnsEmpty() {
+        XCTAssertTrue(ReportCardModel.ChewRestSegment.dominantRuns([], total: 0, columnCount: 10).isEmpty)
+        XCTAssertTrue(ReportCardModel.ChewRestSegment.dominantRuns([mkSeg(true, 5)], total: 5, columnCount: 0).isEmpty)
+    }
+
+    func testDominantRuns_allChewing_singleFullRun() {
+        let runs = ReportCardModel.ChewRestSegment.dominantRuns([mkSeg(true, 10)], total: 10, columnCount: 4)
+        XCTAssertEqual(runs.count, 1)
+        XCTAssertEqual(runs.first?.isChewing, true)
+        XCTAssertEqual(runs.first?.columns, 4)
+    }
+
+    func testDominantRuns_majorityVotePerColumn() {
+        // 씹기 1초 + 쉬기 3초, 2칸(칸당 2초): 0번 칸 타이(>=)→씹기, 1번 칸 전부 쉬기
+        let runs = ReportCardModel.ChewRestSegment.dominantRuns([mkSeg(true, 1), mkSeg(false, 3)], total: 4, columnCount: 2)
+        XCTAssertEqual(runs.count, 2)
+        XCTAssertEqual(runs[0].isChewing, true)
+        XCTAssertEqual(runs[0].columns, 1)
+        XCTAssertEqual(runs[1].isChewing, false)
+        XCTAssertEqual(runs[1].columns, 1)
+    }
+
+    func testDominantRuns_mergesAdjacentSameState() {
+        let runs = ReportCardModel.ChewRestSegment.dominantRuns([mkSeg(false, 9)], total: 9, columnCount: 3)
+        XCTAssertEqual(runs.count, 1)
+        XCTAssertEqual(runs[0].isChewing, false)
+        XCTAssertEqual(runs[0].columns, 3)
+    }
+
+    func testDominantRuns_shortPulseDropsInLongColumn() {
+        // 칸당 3초인데 씹기 펄스 1초 → 다수결에서 탈락(알려진 트레이드오프).
+        let runs = ReportCardModel.ChewRestSegment.dominantRuns(
+            [mkSeg(false, 4), mkSeg(true, 1), mkSeg(false, 4)], total: 9, columnCount: 3
+        )
+        XCTAssertEqual(runs.count, 1)
+        XCTAssertEqual(runs[0].isChewing, false)
+        XCTAssertEqual(runs[0].columns, 3)
+    }
+
+    func testDominantRuns_columnCountIsPreserved() {
+        let runs = ReportCardModel.ChewRestSegment.dominantRuns([mkSeg(true, 5), mkSeg(false, 5)], total: 10, columnCount: 7)
+        XCTAssertEqual(runs.reduce(0) { $0 + $1.columns }, 7)
     }
 }

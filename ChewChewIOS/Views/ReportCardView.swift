@@ -16,6 +16,7 @@ struct ReportCardModel: Equatable {
     /// 씹기·쉬기 구간 바. 한 끼 중 실제 씹은 시간 / 쉰 시간(초).
     let chewingSeconds: Double
     let restSeconds: Double
+    let chewRestSegments: [ChewRestSegment]
     /// 내부 4요소 분해 (각 0~100). 씹기 점수 섹션에서 4축 미니바로 노출한다.
     let speedScore: Int
     let rhythmScore: Int
@@ -28,6 +29,42 @@ struct ReportCardModel: Equatable {
     /// 식사 종료 시각 — 헤더 날짜 라벨에 사용.
     let endedAt: Date
 
+    init(
+        score: Int,
+        grade: Grade,
+        chewCount: Int,
+        totalDurationSec: Double,
+        chewsPerMinute: Double,
+        chewingFraction: Double,
+        chewingSeconds: Double,
+        restSeconds: Double,
+        chewRestSegments: [ChewRestSegment] = [],
+        speedScore: Int,
+        rhythmScore: Int,
+        continuityScore: Int,
+        lengthScore: Int,
+        caption: String?,
+        mood: Mood,
+        endedAt: Date
+    ) {
+        self.score = score
+        self.grade = grade
+        self.chewCount = chewCount
+        self.totalDurationSec = totalDurationSec
+        self.chewsPerMinute = chewsPerMinute
+        self.chewingFraction = chewingFraction
+        self.chewingSeconds = chewingSeconds
+        self.restSeconds = restSeconds
+        self.chewRestSegments = chewRestSegments
+        self.speedScore = speedScore
+        self.rhythmScore = rhythmScore
+        self.continuityScore = continuityScore
+        self.lengthScore = lengthScore
+        self.caption = caption
+        self.mood = mood
+        self.endedAt = endedAt
+    }
+
     enum Grade {
         case good, soso, bad
 
@@ -37,6 +74,100 @@ struct ReportCardModel: Equatable {
             case .soso: "조금 더 천천히"
             case .bad:  "다음엔 천천히"
             }
+        }
+    }
+
+    struct ChewRestSegment: Equatable {
+        let isChewing: Bool
+        let durationSec: Double
+
+        static func fromTimeline(_ timeline: String?) -> [ChewRestSegment] {
+            guard let timeline else { return [] }
+
+            var segments: [ChewRestSegment] = []
+            var currentIsChewing: Bool?
+            var currentDuration = 0
+
+            for byte in timeline.utf8 {
+                guard byte == CharacterCode.zero || byte == CharacterCode.one else { continue }
+
+                let isChewing = byte == CharacterCode.one
+                if currentIsChewing == isChewing {
+                    currentDuration += 1
+                } else {
+                    if let currentIsChewing, currentDuration > 0 {
+                        segments.append(ChewRestSegment(
+                            isChewing: currentIsChewing,
+                            durationSec: Double(currentDuration)
+                        ))
+                    }
+                    currentIsChewing = isChewing
+                    currentDuration = 1
+                }
+            }
+
+            if let currentIsChewing, currentDuration > 0 {
+                segments.append(ChewRestSegment(
+                    isChewing: currentIsChewing,
+                    durationSec: Double(currentDuration)
+                ))
+            }
+
+            return segments
+        }
+
+        /// 시간순 구간 배열을 `columnCount`개의 균등 시간 칸으로 다운샘플한다.
+        /// 각 칸이 덮는 시간 구간에서 씹기 초가 절반 이상이면 씹기 칸으로 보고
+        /// (다수결), 같은 상태의 인접 칸은 하나의 런으로 합친다. 반환값은
+        /// (씹기여부, 칸 수)의 시간순 순서열 — 뷰가 칸 수 × 칸 너비로 그린다.
+        /// 칸당 시간이 1초를 크게 넘으면(긴 세션) 칸 안의 소수 펄스는 다수결에서
+        /// 탈락할 수 있다. total ≤ 0·빈 입력·columnCount ≤ 0이면 빈 배열.
+        static func dominantRuns(
+            _ segments: [ChewRestSegment],
+            total: Double,
+            columnCount: Int
+        ) -> [(isChewing: Bool, columns: Int)] {
+            guard columnCount > 0, total > 0, !segments.isEmpty else { return [] }
+            let secondsPerColumn = total / Double(columnCount)
+
+            // 구간별 누적 시간 경계 [start, end).
+            var bounds: [(start: Double, end: Double, isChewing: Bool)] = []
+            bounds.reserveCapacity(segments.count)
+            var cursor = 0.0
+            for segment in segments {
+                bounds.append((start: cursor, end: cursor + segment.durationSec, isChewing: segment.isChewing))
+                cursor += segment.durationSec
+            }
+
+            var runs: [(isChewing: Bool, columns: Int)] = []
+            // 칸도 구간도 시간순이라, 이 칸 시작 이전에 끝난 구간은 다시 안 본다.
+            var head = 0
+            for column in 0..<columnCount {
+                let sliceStart = Double(column) * secondsPerColumn
+                let sliceEnd = sliceStart + secondsPerColumn
+                while head < bounds.count && bounds[head].end <= sliceStart { head += 1 }
+
+                var chewingSeconds = 0.0
+                var index = head
+                while index < bounds.count && bounds[index].start < sliceEnd {
+                    let overlap = min(bounds[index].end, sliceEnd) - max(bounds[index].start, sliceStart)
+                    if overlap > 0 && bounds[index].isChewing { chewingSeconds += overlap }
+                    index += 1
+                }
+
+                let isChewing = chewingSeconds >= secondsPerColumn / 2
+                if let last = runs.last, last.isChewing == isChewing {
+                    runs[runs.count - 1].columns += 1
+                } else {
+                    runs.append((isChewing: isChewing, columns: 1))
+                }
+            }
+            return runs
+        }
+
+        private enum CharacterCode {
+            static let zero = UInt8(ascii: "0")
+            static let one = UInt8(ascii: "1")
         }
     }
 }
@@ -308,19 +439,34 @@ struct ReportCardView: View {
     // MARK: - 씹기 · 쉬기 구간 바
 
     private var chewRestSection: some View {
-        let total = max(0.001, model.chewingSeconds + model.restSeconds)
-        let chewFrac = CGFloat(model.chewingSeconds / total)
+        let segments = model.visibleChewRestSegments
+        let total = segments.reduce(0) { $0 + $1.durationSec }
         return VStack(alignment: .leading, spacing: 8) {
             sectionTitle("씹기 · 쉬기 구간")
-            GeometryReader { geo in
-                HStack(spacing: 2) {
-                    Rectangle().fill(Color.sage500)
-                        .frame(width: max(0, geo.size.width * chewFrac - 1))
-                    Rectangle().fill(Color.acorn200)
+            Canvas { context, size in
+                // 고정 너비 바를 1pt 칸으로 쪼개고, 각 칸을 그 시간 구간의 다수
+                // 상태(씹기/쉬기 초가 더 많은 쪽)로 칠한다(다수결 다운샘플). 폭
+                // 비율은 실제 씹기 비율과 맞고, 구간 폭이 1pt에 못 미쳐 서브픽셀로
+                // 사라지던 문제가 칸 해상도로 해소된다. 단 칸당 시간이 1초를 크게
+                // 넘는 긴 세션에선 칸 안의 소수 펄스는 다수결에서 묻힐 수 있다.
+                let columnCount = max(1, Int(size.width.rounded()))
+                let columnWidth = size.width / CGFloat(columnCount)
+                let runs = ReportCardModel.ChewRestSegment.dominantRuns(
+                    segments, total: total, columnCount: columnCount
+                )
+                var x: CGFloat = 0
+                for run in runs {
+                    let width = CGFloat(run.columns) * columnWidth
+                    let rect = CGRect(x: x, y: 0, width: width, height: size.height)
+                    context.fill(
+                        Path(rect),
+                        with: .color(run.isChewing ? Color.sage500 : Color.acorn200)
+                    )
+                    x += width
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 7))
             }
             .frame(height: 14)
+            .clipShape(RoundedRectangle(cornerRadius: 7))
             HStack(spacing: 16) {
                 legendDot(color: .sage500, label: "씹기 \(formatDurationShort(model.chewingSeconds))")
                 legendDot(color: .acorn200, label: "쉬기 \(formatDurationShort(model.restSeconds))")
@@ -706,6 +852,11 @@ extension ReportCardModel {
         let grade = Grade(scoreGrade: score.grade)
         let mood = Mood(grade: grade, score: score.total)
         let caption = CaptionPool.report(for: grade)
+        let inferredChewingSeconds = dto.chewingSeconds
+            ?? dto.chewingFraction.map { dto.durationSec * min(max($0, 0), 1) }
+            ?? 0
+        let inferredRestSeconds = dto.restSeconds
+            ?? max(0, dto.durationSec - inferredChewingSeconds)
         return ReportCardModel(
             score: score.total,
             grade: grade,
@@ -713,8 +864,9 @@ extension ReportCardModel {
             totalDurationSec: dto.durationSec,
             chewsPerMinute: chewsPerMin,
             chewingFraction: dto.chewingFraction ?? 0,
-            chewingSeconds: dto.chewingSeconds ?? 0,
-            restSeconds: dto.restSeconds ?? 0,
+            chewingSeconds: inferredChewingSeconds,
+            restSeconds: inferredRestSeconds,
+            chewRestSegments: ChewRestSegment.fromTimeline(dto.chewingTimeline),
             speedScore: score.speed,
             rhythmScore: score.rhythm,
             continuityScore: score.continuity,
@@ -723,6 +875,20 @@ extension ReportCardModel {
             mood: mood,
             endedAt: dto.endedAt
         )
+    }
+}
+
+private extension ReportCardModel {
+    var visibleChewRestSegments: [ChewRestSegment] {
+        let timelineSegments = chewRestSegments.filter { $0.durationSec > 0 }
+        if !timelineSegments.isEmpty {
+            return timelineSegments
+        }
+
+        return [
+            ChewRestSegment(isChewing: true, durationSec: chewingSeconds),
+            ChewRestSegment(isChewing: false, durationSec: restSeconds),
+        ].filter { $0.durationSec > 0 }
     }
 }
 
