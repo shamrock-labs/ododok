@@ -753,9 +753,13 @@ final class AppState {
         Task { [weak self] in
             await self?.refreshFromServerHome()
             await self?.fetchAndApplyDisplayName()
-            // 로그인 직후 끼니 알림 재적용 — 서버 토큰 등록/설정 PUT 또는 로컬 fallback을 재개한다.
-            // (.task는 앱 시작 시 1회뿐이라, 앱 실행 중 로그인하면 여기서 다시 걸어줘야 알림이 재등록된다.)
-            await self?.mealPushCoordinator.apply(.load())
+            // 새 로그인(계정 전환 포함)은 항상 서버 발송 신호를 내린 뒤 시작한다 — 기기 전역 armed가 이전 계정에서
+            // 누수돼 새 계정 끼니를 오배송/누락하지 않도록(ODO-103 P1). 콜드 스타트 복원은 completeLogin을 거치지
+            // 않고 Keychain으로 isLoggedIn을 복원하므로, 같은 계정의 영속 armed(중복 푸시 수정)는 그대로 보존된다.
+            await self?.mealPushCoordinator.clearRegistration()
+            // 로그인 직후 끼니 알림 동기화 — 정본인 서버에서 이 계정 설정을 받아 화면·로컬을 맞추고 전달 경로를 정합한다.
+            // (.task는 앱 시작 시 1회뿐이라, 앱 실행 중 로그인하면 여기서 다시 걸어줘야 계정 전환이 반영된다.)
+            await self?.mealPushCoordinator.syncFromServer()
             // 미로그인 상태에서 받은 초대가 있으면 로그인/가입 완료 후 자동 수락한다.
             await self?.consumePendingInviteCodeIfNeeded()
         }
@@ -1119,6 +1123,9 @@ final class AppState {
         hasCompletedOnboarding = false
         serverHome = nil
         homeApplyVersion += 1
+        // 끼니 설정 로컬 캐시도 비운다 — 다음 계정이 이전 계정 알림시각을 보지 않도록(ODO-103).
+        // 정본은 서버이므로 로그인 후 syncFromServer가 이 계정 값으로 다시 채운다.
+        MealReminderSettings.clear()
         UserDefaults.standard.removeObject(forKey: Self.persistenceKey)
     }
 

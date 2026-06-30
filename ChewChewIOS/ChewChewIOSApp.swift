@@ -111,9 +111,9 @@ struct ChewChewIOSApp: App {
                 .task {
                     // 홈 진행도/마스코트 mood가 첫 진입부터 정확히 보이도록 오늘 세션을 미리 적재.
                     await appState.fetchTodaySessions()
-                    // 끼니 알림(ODO-56): 서버 단독 + 오프라인 보조 정책으로 적용한다.
+                    // 끼니 알림(ODO-56, ODO-103): 정본인 서버에서 받아 화면·로컬 캐시를 맞추고 전달 경로를 정합한다.
                     // 로그인·권한·APNs 토큰 등록 상태에 따라 서버(APNs) 또는 로컬 알림으로 갈린다.
-                    await appState.mealPushCoordinator.apply(.load())
+                    await appState.mealPushCoordinator.syncFromServer()
                 }
         }
         // `initial: true` — 콜드 스타트 시 첫 .active 도달도 콜백으로 받기 위함.

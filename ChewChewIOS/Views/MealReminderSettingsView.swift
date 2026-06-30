@@ -8,6 +8,12 @@ struct MealReminderSettingsView: View {
     @Environment(AppState.self) private var appState
     @State private var settings: MealReminderSettings = .default
     @State private var permissionStatus: UNAuthorizationStatus = .notDetermined
+    /// 서버에 저장된 마지막 값 — 저장 실패 시 "취소"로 이 값으로 되돌린다(변경 무성유실 방지, ODO-103).
+    @State private var lastSaved: MealReminderSettings = .default
+    @State private var saveFailed = false
+    @State private var saveErrorReason = ""
+    /// lastSaved로 되돌리는 중엔 onChange의 저장 재시도를 건너뛰기 위한 가드.
+    @State private var isReverting = false
 
     var body: some View {
         NavigationStack {
@@ -40,13 +46,48 @@ struct MealReminderSettingsView: View {
         }
         .task {
             settings = MealReminderSettings.load()
+            lastSaved = settings
             permissionStatus = await MealNotificationService.authorizationStatus()
         }
         .onChange(of: settings) { _, new in
-            new.save()
-            // 서버/로컬 전환은 조정자가 정책에 맞게 처리(로그인·권한·토큰 상태 기준).
-            Task { await appState.mealPushCoordinator.apply(new) }
+            guard !isReverting else {
+                isReverting = false
+                return
+            }
+            Task { await attemptSave(new) }
         }
+        .appDialog(
+            isPresented: $saveFailed,
+            title: "저장에 실패했어요",
+            message: "\(saveErrorReason)\n취소하면 변경 전 시간으로 돌아가요.",
+            primary: .init("다시 시도") { Task { await attemptSave(settings) } },
+            secondary: .init("취소", role: .cancel) { revertEdit() }
+        )
+    }
+
+    // MARK: - 저장 (서버 정본)
+
+    /// 변경을 서버에 저장 시도. 성공해야 로컬 캐시를 확정한다(무성유실 방지). 실패하면 식사 종료 시
+    /// 업로드 실패와 같은 다이얼로그를 띄운다 — 오프라인/서버 다운 모두 여기로 들어온다(ODO-103).
+    private func attemptSave(_ new: MealReminderSettings) async {
+        switch await appState.mealPushCoordinator.apply(new) {
+        case .saved, .skipped:
+            new.save()
+            lastSaved = new
+        case .saveFailed(let reason):
+            saveErrorReason = reason
+            saveFailed = true
+        case .sessionExpired:
+            break   // 세션 만료 — AppState가 로그인 게이트로 복귀시킨다
+        }
+    }
+
+    /// 저장 실패 다이얼로그의 "취소"/배경 탭 — 마지막 저장값으로 화면·로컬을 되돌린다.
+    private func revertEdit() {
+        guard settings != lastSaved else { return }
+        isReverting = true
+        settings = lastSaved
+        lastSaved.save()
     }
 
     // MARK: - Subviews
