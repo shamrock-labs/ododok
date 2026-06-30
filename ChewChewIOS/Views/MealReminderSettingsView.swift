@@ -14,6 +14,11 @@ struct MealReminderSettingsView: View {
     @State private var saveErrorReason = ""
     /// lastSaved로 되돌리는 중엔 onChange의 저장 재시도를 건너뛰기 위한 가드.
     @State private var isReverting = false
+    /// 저장 디바운스 + latest-wins(PR #76 리뷰). 빠른 편집(DatePicker 스크럽)으로 PUT이 겹쳐
+    /// 오래된 응답이 최신 값을 덮어쓰는 경합을 막는다 — 매 편집마다 세대를 올리고, 응답이 현재
+    /// 세대와 일치할 때만 캐시·lastSaved를 확정한다.
+    @State private var saveTask: Task<Void, Never>?
+    @State private var saveGeneration = 0
 
     var body: some View {
         NavigationStack {
@@ -54,23 +59,46 @@ struct MealReminderSettingsView: View {
                 isReverting = false
                 return
             }
-            Task { await attemptSave(new) }
+            scheduleSave(new)
         }
         .appDialog(
             isPresented: $saveFailed,
             title: "저장에 실패했어요",
             message: "\(saveErrorReason)\n취소하면 변경 전 시간으로 돌아가요.",
-            primary: .init("다시 시도") { Task { await attemptSave(settings) } },
+            primary: .init("다시 시도") { saveNow(settings) },
             secondary: .init("취소", role: .cancel) { revertEdit() }
         )
     }
 
     // MARK: - 저장 (서버 정본)
 
+    /// 편집 디바운스 — 빠른 변경을 묶어 마지막 값만 저장하고, 대기 중이던 직전 저장은 취소한다.
+    private func scheduleSave(_ new: MealReminderSettings) {
+        saveTask?.cancel()
+        saveGeneration &+= 1
+        let generation = saveGeneration
+        saveTask = Task {
+            try? await Task.sleep(for: .milliseconds(450))
+            if Task.isCancelled { return }
+            await attemptSave(new, generation: generation)
+        }
+    }
+
+    /// 디바운스 없이 즉시 저장(다시 시도 버튼). 세대를 올려 이전 응답이 못 덮게 한다.
+    private func saveNow(_ new: MealReminderSettings) {
+        saveTask?.cancel()
+        saveGeneration &+= 1
+        let generation = saveGeneration
+        Task { await attemptSave(new, generation: generation) }
+    }
+
     /// 변경을 서버에 저장 시도. 성공해야 로컬 캐시를 확정한다(무성유실 방지). 실패하면 식사 종료 시
     /// 업로드 실패와 같은 다이얼로그를 띄운다 — 오프라인/서버 다운 모두 여기로 들어온다(ODO-103).
-    private func attemptSave(_ new: MealReminderSettings) async {
-        switch await appState.mealPushCoordinator.apply(new) {
+    /// `generation`이 현재 세대와 다르면(그 사이 더 최신 편집이 있었음) 응답을 버린다 — latest-wins(PR #76).
+    private func attemptSave(_ new: MealReminderSettings, generation: Int) async {
+        let outcome = await appState.mealPushCoordinator.apply(new)
+        guard generation == saveGeneration else { return }
+        switch outcome {
         case .saved, .skipped:
             new.save()
             lastSaved = new
@@ -84,6 +112,8 @@ struct MealReminderSettingsView: View {
 
     /// 저장 실패 다이얼로그의 "취소"/배경 탭 — 마지막 저장값으로 화면·로컬을 되돌린다.
     private func revertEdit() {
+        saveTask?.cancel()
+        saveGeneration &+= 1   // 진행 중이던 저장 응답을 무효화(되돌림이 최신)
         guard settings != lastSaved else { return }
         isReverting = true
         settings = lastSaved
