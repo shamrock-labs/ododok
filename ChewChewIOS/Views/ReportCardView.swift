@@ -116,6 +116,55 @@ struct ReportCardModel: Equatable {
             return segments
         }
 
+        /// 시간순 구간 배열을 `columnCount`개의 균등 시간 칸으로 다운샘플한다.
+        /// 각 칸이 덮는 시간 구간에서 씹기 초가 절반 이상이면 씹기 칸으로 보고
+        /// (다수결), 같은 상태의 인접 칸은 하나의 런으로 합친다. 반환값은
+        /// (씹기여부, 칸 수)의 시간순 순서열 — 뷰가 칸 수 × 칸 너비로 그린다.
+        /// 칸당 시간이 1초를 크게 넘으면(긴 세션) 칸 안의 소수 펄스는 다수결에서
+        /// 탈락할 수 있다. total ≤ 0·빈 입력·columnCount ≤ 0이면 빈 배열.
+        static func dominantRuns(
+            _ segments: [ChewRestSegment],
+            total: Double,
+            columnCount: Int
+        ) -> [(isChewing: Bool, columns: Int)] {
+            guard columnCount > 0, total > 0, !segments.isEmpty else { return [] }
+            let secondsPerColumn = total / Double(columnCount)
+
+            // 구간별 누적 시간 경계 [start, end).
+            var bounds: [(start: Double, end: Double, isChewing: Bool)] = []
+            bounds.reserveCapacity(segments.count)
+            var cursor = 0.0
+            for segment in segments {
+                bounds.append((start: cursor, end: cursor + segment.durationSec, isChewing: segment.isChewing))
+                cursor += segment.durationSec
+            }
+
+            var runs: [(isChewing: Bool, columns: Int)] = []
+            // 칸도 구간도 시간순이라, 이 칸 시작 이전에 끝난 구간은 다시 안 본다.
+            var head = 0
+            for column in 0..<columnCount {
+                let sliceStart = Double(column) * secondsPerColumn
+                let sliceEnd = sliceStart + secondsPerColumn
+                while head < bounds.count && bounds[head].end <= sliceStart { head += 1 }
+
+                var chewingSeconds = 0.0
+                var index = head
+                while index < bounds.count && bounds[index].start < sliceEnd {
+                    let overlap = min(bounds[index].end, sliceEnd) - max(bounds[index].start, sliceStart)
+                    if overlap > 0 && bounds[index].isChewing { chewingSeconds += overlap }
+                    index += 1
+                }
+
+                let isChewing = chewingSeconds >= secondsPerColumn / 2
+                if let last = runs.last, last.isChewing == isChewing {
+                    runs[runs.count - 1].columns += 1
+                } else {
+                    runs.append((isChewing: isChewing, columns: 1))
+                }
+            }
+            return runs
+        }
+
         private enum CharacterCode {
             static let zero = UInt8(ascii: "0")
             static let one = UInt8(ascii: "1")
@@ -391,31 +440,33 @@ struct ReportCardView: View {
 
     private var chewRestSection: some View {
         let segments = model.visibleChewRestSegments
-        let total = max(0.001, segments.reduce(0) { $0 + $1.durationSec })
+        let total = segments.reduce(0) { $0 + $1.durationSec }
         return VStack(alignment: .leading, spacing: 8) {
             sectionTitle("씹기 · 쉬기 구간")
-            GeometryReader { _ in
-                Canvas { context, size in
-                    var x: CGFloat = 0
-                    for segment in segments {
-                        let width = size.width * CGFloat(segment.durationSec / total)
-                        guard width > 0 else { continue }
-                        let rect = CGRect(
-                            x: x,
-                            y: 0,
-                            width: min(width, size.width - x),
-                            height: size.height
-                        )
-                        context.fill(
-                            Path(rect),
-                            with: .color(segment.isChewing ? Color.sage500 : Color.acorn200)
-                        )
-                        x += width
-                    }
+            Canvas { context, size in
+                // 고정 너비 바를 1pt 칸으로 쪼개고, 각 칸을 그 시간 구간의 다수
+                // 상태(씹기/쉬기 초가 더 많은 쪽)로 칠한다(다수결 다운샘플). 폭
+                // 비율은 실제 씹기 비율과 맞고, 구간 폭이 1pt에 못 미쳐 서브픽셀로
+                // 사라지던 문제가 칸 해상도로 해소된다. 단 칸당 시간이 1초를 크게
+                // 넘는 긴 세션에선 칸 안의 소수 펄스는 다수결에서 묻힐 수 있다.
+                let columnCount = max(1, Int(size.width.rounded()))
+                let columnWidth = size.width / CGFloat(columnCount)
+                let runs = ReportCardModel.ChewRestSegment.dominantRuns(
+                    segments, total: total, columnCount: columnCount
+                )
+                var x: CGFloat = 0
+                for run in runs {
+                    let width = CGFloat(run.columns) * columnWidth
+                    let rect = CGRect(x: x, y: 0, width: width, height: size.height)
+                    context.fill(
+                        Path(rect),
+                        with: .color(run.isChewing ? Color.sage500 : Color.acorn200)
+                    )
+                    x += width
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 7))
             }
             .frame(height: 14)
+            .clipShape(RoundedRectangle(cornerRadius: 7))
             HStack(spacing: 16) {
                 legendDot(color: .sage500, label: "씹기 \(formatDurationShort(model.chewingSeconds))")
                 legendDot(color: .acorn200, label: "쉬기 \(formatDurationShort(model.restSeconds))")
