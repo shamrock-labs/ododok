@@ -49,6 +49,9 @@ actor ChewCounter {
     private(set) var chewAmplitudes: [Double] = []
     // 세션 통계용: ChewingStateDetector가 씹기 상태로 판단한 누적 샘플 수(/50 = 초).
     private var chewingSamples: Int = 0
+    // 저작 타임라인: 1초(50샘플) 버킷마다 isChewing 과반을 '1'/'0'로 누적한다.
+    // 서버 chewing_session.chewing_timeline 칼럼(문자열 인덱스 = 경과 초)과 1:1.
+    private var timelineAccumulator = ChewingTimelineAccumulator()
 
     func setChewing(_ chewing: Bool) {
         isChewing = chewing
@@ -76,6 +79,8 @@ actor ChewCounter {
             accelZ: accelZ
         )
         if chewingState.isChewing { chewingSamples += 1 }
+        // 초당 타임라인은 sampleCount·chewingSamples와 동일 시점에 누적한다(heading-guard return 이전).
+        timelineAccumulator.feed(isChewing: chewingState.isChewing)
 
         // Heading-motion guard: large rotation across any axis = head turn/nod, not a chew.
         let rotMag = (rotX * rotX + rotY * rotY + rotZ * rotZ).squareRoot()
@@ -119,6 +124,7 @@ actor ChewCounter {
         sampleCount = 0; lastPeakSample = 0
         chewCount = 0; isChewing = false
         chewingSamples = 0
+        timelineAccumulator.reset()
         chewTimestamps.removeAll()
         chewAmplitudes.removeAll()
     }
@@ -160,9 +166,9 @@ actor ChewCounter {
         avgInterval > 0 ? intervalStd / avgInterval : 0
     }
 
-    /// 세션 종료 시 chewing_session 분석 5필드를 산출한다(ML SessionStatsBuilder 대체).
+    /// 세션 종료 시 chewing_session 분석 6필드를 산출한다(ML SessionStatsBuilder 대체).
     /// chewing/rest 초는 ChewingStateDetector가 씹기로 판단한 샘플 비율(50Hz 가정)로,
-    /// estimatedTotalChews는 DSP 피크 카운트로 채운다.
+    /// estimatedTotalChews는 DSP 피크 카운트로, chewingTimeline은 1초 버킷 과반으로 채운다.
     func sessionStats(modelVersion: String) -> SessionStats {
         let chewingSeconds = Double(chewingSamples) / 50.0
         let restSeconds = Double(max(0, sampleCount - chewingSamples)) / 50.0
@@ -172,18 +178,70 @@ actor ChewCounter {
             restSeconds: restSeconds,
             chewingFraction: fraction,
             estimatedTotalChews: chewCount,
-            modelVersion: modelVersion
+            modelVersion: modelVersion,
+            chewingTimeline: timelineAccumulator.makeTimeline()
         )
     }
 }
 
-/// 세션 종료 시 산출된 분석 통계. `ChewingSessionDTO`의 5개 분석 필드와 1:1 매핑.
+/// 세션 종료 시 산출된 분석 통계. `ChewingSessionDTO`의 6개 분석 필드와 1:1 매핑.
 struct SessionStats: Sendable, Equatable {
     let chewingSeconds: Double
     let restSeconds: Double
     let chewingFraction: Double
     let estimatedTotalChews: Int
     let modelVersion: String
+    let chewingTimeline: String?
+}
+
+/// 1초(50샘플) 버킷마다 isChewing 과반을 '1'/'0'로 누적해 chewing_timeline 문자열을 만든다.
+/// 서버 chewing_session.chewing_timeline(문자열 인덱스 = 경과 초)과 1:1 — 한 초의 절반 초과면 '1'.
+/// 상한 maxSeconds(기본 7200 = 2시간)를 넘는 초는 버려 서버 varchar(7200) 컬럼을 넘기지 않는다.
+struct ChewingTimelineAccumulator {
+    private let samplesPerSecond: Int
+    private let maxSeconds: Int
+    private var bucketSamples = 0
+    private var bucketChewing = 0
+    private var bytes: [UInt8] = []
+
+    private static let asciiZero = UInt8(ascii: "0")
+    private static let asciiOne = UInt8(ascii: "1")
+
+    init(samplesPerSecond: Int = 50, maxSeconds: Int = 7200) {
+        self.samplesPerSecond = samplesPerSecond
+        self.maxSeconds = maxSeconds
+    }
+
+    /// 샘플 하나의 씹기 여부를 넣는다. 1초가 차면 과반 판정을 한 글자로 굳힌다.
+    mutating func feed(isChewing: Bool) {
+        bucketSamples += 1
+        if isChewing { bucketChewing += 1 }
+        guard bucketSamples >= samplesPerSecond else { return }
+        if bytes.count < maxSeconds {
+            bytes.append(majoritySymbol(chewing: bucketChewing, total: bucketSamples))
+        }
+        bucketSamples = 0
+        bucketChewing = 0
+    }
+
+    /// 남은 부분 초까지 반영한 '0'/'1' 문자열. 한 샘플도 없으면 nil.
+    func makeTimeline() -> String? {
+        var result = bytes
+        if bucketSamples > 0 && result.count < maxSeconds {
+            result.append(majoritySymbol(chewing: bucketChewing, total: bucketSamples))
+        }
+        return result.isEmpty ? nil : String(decoding: result, as: UTF8.self)
+    }
+
+    mutating func reset() {
+        bucketSamples = 0
+        bucketChewing = 0
+        bytes.removeAll()
+    }
+
+    private func majoritySymbol(chewing: Int, total: Int) -> UInt8 {
+        chewing * 2 > total ? Self.asciiOne : Self.asciiZero
+    }
 }
 
 private struct ChewingState {

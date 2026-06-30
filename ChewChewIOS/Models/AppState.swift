@@ -1245,7 +1245,8 @@ final class AppState {
                 restSeconds: stats?.restSeconds,
                 chewingFraction: stats?.chewingFraction,
                 estimatedTotalChews: stats?.estimatedTotalChews,
-                modelVersion: stats?.modelVersion
+                modelVersion: stats?.modelVersion,
+                chewingTimeline: stats?.chewingTimeline
             )
             // 정책 엔드포인트로 저장 — 서버가 적립/스트릭/오늘완료/홈을 계산해 함께 돌려준다.
             let result = try await remoteStore.createChewingSession(dto)
