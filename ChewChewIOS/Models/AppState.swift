@@ -681,7 +681,7 @@ final class AppState {
 
     // MARK: - Erase all user data (REQ-05)
 
-    /// 설정 '내 데이터 삭제' 확인 시 호출.
+    /// 설정 '계정 삭제' 확인 시 호출.
     /// 원격: profiles DELETE → FK CASCADE(user_stats/chewing_session/bout).
     /// 로컬: 모든 게임 상태를 초기화하고 스냅샷도 비움.
     @MainActor
@@ -785,7 +785,7 @@ final class AppState {
         }
     }
 
-    /// 로그아웃 — 로컬 토큰 제거 후 로그인 게이트로 복귀. 게임 데이터는 보존('내 데이터 삭제'와 구분).
+    /// 로그아웃 — 로컬 토큰 제거 후 로그인 게이트로 복귀. 게임 데이터는 보존('계정 삭제'와 구분).
     func logout() {
         expireSession()
     }

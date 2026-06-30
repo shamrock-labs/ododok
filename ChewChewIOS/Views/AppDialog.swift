@@ -155,9 +155,9 @@ extension View {
         Color.pageBackground.ignoresSafeArea()
         Color.black.opacity(0.32).ignoresSafeArea()
         AppDialog(
-            title: "내 데이터를 삭제할까요?",
-            message: "씹기 기록, 도토리, 스트릭 등 모든 데이터가 영구 삭제됩니다. 이 작업은 되돌릴 수 없습니다.",
-            primary: .init("모두 삭제", role: .destructive) {},
+            title: "계정을 삭제할까요?",
+            message: "오도독 계정과 씹기 기록, 도토리, 스트릭이 모두 삭제돼요. 이 작업은 되돌릴 수 없어요.",
+            primary: .init("계정 삭제", role: .destructive) {},
             secondary: .init("취소", role: .cancel) {},
             onDismiss: {}
         )

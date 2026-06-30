@@ -1,7 +1,7 @@
 import XCTest
 
-/// REQ-05: 설정 '내 데이터 삭제' UI 진입점 검증.
-/// gear 버튼 → SettingsView → '내 데이터 삭제' 탭 → 확인 다이얼로그 표시까지.
+/// REQ-05: 설정 '계정 삭제' UI 진입점 검증.
+/// gear 버튼 → SettingsView → '계정 삭제' 탭 → 확인 다이얼로그 표시까지.
 @MainActor
 final class SettingsDeleteDataUITests: XCTestCase {
     var app: XCUIApplication!
@@ -52,7 +52,7 @@ final class SettingsDeleteDataUITests: XCTestCase {
         )
     }
 
-    /// gear → SettingsView 정착 대기 → '내 데이터 삭제' 탭 → 확인 다이얼로그 타이틀 등장까지.
+    /// gear → SettingsView 정착 대기 → '계정 삭제' 탭 → 확인 다이얼로그 타이틀 등장까지.
     private func openSettingsAndTapDelete() {
         let gearButton = app.buttons["gearshape.fill"]
         XCTAssertTrue(gearButton.waitForExistence(timeout: 10), "gear 버튼이 HomeView에 있어야 한다")
@@ -62,9 +62,9 @@ final class SettingsDeleteDataUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["설정"].waitForExistence(timeout: 10), "SettingsView가 열려야 한다")
 
         let deleteButton = app.buttons["DeleteMyData"]
-        XCTAssertTrue(deleteButton.waitForExistence(timeout: 10), "'내 데이터 삭제' 버튼이 있어야 한다")
+        XCTAssertTrue(deleteButton.waitForExistence(timeout: 10), "'계정 삭제' 버튼이 있어야 한다")
         deleteButton.tap()
 
-        XCTAssertTrue(app.staticTexts["내 데이터를 삭제할까요?"].waitForExistence(timeout: 5), "confirmationDialog 타이틀이 표시되어야 한다")
+        XCTAssertTrue(app.staticTexts["계정을 삭제할까요?"].waitForExistence(timeout: 5), "confirmationDialog 타이틀이 표시되어야 한다")
     }
 }
