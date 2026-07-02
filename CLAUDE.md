@@ -4,9 +4,9 @@ SwiftUI 기반 오도독 iOS 앱. AirPods IMU 신호를 신호처리(DSP)로 분
 
 ## 빌드·테스트
 
-- 프로젝트 생성: `xcodegen generate` (`project.yml` → `ChewChewIOS.xcodeproj`). 빌드·테스트 전에 항상 먼저 실행한다.
-- 시뮬레이터 빌드(무서명): `xcodebuild -scheme ChewChewIOS -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO`.
-- 테스트: `xcodebuild test -scheme ChewChewIOS -destination 'platform=iOS Simulator,name=iPhone 16'` (유닛 `ChewChewIOSTests` + UI `ChewChewIOSUITests`).
+- 프로젝트 생성: `tuist generate --no-open` (`Project.swift` → `ChewChewIOS.xcworkspace`). 빌드·테스트 전에 항상 먼저 실행한다.
+- 시뮬레이터 빌드(무서명): `xcodebuild -workspace ChewChewIOS.xcworkspace -scheme ChewChewIOS -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO`.
+- 테스트: `xcodebuild test -workspace ChewChewIOS.xcworkspace -scheme ChewChewIOS -destination 'platform=iOS Simulator,name=iPhone 16'` (유닛 `ChewChewIOSTests` + UI `ChewChewIOSUITests`).
 - **에이전트는 시뮬레이터 무서명 빌드까지만 한다.** 코드 서명·실기기 빌드·아카이브는 사용자(보형)가 Xcode에서 직접 한다. 무료 Personal Team 제약 때문이다.
 
 ## 코드 구조

@@ -1,0 +1,365 @@
+import Foundation
+import ProjectDescription
+
+let organizationName = "Shamrock"
+let developmentTeam = "26SRR6SP9B"
+let deploymentTarget = "17.0"
+let secretsConfig: Path = "Config/Secrets.xcconfig"
+
+let appBundleId = "$(ODODOK_BUNDLE_PREFIX).ododok"
+let widgetsBundleId = "$(ODODOK_BUNDLE_PREFIX).ododok.OdodokWidgets"
+let notificationContentBundleId = "$(ODODOK_BUNDLE_PREFIX).ododok.OdodokNotificationContent"
+
+let googleServiceInfoPlistPath = "ChewChewIOS/GoogleService-Info.plist"
+var appResources: [ResourceFileElement] = [
+    "ChewChewIOS/Resources/**",
+    "ChewChewIOS/PrivacyInfo.xcprivacy",
+]
+if FileManager.default.fileExists(atPath: googleServiceInfoPlistPath) {
+    appResources.append(.glob(pattern: .relativeToRoot(googleServiceInfoPlistPath)))
+}
+
+let appInfoPlist: [String: Plist.Value] = [
+    "CFBundleDisplayName": "Ododok",
+    "InsForgeAPIKey": "$(INSFORGE_API_KEY)",
+    "SentryDSN": "$(SENTRY_DSN)",
+    "AmplitudeAPIKey": "$(AMPLITUDE_API_KEY)",
+    "BackendBaseURL": "$(BACKEND_BASE_URL)",
+    "KakaoInviteMobileWebURL": "$(KAKAO_INVITE_MOBILE_WEB_URL)",
+    "NSMotionUsageDescription": "식사 중 AirPods 움직임을 분석해 저작 리듬을 시각화합니다.",
+    "NSMicrophoneUsageDescription": "AirPods IMU 동작 신뢰성 분석을 위해 마이크 권한이 필요할 수 있어요. 음성 녹음은 하지 않습니다.",
+    "UIBackgroundModes": [
+        "audio",
+    ],
+    "UIAppFonts": [
+        "Pretendard-Regular.otf",
+        "Pretendard-Medium.otf",
+        "Pretendard-SemiBold.otf",
+        "Pretendard-Bold.otf",
+        "Pretendard-Black.otf",
+    ],
+    "GIDClientID": "$(GOOGLE_CLIENT_ID)",
+    "KakaoNativeAppKey": "$(KAKAO_NATIVE_APP_KEY)",
+    "LSApplicationQueriesSchemes": [
+        "kakaokompassauth",
+        "kakaotalk",
+        "kakaolink",
+    ],
+    "CFBundleURLTypes": [
+        [
+            "CFBundleURLSchemes": [
+                "chewchew",
+            ],
+        ],
+        [
+            "CFBundleURLSchemes": [
+                "$(GOOGLE_REVERSED_CLIENT_ID)",
+            ],
+        ],
+        [
+            "CFBundleURLSchemes": [
+                "kakao$(KAKAO_NATIVE_APP_KEY)",
+            ],
+        ],
+    ],
+    "UILaunchScreen": [:],
+    "UISupportedInterfaceOrientations": [
+        "UIInterfaceOrientationPortrait",
+    ],
+    "UIStatusBarStyle": "UIStatusBarStyleDefault",
+    "NSSupportsLiveActivities": true,
+]
+
+let widgetsInfoPlist: [String: Plist.Value] = [
+    "CFBundleDisplayName": "오도독",
+    "NSExtension": [
+        "NSExtensionPointIdentifier": "com.apple.widgetkit-extension",
+    ],
+]
+
+let notificationContentInfoPlist: [String: Plist.Value] = [
+    "CFBundleDisplayName": "오도독",
+    "NSExtension": [
+        "NSExtensionPointIdentifier": "com.apple.usernotifications.content-extension",
+        "NSExtensionPrincipalClass": "$(PRODUCT_MODULE_NAME).NotificationViewController",
+        "NSExtensionAttributes": [
+            "UNNotificationExtensionCategory": [
+                "MEAL_REMINDER",
+                "MEAL_INTERRUPTION",
+            ],
+            "UNNotificationExtensionDefaultContentHidden": true,
+            "UNNotificationExtensionInitialContentSizeRatio": 0.56,
+        ],
+    ],
+]
+
+func signingSettings(
+    profileSpecifier: String,
+    codeSignIdentity: String = "iPhone Developer"
+) -> SettingsDictionary {
+    [
+        "CODE_SIGN_STYLE": "Manual",
+        "CODE_SIGN_IDENTITY[sdk=iphoneos*]": .string(codeSignIdentity),
+        "DEVELOPMENT_TEAM": "",
+        "DEVELOPMENT_TEAM[sdk=iphoneos*]": .string(developmentTeam),
+        "PROVISIONING_PROFILE_SPECIFIER": "",
+        "PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]": .string(profileSpecifier),
+    ]
+}
+
+func targetSettings(
+    base: SettingsDictionary = [:],
+    debug: SettingsDictionary = [:],
+    release: SettingsDictionary = [:]
+) -> Settings {
+    .settings(
+        base: base,
+        configurations: [
+            .debug(
+                name: "Debug",
+                settings: debug,
+                xcconfig: secretsConfig
+            ),
+            .release(
+                name: "Release",
+                settings: release,
+                xcconfig: secretsConfig
+            ),
+        ],
+        defaultSettings: .recommended
+    )
+}
+
+let sentryDSYMUploadScript = """
+if [ "${CONFIGURATION}" != "Release" ]; then echo "dSYM upload: skip (not Release)"; exit 0; fi
+# token, org, project가 모두 채워졌고 placeholder가 아닐 때만 업로드한다.
+for v in "${SENTRY_AUTH_TOKEN}" "${SENTRY_ORG}" "${SENTRY_PROJECT}"; do
+  case "$v" in ""|*REPLACE*) echo "dSYM upload: skip (Sentry token/org/project 미설정)"; exit 0;; esac
+done
+if ! command -v sentry-cli >/dev/null 2>&1; then
+  echo "warning: sentry-cli 미설치 - dSYM 업로드 생략. 설치: brew install getsentry/tools/sentry-cli"; exit 0
+fi
+sentry-cli debug-files upload \\
+  --auth-token "${SENTRY_AUTH_TOKEN}" \\
+  --org "${SENTRY_ORG}" \\
+  --project "${SENTRY_PROJECT}" \\
+  "${DWARF_DSYM_FOLDER_PATH}"
+"""
+
+let project = Project(
+    name: "ChewChewIOS",
+    organizationName: organizationName,
+    packages: [
+        .remote(url: "https://github.com/google/GoogleSignIn-iOS", requirement: .upToNextMajor(from: "7.1.0")),
+        .remote(url: "https://github.com/kakao/kakao-ios-sdk", requirement: .upToNextMajor(from: "2.0.0")),
+        .remote(url: "https://github.com/getsentry/sentry-cocoa", requirement: .upToNextMajor(from: "8.0.0")),
+        .remote(url: "https://github.com/amplitude/Amplitude-Swift", requirement: .upToNextMajor(from: "1.0.0")),
+        .remote(url: "https://github.com/firebase/firebase-ios-sdk", requirement: .upToNextMajor(from: "12.0.0")),
+    ],
+    settings: .settings(
+        base: [
+            "SWIFT_VERSION": "5.9",
+            "MARKETING_VERSION": "0.1.0",
+            "CURRENT_PROJECT_VERSION": "1",
+            "DEVELOPMENT_TEAM": .string(developmentTeam),
+        ],
+        defaultSettings: .recommended
+    ),
+    targets: [
+        .target(
+            name: "ChewChewIOS",
+            destinations: .iOS,
+            product: .app,
+            bundleId: appBundleId,
+            deploymentTargets: .iOS(deploymentTarget),
+            infoPlist: .extendingDefault(with: appInfoPlist),
+            sources: [
+                "ChewChewIOS/**/*.swift",
+            ],
+            resources: .resources(appResources),
+            entitlements: "ChewChewIOS/ChewChewIOS.entitlements",
+            scripts: [
+                .post(
+                    script: sentryDSYMUploadScript,
+                    name: "Upload dSYMs to Sentry",
+                    basedOnDependencyAnalysis: false
+                ),
+            ],
+            dependencies: [
+                .target(name: "OdodokWidgets"),
+                .target(name: "OdodokNotificationContent"),
+                .package(product: "GoogleSignIn"),
+                .package(product: "KakaoSDKCommon"),
+                .package(product: "KakaoSDKAuth"),
+                .package(product: "KakaoSDKUser"),
+                .package(product: "KakaoSDKShare"),
+                .package(product: "KakaoSDKTemplate"),
+                .package(product: "Sentry"),
+                .package(product: "AmplitudeSwift"),
+                .package(product: "FirebaseAnalytics"),
+            ],
+            settings: targetSettings(
+                base: [
+                    "PRODUCT_BUNDLE_IDENTIFIER": .string(appBundleId),
+                    "TARGETED_DEVICE_FAMILY": "1",
+                    "ENABLE_PREVIEWS": "YES",
+                    "IPHONEOS_DEPLOYMENT_TARGET": .string(deploymentTarget),
+                    "ASSETCATALOG_COMPILER_APPICON_NAME": "AppIcon",
+                    "ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME": "AccentColor",
+                    "LD_RUNPATH_SEARCH_PATHS": [
+                        "$(inherited)",
+                        "@executable_path/Frameworks",
+                    ],
+                ].merging(signingSettings(profileSpecifier: "match Development com.shamrock.ododok")) { _, new in new },
+                debug: [
+                    "APS_ENVIRONMENT": "development",
+                    "BACKEND_BASE_URL": "https://api.dev.ododok.cloud",
+                ],
+                release: [
+                    "APS_ENVIRONMENT": "production",
+                    "BACKEND_BASE_URL": "https://api.ododok.cloud",
+                ].merging(signingSettings(
+                    profileSpecifier: "match AppStore com.shamrock.ododok",
+                    codeSignIdentity: "iPhone Distribution"
+                )) { _, new in new }
+            )
+        ),
+        .target(
+            name: "OdodokWidgets",
+            destinations: .iOS,
+            product: .appExtension,
+            bundleId: widgetsBundleId,
+            deploymentTargets: .iOS(deploymentTarget),
+            infoPlist: .extendingDefault(with: widgetsInfoPlist),
+            sources: [
+                "OdodokWidgets/**/*.swift",
+                "ChewChewIOS/Models/MealActivityAttributes.swift",
+            ],
+            resources: [
+                "OdodokWidgets/Assets.xcassets",
+            ],
+            settings: targetSettings(
+                base: [
+                    "PRODUCT_BUNDLE_IDENTIFIER": .string(widgetsBundleId),
+                    "TARGETED_DEVICE_FAMILY": "1",
+                    "IPHONEOS_DEPLOYMENT_TARGET": .string(deploymentTarget),
+                    "LD_RUNPATH_SEARCH_PATHS": [
+                        "$(inherited)",
+                        "@executable_path/Frameworks",
+                        "@executable_path/../../Frameworks",
+                    ],
+                ].merging(signingSettings(profileSpecifier: "match Development com.shamrock.ododok.OdodokWidgets")) { _, new in new },
+                release: signingSettings(
+                    profileSpecifier: "match AppStore com.shamrock.ododok.OdodokWidgets",
+                    codeSignIdentity: "iPhone Distribution"
+                )
+            )
+        ),
+        .target(
+            name: "OdodokNotificationContent",
+            destinations: .iOS,
+            product: .appExtension,
+            bundleId: notificationContentBundleId,
+            deploymentTargets: .iOS(deploymentTarget),
+            infoPlist: .extendingDefault(with: notificationContentInfoPlist),
+            sources: [
+                "OdodokNotificationContent/**/*.swift",
+            ],
+            resources: [
+                "OdodokWidgets/Assets.xcassets",
+            ],
+            settings: targetSettings(
+                base: [
+                    "PRODUCT_BUNDLE_IDENTIFIER": .string(notificationContentBundleId),
+                    "TARGETED_DEVICE_FAMILY": "1",
+                    "IPHONEOS_DEPLOYMENT_TARGET": .string(deploymentTarget),
+                    "APPLICATION_EXTENSION_API_ONLY": "YES",
+                    "LD_RUNPATH_SEARCH_PATHS": [
+                        "$(inherited)",
+                        "@executable_path/Frameworks",
+                        "@executable_path/../../Frameworks",
+                    ],
+                ].merging(signingSettings(profileSpecifier: "match Development com.shamrock.ododok.OdodokNotificationContent")) { _, new in new },
+                release: signingSettings(
+                    profileSpecifier: "match AppStore com.shamrock.ododok.OdodokNotificationContent",
+                    codeSignIdentity: "iPhone Distribution"
+                )
+            )
+        ),
+        .target(
+            name: "ChewChewIOSTests",
+            destinations: .iOS,
+            product: .unitTests,
+            bundleId: "com.shamrock.ChewChewIOSTests",
+            deploymentTargets: .iOS(deploymentTarget),
+            infoPlist: .default,
+            sources: [
+                "ChewChewIOSTests/**/*.swift",
+            ],
+            dependencies: [
+                .target(name: "ChewChewIOS"),
+            ],
+            settings: .settings(
+                base: [
+                    "BUNDLE_LOADER": "$(TEST_HOST)",
+                    "TEST_HOST": "$(BUILT_PRODUCTS_DIR)/ChewChewIOS.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ChewChewIOS",
+                    "GENERATE_INFOPLIST_FILE": "YES",
+                    "IPHONEOS_DEPLOYMENT_TARGET": .string(deploymentTarget),
+                    "TARGETED_DEVICE_FAMILY": "1",
+                    "LD_RUNPATH_SEARCH_PATHS": [
+                        "$(inherited)",
+                        "@executable_path/Frameworks",
+                        "@loader_path/Frameworks",
+                    ],
+                ],
+                defaultSettings: .recommended
+            )
+        ),
+        .target(
+            name: "ChewChewIOSUITests",
+            destinations: .iOS,
+            product: .uiTests,
+            bundleId: "com.shamrock.ChewChewIOSUITests",
+            deploymentTargets: .iOS(deploymentTarget),
+            infoPlist: .default,
+            sources: [
+                "ChewChewIOSUITests/**/*.swift",
+            ],
+            dependencies: [
+                .target(name: "ChewChewIOS"),
+            ],
+            settings: .settings(
+                base: [
+                    "TEST_TARGET_NAME": "ChewChewIOS",
+                    "GENERATE_INFOPLIST_FILE": "YES",
+                    "IPHONEOS_DEPLOYMENT_TARGET": .string(deploymentTarget),
+                    "TARGETED_DEVICE_FAMILY": "1",
+                    "LD_RUNPATH_SEARCH_PATHS": [
+                        "$(inherited)",
+                        "@executable_path/Frameworks",
+                        "@loader_path/Frameworks",
+                    ],
+                ],
+                defaultSettings: .recommended
+            )
+        ),
+    ],
+    schemes: [
+        .scheme(
+            name: "ChewChewIOS",
+            shared: true,
+            buildAction: .buildAction(targets: ["ChewChewIOS"]),
+            testAction: .targets(
+                [
+                    "ChewChewIOSTests",
+                    "ChewChewIOSUITests",
+                ],
+                configuration: "Debug"
+            ),
+            runAction: .runAction(configuration: "Debug"),
+            archiveAction: .archiveAction(configuration: "Release"),
+            profileAction: .profileAction(configuration: "Release"),
+            analyzeAction: .analyzeAction(configuration: "Debug")
+        ),
+    ]
+)

@@ -26,19 +26,25 @@ jobs:
           xcodebuild -version
           swift --version
 
-      - name: Install xcodegen
-        run: brew install xcodegen
+      - name: Install Tuist
+        run: |
+          TUIST_VERSION=4.200.5
+          curl -L "https://github.com/tuist/tuist/releases/download/${TUIST_VERSION}/tuist.zip" -o /tmp/tuist.zip
+          rm -rf /tmp/tuist
+          unzip -q /tmp/tuist.zip -d /tmp/tuist
+          echo "/tmp/tuist" >> "$GITHUB_PATH"
+          /tmp/tuist/tuist version
 
-      # 일부 브랜치의 project.yml은 Config/Secrets.xcconfig를 configFile로 참조한다.
-      # 실제 키는 gitignore라 CI 러너엔 파일이 없어 xcodegen validation이 깨진다.
+      # Project.swift는 Config/Secrets.xcconfig를 config file로 참조한다.
+      # 실제 키는 gitignore라 CI 러너엔 파일이 없다.
       # 빌드 검증에는 실제 키가 필요 없으니 더미 값으로 stub 파일을 만들어둔다.
       - name: Stub Secrets.xcconfig
         run: |
           mkdir -p Config
           [ -f Config/Secrets.xcconfig ] || printf 'INSFORGE_API_KEY = ik_dummy_for_ci_build_only\nODODOK_BUNDLE_PREFIX = com.shamrock\n' > Config/Secrets.xcconfig
 
-      - name: Generate Xcode project
-        run: xcodegen generate
+      - name: Generate Xcode workspace
+        run: tuist generate --no-open
 
       - name: Build for iOS Simulator
         env:
@@ -46,7 +52,7 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild \
-            -project ChewChewIOS.xcodeproj \
+            -workspace ChewChewIOS.xcworkspace \
             -scheme ChewChewIOS \
             -configuration Debug \
             -destination 'generic/platform=iOS Simulator' \
