@@ -266,7 +266,7 @@
     <div class="panel">
       <h3>모든 이벤트 공통</h3>
       <p class="s">CompositeAnalytics가 fan-out 지점에서 자동 첨부</p>
-      <div class="row"><span class="key">environment</span><span class="v">debug · production <span class="pill">NEW</span></span></div>
+      <div class="row"><span class="key">environment</span><span class="v">dev · prod <span class="pill">NEW</span></span></div>
       <div class="row"><span class="key">session</span><span class="v">Amplitude 자동</span></div>
       <div class="row"><span class="key">app lifecycle</span><span class="v">설치·업데이트·열기 <span class="pill">NEW</span></span></div>
       <div class="row"><span class="key">app_version 등</span><span class="v">SDK 기본 컨텍스트</span></div>
@@ -290,7 +290,7 @@
           <div class="node"><div class="t">Firebase</div><div class="d">GA4 Analytics</div></div>
         </div>
       </div>
-      <span class="env-tag">● 모든 이벤트에 environment=debug|production → 대시보드에서 운영만 필터</span>
+      <span class="env-tag">● 모든 이벤트에 environment=dev|prod → 대시보드에서 운영만 필터</span>
     </div>
     <div class="note">
       <b>크래시·에러는 별도 라인(Sentry):</b> 크래시 자동 수집 + 유저 컨텍스트(DeviceIdentity) + 릴리스(ododok@버전) + environment.
