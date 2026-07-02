@@ -83,10 +83,13 @@ let notificationContentInfoPlist: [String: Plist.Value] = [
     ],
 ]
 
-func signingSettings(profileSpecifier: String) -> SettingsDictionary {
+func signingSettings(
+    profileSpecifier: String,
+    codeSignIdentity: String = "iPhone Developer"
+) -> SettingsDictionary {
     [
         "CODE_SIGN_STYLE": "Manual",
-        "CODE_SIGN_IDENTITY[sdk=iphoneos*]": "iPhone Developer",
+        "CODE_SIGN_IDENTITY[sdk=iphoneos*]": .string(codeSignIdentity),
         "DEVELOPMENT_TEAM": "",
         "DEVELOPMENT_TEAM[sdk=iphoneos*]": .string(developmentTeam),
         "PROVISIONING_PROFILE_SPECIFIER": "",
@@ -208,7 +211,10 @@ let project = Project(
                 release: [
                     "APS_ENVIRONMENT": "production",
                     "BACKEND_BASE_URL": "https://api.ododok.cloud",
-                ]
+                ].merging(signingSettings(
+                    profileSpecifier: "match AppStore com.shamrock.ododok",
+                    codeSignIdentity: "iPhone Distribution"
+                )) { _, new in new }
             )
         ),
         .target(
@@ -235,7 +241,11 @@ let project = Project(
                         "@executable_path/Frameworks",
                         "@executable_path/../../Frameworks",
                     ],
-                ].merging(signingSettings(profileSpecifier: "match Development com.shamrock.ododok.OdodokWidgets")) { _, new in new }
+                ].merging(signingSettings(profileSpecifier: "match Development com.shamrock.ododok.OdodokWidgets")) { _, new in new },
+                release: signingSettings(
+                    profileSpecifier: "match AppStore com.shamrock.ododok.OdodokWidgets",
+                    codeSignIdentity: "iPhone Distribution"
+                )
             )
         ),
         .target(
@@ -262,7 +272,11 @@ let project = Project(
                         "@executable_path/Frameworks",
                         "@executable_path/../../Frameworks",
                     ],
-                ].merging(signingSettings(profileSpecifier: "match Development com.shamrock.ododok.OdodokNotificationContent")) { _, new in new }
+                ].merging(signingSettings(profileSpecifier: "match Development com.shamrock.ododok.OdodokNotificationContent")) { _, new in new },
+                release: signingSettings(
+                    profileSpecifier: "match AppStore com.shamrock.ododok.OdodokNotificationContent",
+                    codeSignIdentity: "iPhone Distribution"
+                )
             )
         ),
         .target(
