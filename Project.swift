@@ -1,3 +1,4 @@
+import Foundation
 import ProjectDescription
 
 let organizationName = "Shamrock"
@@ -8,6 +9,15 @@ let secretsConfig: Path = "Config/Secrets.xcconfig"
 let appBundleId = "$(ODODOK_BUNDLE_PREFIX).ododok"
 let widgetsBundleId = "$(ODODOK_BUNDLE_PREFIX).ododok.OdodokWidgets"
 let notificationContentBundleId = "$(ODODOK_BUNDLE_PREFIX).ododok.OdodokNotificationContent"
+
+let googleServiceInfoPlistPath = "ChewChewIOS/GoogleService-Info.plist"
+var appResources: [ResourceFileElement] = [
+    "ChewChewIOS/Resources/**",
+    "ChewChewIOS/PrivacyInfo.xcprivacy",
+]
+if FileManager.default.fileExists(atPath: googleServiceInfoPlistPath) {
+    appResources.append(.glob(pattern: .relativeToRoot(googleServiceInfoPlistPath)))
+}
 
 let appInfoPlist: [String: Plist.Value] = [
     "CFBundleDisplayName": "Ododok",
@@ -166,10 +176,7 @@ let project = Project(
             sources: [
                 "ChewChewIOS/**/*.swift",
             ],
-            resources: [
-                "ChewChewIOS/Resources/**",
-                "ChewChewIOS/PrivacyInfo.xcprivacy",
-            ],
+            resources: .resources(appResources),
             entitlements: "ChewChewIOS/ChewChewIOS.entitlements",
             scripts: [
                 .post(
