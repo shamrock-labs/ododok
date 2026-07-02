@@ -5,7 +5,7 @@ ChewChew (다람쥐 헬스 리워드 앱) iOS 네이티브 구현. 같은 부모
 ## 셋업
 
 ```bash
-brew install xcodegen           # 없으면
+brew install --formula tuist    # 없으면
 
 # 1) InsForge 비밀 키 설정
 cp Config/Secrets.xcconfig.example Config/Secrets.xcconfig
@@ -14,11 +14,11 @@ cp Config/Secrets.xcconfig.example Config/Secrets.xcconfig
 # 이 파일은 .gitignore 에 들어가 커밋되지 않는다.
 
 # 2) Xcode 프로젝트 생성 후 열기
-xcodegen generate               # ChewChewIOS.xcodeproj 생성
-open ChewChewIOS.xcodeproj
+tuist generate --no-open        # ChewChewIOS.xcworkspace 생성
+open ChewChewIOS.xcworkspace
 ```
 
-Xcode 15 / iOS 17 시뮬레이터에서 빌드·실행. 외부 SwiftPM 의존성 없음.
+Xcode / iOS 17+ 시뮬레이터에서 빌드·실행. SwiftPM 의존성은 `Project.swift`의 Tuist manifest에서 관리한다.
 
 > 백엔드(InsForge)는 InsForge CLI(`npx @insforge/cli`)로 별도 셋업되어 있어야 한다.
 > 새 환경에서 처음 만들 때:

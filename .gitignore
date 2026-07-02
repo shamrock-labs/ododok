@@ -21,15 +21,18 @@ Package.resolved
 
 # Generated
 *.hmap
+Derived/
+.package.resolved
 
 # Secrets
 Config/Secrets.xcconfig
 # Firebase 구성 파일(API 키 포함) — Firebase 콘솔에서 받아 ChewChewIOS/ 아래에 둔다(ODO-80)
 ChewChewIOS/GoogleService-Info.plist
 
-# xcodegen이 생성하는 Info.plist — 매번 project.yml에서 다시 만들어진다
+# Tuist가 생성하는 Info.plist — 매번 Project.swift에서 다시 만들어진다
 ChewChewIOS/Info.plist
 OdodokWidgets/Info.plist
+OdodokNotificationContent/Info.plist
 
 # InsForge & AI agent skills
 .insforge

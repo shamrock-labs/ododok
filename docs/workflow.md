@@ -7,9 +7,9 @@
 
 1. Linear 이슈를 In Progress로 바꾼다.
 2. 브랜치를 만든다: `type/odo-NN-짧은-설명` (main 또는 직전 스택 PR 브랜치를 base로).
-3. 작업한 뒤 `xcodegen generate`로 프로젝트를 재생성하고, 시뮬레이터 무서명 빌드와 테스트가 그린인지 확인한다.
-   - 빌드: `xcodebuild -scheme ChewChewIOS -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO`
-   - 테스트: `xcodebuild test -scheme ChewChewIOS -destination 'platform=iOS Simulator,name=iPhone 16'`
+3. 작업한 뒤 `tuist generate --no-open`으로 프로젝트를 재생성하고, 시뮬레이터 무서명 빌드와 테스트가 그린인지 확인한다.
+   - 빌드: `xcodebuild -workspace ChewChewIOS.xcworkspace -scheme ChewChewIOS -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO`
+   - 테스트: `xcodebuild test -workspace ChewChewIOS.xcworkspace -scheme ChewChewIOS -destination 'platform=iOS Simulator,name=iPhone 16'`
    - 코드 서명·실기기 빌드·아카이브는 사용자가 Xcode에서 직접 한다(무료 Personal Team 제약).
 4. 별도 리뷰 패스(다른 에이전트 또는 사람)로 검증한다. 자기 승인은 하지 않는다.
 5. 커밋한다: `type(ODO-NN): 요약`. 한 커밋에 한 가지 목적만.
