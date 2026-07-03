@@ -1,0 +1,4 @@
+# App Store Connect API 키로 인증하므로 apple_id(사람 계정) 로그인은 쓰지 않는다.
+# 여기엔 앱·팀 식별자만 둔다.
+app_identifier("com.shamrock.ododok")
+team_id("26SRR6SP9B")

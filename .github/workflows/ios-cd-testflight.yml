@@ -1,0 +1,72 @@
+name: iOS CD - TestFlight
+
+# main에 머지(push)되면 Release 아카이브를 만들어 TestFlight에 자동 업로드한다.
+on:
+  push:
+    branches: [main]
+
+# 배포는 중간에 취소하지 않는다. 앞 배포가 끝나야 다음이 시작된다.
+concurrency:
+  group: ios-cd-testflight
+  cancel-in-progress: false
+
+jobs:
+  testflight:
+    name: Build & upload to TestFlight
+    runs-on: macos-15
+    timeout-minutes: 40
+
+    env:
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+      MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+      MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+      MATCH_GIT_BASIC_AUTHORIZATION: ${{ secrets.MATCH_GIT_BASIC_AUTHORIZATION }}
+      GITHUB_RUN_NUMBER: ${{ github.run_number }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+
+      - name: Restore Secrets.xcconfig
+        env:
+          SECRETS_XCCONFIG_BASE64: ${{ secrets.SECRETS_XCCONFIG_BASE64 }}
+        run: |
+          mkdir -p Config
+          echo "$SECRETS_XCCONFIG_BASE64" | base64 --decode > Config/Secrets.xcconfig
+
+      - name: Restore GoogleService-Info.plist
+        env:
+          GOOGLE_SERVICE_INFO_PLIST_BASE64: ${{ secrets.GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
+        run: |
+          if [ -n "$GOOGLE_SERVICE_INFO_PLIST_BASE64" ]; then
+            echo "$GOOGLE_SERVICE_INFO_PLIST_BASE64" | base64 --decode > ChewChewIOS/GoogleService-Info.plist
+          else
+            echo "GoogleService-Info.plist secret 미설정 - Firebase 비활성으로 빌드"
+          fi
+
+      - name: Setup Ruby & fastlane
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+
+      - name: Install Tuist
+        run: |
+          TUIST_VERSION=4.200.5
+          curl -L "https://github.com/tuist/tuist/releases/download/${TUIST_VERSION}/tuist.zip" -o /tmp/tuist.zip
+          rm -rf /tmp/tuist
+          unzip -q /tmp/tuist.zip -d /tmp/tuist
+          echo "/tmp/tuist" >> "$GITHUB_PATH"
+
+      - name: Generate Xcode workspace
+        run: tuist generate --no-open
+
+      - name: Upload to TestFlight
+        run: bundle exec fastlane beta
