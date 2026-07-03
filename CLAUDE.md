@@ -12,6 +12,7 @@ SwiftUI 기반 오도독 iOS 앱. AirPods IMU 신호를 신호처리(DSP)로 분
 ## 코드 구조
 
 - SwiftUI 앱. 화면은 SwiftUI View, 상태는 `@Observable` `AppState`(`ChewChewIOS/Models/`)로 모은다.
+- 새 코드 배치 전 `README.md`의 "앱 구조 규칙"을 확인한다. View에 외부 효과를 넣거나, AppState에 도메인 절차를 바로 쌓지 않는다.
 - `AppState`는 화면 상태 facade로 유지한다. 네트워크·오디오·알림·파일·분석 등 외부 효과와 도메인 절차는 별도 `Services/`·coordinator·순수 함수로 분리한다. 상세 기준은 `README.md`의 "AppState 경계 규칙"을 따른다.
 - 백엔드 접근은 **포트&어댑터**다. 포트는 `RemoteStore` 프로토콜(`ChewChewIOS/Services/RemoteStore.swift`), 어댑터는 `InsForgeRemoteStore`·`SpringRemoteStore`·`NoopRemoteStore`다. 화면·상태는 프로토콜에만 의존하고 구현은 주입으로 갈아끼운다.
 - 어댑터 선택은 `ChewChewIOS/ChewChewIOSApp.swift`의 `makeRemoteStore()` 한 곳에서만 한다. 기본은 Spring(`AppEnvironment.backendURL`), 테스트(XCTest/`-useNoopRemote`)는 Noop, `-useInsForge`는 레거시 InsForge.
