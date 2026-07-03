@@ -1,15 +1,30 @@
+import Foundation
 import ProjectDescription
 
 let organizationName = "Shamrock"
 let developmentTeam = "26SRR6SP9B"
 let deploymentTarget = "17.0"
+let versionConfig: Path = "Config/Version.xcconfig"
 let secretsConfig: Path = "Config/Secrets.xcconfig"
 
 let appBundleId = "$(ODODOK_BUNDLE_PREFIX).ododok"
 let widgetsBundleId = "$(ODODOK_BUNDLE_PREFIX).ododok.OdodokWidgets"
 let notificationContentBundleId = "$(ODODOK_BUNDLE_PREFIX).ododok.OdodokNotificationContent"
 
+let googleServiceInfoPlistPath = "ChewChewIOS/GoogleService-Info.plist"
+var appResources: [ResourceFileElement] = [
+    "ChewChewIOS/Resources/**",
+    "ChewChewIOS/PrivacyInfo.xcprivacy",
+]
+if FileManager.default.fileExists(atPath: googleServiceInfoPlistPath) {
+    appResources.append(.glob(pattern: .relativeToRoot(googleServiceInfoPlistPath)))
+}
+
 let appInfoPlist: [String: Plist.Value] = [
+    // 버전/빌드번호를 빌드 설정(MARKETING_VERSION/CURRENT_PROJECT_VERSION)과 연결한다.
+    // 연결하지 않으면 Tuist 기본값(1.0/1)이 하드코딩돼 CI의 빌드번호 주입이 무시된다.
+    "CFBundleShortVersionString": "$(MARKETING_VERSION)",
+    "CFBundleVersion": "$(CURRENT_PROJECT_VERSION)",
     "CFBundleDisplayName": "Ododok",
     "InsForgeAPIKey": "$(INSFORGE_API_KEY)",
     "SentryDSN": "$(SENTRY_DSN)",
@@ -60,6 +75,8 @@ let appInfoPlist: [String: Plist.Value] = [
 ]
 
 let widgetsInfoPlist: [String: Plist.Value] = [
+    "CFBundleShortVersionString": "$(MARKETING_VERSION)",
+    "CFBundleVersion": "$(CURRENT_PROJECT_VERSION)",
     "CFBundleDisplayName": "오도독",
     "NSExtension": [
         "NSExtensionPointIdentifier": "com.apple.widgetkit-extension",
@@ -67,6 +84,8 @@ let widgetsInfoPlist: [String: Plist.Value] = [
 ]
 
 let notificationContentInfoPlist: [String: Plist.Value] = [
+    "CFBundleShortVersionString": "$(MARKETING_VERSION)",
+    "CFBundleVersion": "$(CURRENT_PROJECT_VERSION)",
     "CFBundleDisplayName": "오도독",
     "NSExtension": [
         "NSExtensionPointIdentifier": "com.apple.usernotifications.content-extension",
@@ -148,9 +167,11 @@ let project = Project(
     settings: .settings(
         base: [
             "SWIFT_VERSION": "5.9",
-            "MARKETING_VERSION": "0.1.0",
-            "CURRENT_PROJECT_VERSION": "1",
             "DEVELOPMENT_TEAM": .string(developmentTeam),
+        ],
+        configurations: [
+            .debug(name: "Debug", xcconfig: versionConfig),
+            .release(name: "Release", xcconfig: versionConfig),
         ],
         defaultSettings: .recommended
     ),
@@ -165,10 +186,7 @@ let project = Project(
             sources: [
                 "ChewChewIOS/**/*.swift",
             ],
-            resources: [
-                "ChewChewIOS/Resources/**",
-                "ChewChewIOS/PrivacyInfo.xcprivacy",
-            ],
+            resources: .resources(appResources),
             entitlements: "ChewChewIOS/ChewChewIOS.entitlements",
             scripts: [
                 .post(

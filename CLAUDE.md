@@ -7,7 +7,7 @@ SwiftUI 기반 오도독 iOS 앱. AirPods IMU 신호를 신호처리(DSP)로 분
 - 프로젝트 생성: `tuist generate --no-open` (`Project.swift` → `ChewChewIOS.xcworkspace`). 빌드·테스트 전에 항상 먼저 실행한다.
 - 시뮬레이터 빌드(무서명): `xcodebuild -workspace ChewChewIOS.xcworkspace -scheme ChewChewIOS -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO`.
 - 테스트: `xcodebuild test -workspace ChewChewIOS.xcworkspace -scheme ChewChewIOS -destination 'platform=iOS Simulator,name=iPhone 16'` (유닛 `ChewChewIOSTests` + UI `ChewChewIOSUITests`).
-- **에이전트는 시뮬레이터 무서명 빌드까지만 한다.** 코드 서명·실기기 빌드·아카이브는 사용자(보형)가 Xcode에서 직접 한다. 무료 Personal Team 제약 때문이다.
+- **에이전트는 시뮬레이터 무서명 빌드까지만 한다.** 코드 서명·아카이브·TestFlight/App Store 배포는 CI(GitHub Actions + fastlane match, ODO-106)가 담당한다. 설정은 `docs/cd-setup.md`를 본다. 에이전트가 로컬에서 서명 빌드를 하지 않는 이유는 서명 자료(인증서·프로파일)를 로컬에 두지 않기 위해서다. 실기기 로컬 빌드가 필요할 때만 사용자가 Xcode에서 직접 한다.
 
 ## 코드 구조
 
@@ -15,7 +15,7 @@ SwiftUI 기반 오도독 iOS 앱. AirPods IMU 신호를 신호처리(DSP)로 분
 - 백엔드 접근은 **포트&어댑터**다. 포트는 `RemoteStore` 프로토콜(`ChewChewIOS/Services/RemoteStore.swift`), 어댑터는 `InsForgeRemoteStore`·`SpringRemoteStore`·`NoopRemoteStore`다. 화면·상태는 프로토콜에만 의존하고 구현은 주입으로 갈아끼운다.
 - 어댑터 선택은 `ChewChewIOS/ChewChewIOSApp.swift`의 `makeRemoteStore()` 한 곳에서만 한다. 기본은 Spring(`AppEnvironment.backendURL`), 테스트(XCTest/`-useNoopRemote`)는 Noop, `-useInsForge`는 레거시 InsForge.
 - 환경(바라보는 백엔드)은 **config 주입**으로 결정한다: `AppEnvironment.backendURL` ← Info.plist `ODODOK_BACKEND_URL` ← xcconfig(`Config/Env.Dev.xcconfig` Debug / `Config/Env.Prod.xcconfig` Release). 환경 분기를 코드에 하드코딩하지 않는다.
-- 번들 ID는 환경별로 쪼개지 않는다(무료 Personal Team은 앱당 번들 ID 1개 제약). 환경 분리는 백엔드 URL로만 한다.
+- 번들 ID는 환경별로 쪼개지 않는다(앱 하나에 번들 ID 하나로 고정, `com.shamrock.ododok`). 환경 분리는 백엔드 URL로만 한다.
 - 테스트 런치 인자(`-useNoopRemote`/`-useInsForge`)는 환경 config와 **직교한 오버라이드**다. 환경 분리(dev/prod)와 섞지 않는다.
 - 신호처리(DSP) 카운터는 `ChewChewIOS/ML/ChewCounter.swift`(actor)다. ML 추론은 폐기됐다.
 

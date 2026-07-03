@@ -229,6 +229,9 @@ final class AppState {
     /// 식사 세션 동안 활성. IMU 샘플을 받아 DSP로 씹기 피크를 세고, 종료 시 세션 통계 산출.
     @ObservationIgnored private var chewCounter: ChewCounter?
 
+    /// 씹기 3초 지속 감지마다 울리는 코드 합성 비프(에셋 없음). 식사 세션 동안만 활성.
+    @ObservationIgnored private let chewBeepPlayer = ChewBeepPlayer()
+
     /// 현재 사용 중인 감지 알고리즘 식별자. DB의 `model_version` 컬럼에 저장.
     private static let modelVersion = "dsp-chewcounter-1"
 
@@ -452,6 +455,8 @@ final class AppState {
         // 식사 종료 시 게임 진행 상태를 디스크에 한 번에 스냅샷 저장
         persistSnapshot()
 
+        chewBeepPlayer.stop()
+
         // IMU 세션 봉인 → Storage 업로드 → chewing_session INSERT.
         // 결과를 sessionUploadStatus로 publish해서 UI alert이 관찰할 수 있게 한다.
         let counter = chewCounter
@@ -498,6 +503,7 @@ final class AppState {
         resetIMUWaveform()
         imuWaveformSource = .idle
         persistSnapshot()
+        chewBeepPlayer.stop()
         chewCounter = nil
         if let recorder = imuSessionRecorder {
             imuSessionRecorder = nil

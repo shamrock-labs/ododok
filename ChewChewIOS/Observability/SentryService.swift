@@ -9,14 +9,17 @@ import Sentry
 ///
 /// 초기화는 `ChewChewIOSApp.init()` 맨 앞에서 1회 호출한다(이후 의존성 초기화 실패까지 포착).
 enum SentryService {
+    private static let smokeTestArgument = "-sentrySmokeTest"
+
     /// Sentry SDK를 시작한다. DSN 미설정·테스트 런에서는 조용히 건너뛴다(no-op).
     static func start() {
         // 테스트(유닛/UI) 런에서는 외부 전송·노이즈를 막기 위해 초기화하지 않는다.
         // makeDependencies()의 underTest 판정과 동일한 신호를 쓴다.
         let pi = ProcessInfo.processInfo
+        let wantsSmokeTest = pi.arguments.contains(smokeTestArgument)
         let underTest = pi.environment["XCTestConfigurationFilePath"] != nil
             || pi.arguments.contains("-useNoopRemote")
-        guard !underTest else { return }
+        guard !underTest || wantsSmokeTest else { return }
 
         // DSN 본문(scheme 제외). placeholder(REPLACE)·빈값·미확장 `$(SENTRY_DSN)` 리터럴(키 미설정 시)이면
         // Sentry 비활성 — 로컬/기여자/CI 빌드 보호. garbage 값으로 SDK가 켜지는 오설정을 막는다.
@@ -41,6 +44,10 @@ enum SentryService {
             // PII(이메일·IP 등) 자동 수집 비활성 — 헬스 앱 프라이버시 보수적 기본값.
             options.sendDefaultPii = false
         }
+
+        if wantsSmokeTest {
+            captureSmokeTest()
+        }
     }
 
     /// Sentry 유저 컨텍스트 설정. 비-PII 익명 식별자(DeviceIdentity)만 넣는다.
@@ -53,5 +60,17 @@ enum SentryService {
         } else {
             SentrySDK.setUser(nil) // 로그아웃·리셋 시 컨텍스트 해제
         }
+    }
+
+    private static func captureSmokeTest() {
+        let environment = AppRuntimeEnvironment.name
+        let eventId = SentrySDK.capture(message: "Sentry smoke test (\(environment))") { scope in
+            scope.setEnvironment(environment)
+            scope.setFingerprint(["sentry-smoke-test", environment])
+            scope.setTag(value: environment, key: "app_environment")
+            scope.setTag(value: "true", key: "smoke_test")
+        }
+        print("Sentry smoke test sent: environment=\(environment), eventId=\(eventId)")
+        SentrySDK.flush(timeout: 5)
     }
 }
