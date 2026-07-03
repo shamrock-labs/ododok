@@ -12,12 +12,14 @@ SwiftUI 기반 오도독 iOS 앱. AirPods IMU 신호를 신호처리(DSP)로 분
 ## 코드 구조
 
 - SwiftUI 앱. 화면은 SwiftUI View, 상태는 `@Observable` `AppState`(`ChewChewIOS/Models/`)로 모은다.
+- 새 코드 배치 전 `README.md`의 "앱 구조 규칙"을 확인한다. View에 외부 효과를 넣거나, AppState에 도메인 절차를 바로 쌓지 않는다.
+- `AppState`는 화면 상태 facade로 유지한다. 네트워크·오디오·알림·파일·분석 등 외부 효과와 도메인 절차는 별도 `Services/`·coordinator·순수 함수로 분리한다. 상세 기준은 `README.md`의 "AppState 경계 규칙"을 따른다.
 - 백엔드 접근은 **포트&어댑터**다. 포트는 `RemoteStore` 프로토콜(`ChewChewIOS/Services/RemoteStore.swift`), 어댑터는 `InsForgeRemoteStore`·`SpringRemoteStore`·`NoopRemoteStore`다. 화면·상태는 프로토콜에만 의존하고 구현은 주입으로 갈아끼운다.
 - 어댑터 선택은 `ChewChewIOS/ChewChewIOSApp.swift`의 `makeRemoteStore()` 한 곳에서만 한다. 기본은 Spring(`AppEnvironment.backendURL`), 테스트(XCTest/`-useNoopRemote`)는 Noop, `-useInsForge`는 레거시 InsForge.
 - 환경(바라보는 백엔드)은 **config 주입**으로 결정한다: `AppEnvironment.backendURL` ← Info.plist `ODODOK_BACKEND_URL` ← xcconfig(`Config/Env.Dev.xcconfig` Debug / `Config/Env.Prod.xcconfig` Release). 환경 분기를 코드에 하드코딩하지 않는다.
 - 번들 ID는 환경별로 쪼개지 않는다(앱 하나에 번들 ID 하나로 고정, `com.shamrock.ododok`). 환경 분리는 백엔드 URL로만 한다.
 - 테스트 런치 인자(`-useNoopRemote`/`-useInsForge`)는 환경 config와 **직교한 오버라이드**다. 환경 분리(dev/prod)와 섞지 않는다.
-- 신호처리(DSP) 카운터는 `ChewChewIOS/ML/ChewCounter.swift`(actor)다. ML 추론은 폐기됐다.
+- 신호처리(DSP) 카운터는 `ChewChewIOS/SignalProcessing/ChewCounter.swift`(actor)다. 모델 추론이 아니라 IMU 신호처리 기반 감지다.
 
 ## 디자인 규칙
 
@@ -29,7 +31,7 @@ SwiftUI 기반 오도독 iOS 앱. AirPods IMU 신호를 신호처리(DSP)로 분
 
 - 커밋: `type(ODO-NN): 요약` (type = feat/fix/refactor/docs/test/chore). 한 커밋에 한 가지 목적만. 상세는 `.github/COMMIT_CONVENTION.md`.
 - 브랜치: `type/odo-NN-짧은-설명` (type + Linear 키 + 설명, 소문자, 하이픈).
-- PR: `.github/PULL_REQUEST_TEMPLATE.md`를 사용한다. 제목은 Linear 키로 시작한다. 머지는 사용자가 본인 검토 후 직접 한다.
+- PR: `.github/PULL_REQUEST_TEMPLATE.md`를 사용한다. 제목은 `type(ODO-NN): 요약` 형식으로 쓴다. 머지는 사용자가 본인 검토 후 직접 한다.
 
 ## Linear · 레포 (작업 상태 정본)
 

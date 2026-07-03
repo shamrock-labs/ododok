@@ -1,13 +1,13 @@
 import SwiftUI
 
-/// 앱 첫 실행 시 사용자 이름을 받는 onboarding sheet.
-/// 저장 → `AppState.saveDisplayName` → in-memory + UserDefaults + `profiles.displayName` upsert.
-/// 사용자 강제 dismiss는 막음(`interactiveDismissDisabled`) — 이름 등록을 진행 조건으로.
+/// 앱 첫 실행 시 표시용 닉네임을 정하는 온보딩 화면.
+/// 직접 입력과 건너뛰기 모두 `AppState.saveDisplayName` 계열 경로로 저장한다.
 struct OnboardingNameView: View {
     @Environment(AppState.self) private var state
     let onComplete: () -> Void
 
     @State private var name: String = ""
+    @State private var isSaving = false
     @FocusState private var isFocused: Bool
 
     var body: some View {
@@ -23,12 +23,12 @@ struct OnboardingNameView: View {
                 Text("처음 오셨네요!")
                     .font(.appFont(.heavy, size: 22))
                     .foregroundStyle(Color.textPrimary)
-                Text("이름을 알려주세요")
+                Text("앱에서 쓸 닉네임을 정해주세요")
                     .font(.appFont(.regular, size: 14))
                     .foregroundStyle(Color.textSecondary)
             }
 
-            TextField("이름", text: $name)
+            TextField("닉네임", text: $name)
                 .focused($isFocused)
                 .submitLabel(.done)
                 .onSubmit { submit() }
@@ -51,7 +51,7 @@ struct OnboardingNameView: View {
                         in: RoundedRectangle(cornerRadius: 14)
                     )
             }
-            .disabled(!canSubmit)
+            .disabled(!canSubmit || isSaving)
             .padding(.horizontal, 40)
             .accessibilityIdentifier("OnboardingSubmit")
 
@@ -59,8 +59,6 @@ struct OnboardingNameView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.pageBackground.ignoresSafeArea())
-        // 좌상단: 잘못된 계정으로 로그인했을 때 빠져나가는 출구. 서버 refresh 토큰 폐기 후
-        // 로컬 세션 종료 → isLoggedIn=false라 ContentView가 LoginView로 돌아간다.
         .overlay(alignment: .topLeading) {
             Button {
                 Task { await state.logoutFromServer() }
@@ -79,6 +77,21 @@ struct OnboardingNameView: View {
             .padding(.top, 22)
             .accessibilityIdentifier("OnboardingSwitchAccount")
         }
+        .overlay(alignment: .topTrailing) {
+            Button {
+                skip()
+            } label: {
+                Text("건너뛰기")
+                    .font(.appFont(.bold, size: 14))
+                    .foregroundStyle(Color.textSecondary)
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 10)
+            }
+            .disabled(isSaving)
+            .padding(.trailing, 12)
+            .padding(.top, 22)
+            .accessibilityIdentifier("OnboardingNameSkip")
+        }
         .interactiveDismissDisabled()
         .onAppear { isFocused = true }
     }
@@ -88,10 +101,22 @@ struct OnboardingNameView: View {
     }
 
     private func submit() {
-        guard canSubmit else { return }
+        guard canSubmit, !isSaving else { return }
         let captured = name
-        Task {
+        isSaving = true
+        Task { @MainActor in
             await state.saveDisplayName(captured)
+            isSaving = false
+            onComplete()
+        }
+    }
+
+    private func skip() {
+        guard !isSaving else { return }
+        isSaving = true
+        Task { @MainActor in
+            await state.saveGeneratedDisplayName()
+            isSaving = false
             onComplete()
         }
     }

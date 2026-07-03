@@ -221,7 +221,7 @@ struct ContentView: View {
 
     /// 첫 실행 onboarding sheet binding — DB fetch 한 번 끝났고(`didLoadProfile`) 온보딩을
     /// 아직 안 마쳤을 때만 표시. `didLoadProfile` 가드로 reinstall cold-start의 sheet 깜빡임 방지.
-    /// 이름 입력 + 사용법 튜토리얼은 `OnboardingFlowView`가 한 sheet 안에서 잇고,
+    /// 닉네임 입력 + 사용법 튜토리얼은 `OnboardingFlowView`가 한 sheet 안에서 잇고,
     /// `interactiveDismissDisabled`로 강제 dismiss를 막는다. 튜토리얼 완료/건너뛰기로
     /// `hasCompletedOnboarding`이 true가 되면 binding이 false가 되어 자동 dismiss.
     private var onboardingBinding: Binding<Bool> {

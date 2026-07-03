@@ -1,7 +1,8 @@
 import AuthenticationServices
 import UIKit
 
-/// Sign in with Apple(네이티브). SDK 없이 AuthenticationServices로 id_token + 이름(최초 1회)을 받는다.
+/// Sign in with Apple(네이티브). SDK 없이 AuthenticationServices로 id_token을 받는다.
+/// 표시명은 온보딩 닉네임으로 받는다.
 @MainActor
 final class AppleLoginProvider: NSObject, SocialLoginProvider {
     private var continuation: CheckedContinuation<SocialCredential, Error>?
@@ -10,7 +11,6 @@ final class AppleLoginProvider: NSObject, SocialLoginProvider {
         try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
             let request = ASAuthorizationAppleIDProvider().createRequest()
-            request.requestedScopes = [.fullName, .email]
             let controller = ASAuthorizationController(authorizationRequests: [request])
             controller.delegate = self
             controller.presentationContextProvider = self
@@ -28,10 +28,7 @@ extension AppleLoginProvider: ASAuthorizationControllerDelegate {
             finish(.failure(SocialLoginError.missingIdToken))
             return
         }
-        // Apple은 최초 인증에만 이름을 준다. 한국어 순서(성+이름)로 합친다.
-        let parts = [credential.fullName?.familyName, credential.fullName?.givenName].compactMap { $0 }
-        let name = parts.joined()
-        finish(.success(SocialCredential(provider: "apple", idToken: idToken, name: name.isEmpty ? nil : name)))
+        finish(.success(SocialCredential(provider: "apple", idToken: idToken, name: nil)))
     }
 
     func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {

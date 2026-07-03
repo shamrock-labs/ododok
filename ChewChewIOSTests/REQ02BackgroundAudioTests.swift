@@ -2,123 +2,63 @@ import AVFoundation
 import XCTest
 @testable import ChewChewIOS
 
+/// 실기기 오디오 엔진을 직접 띄우지 않고, 볼륨 정책과 페이스→톤 분류만 검증한다.
 final class REQ02BackgroundAudioTests: XCTestCase {
 
-    // MARK: - keepAliveVolume
+    // MARK: - volume
 
-    func testKeepAliveVolume_isGreaterThanZero() {
+    func testVolume_defaultIsAudible() {
         let keepAlive = BackgroundAudioKeepAlive()
-        XCTAssertGreaterThan(keepAlive.keepAliveVolume, 0.0,
-            "keepAliveVolume는 App Store 2.5.4 정책 준수를 위해 0보다 커야 한다")
+        XCTAssertGreaterThan(keepAlive.volume, 0.0,
+            "기본 볼륨은 0보다 커야 한다")
     }
 
-    // MARK: - 번들 리소스
-
-    func testAmbientLoopBundleURL_isNotNil() {
-        let url = Bundle.main.url(forResource: "ambient_loop", withExtension: "m4a")
-        XCTAssertNotNil(url, "ambient_loop.m4a가 번들에 포함되어 있어야 한다")
-    }
-
-    // MARK: - handleInterruption
-    // 인터럽트 로직은 실기기 전용(#if !targetEnvironment(simulator)).
-    // 시뮬레이터 빌드에선 stub이 no-op이므로 XCTSkip으로 건너뛴다.
-
-    func testHandleInterruption_began_callsOnInterruptWithFalse() throws {
-        #if targetEnvironment(simulator)
-        throw XCTSkip("인터럽트 핸들링은 실기기 전용")
-        #else
+    func testVolume_isInjectable() {
         let keepAlive = BackgroundAudioKeepAlive()
-        var interruptCalled = false
-        var resumeFlag: Bool?
-        keepAlive.onInterrupt = { shouldResume in
-            interruptCalled = true
-            resumeFlag = shouldResume
-        }
-
-        keepAlive.handleInterruption(type: .began, options: [])
-
-        XCTAssertTrue(interruptCalled, "began 시 onInterrupt가 호출되어야 한다")
-        XCTAssertEqual(resumeFlag, false, "began 시 shouldResume=false로 전달되어야 한다")
-        #endif
+        keepAlive.volume = 0.5
+        XCTAssertEqual(keepAlive.volume, 0.5, accuracy: 0.0001,
+            "원격 볼륨 주입을 위해 volume은 외부에서 세팅 가능해야 한다")
     }
 
-    func testHandleInterruption_endedWithShouldResume_callsOnInterruptWithTrue() throws {
-        #if targetEnvironment(simulator)
-        throw XCTSkip("인터럽트 핸들링은 실기기 전용")
-        #else
+    func testVolume_isClampedToSupportedRange() {
         let keepAlive = BackgroundAudioKeepAlive()
-        var resumeFlag: Bool?
-        keepAlive.onInterrupt = { shouldResume in
-            resumeFlag = shouldResume
-        }
 
-        keepAlive.handleInterruption(type: .ended, options: .shouldResume)
+        keepAlive.volume = 2.0
+        XCTAssertEqual(keepAlive.volume, 1.0, accuracy: 0.0001)
 
-        XCTAssertEqual(resumeFlag, true, "ended + shouldResume 시 onInterrupt(true)가 호출되어야 한다")
-        #endif
+        keepAlive.volume = -1.0
+        XCTAssertEqual(keepAlive.volume, 0.0, accuracy: 0.0001)
     }
 
-    func testHandleInterruption_endedWithoutShouldResume_doesNotResume() throws {
-        #if targetEnvironment(simulator)
-        throw XCTSkip("인터럽트 핸들링은 실기기 전용")
-        #else
-        let keepAlive = BackgroundAudioKeepAlive()
-        var resumeFlag: Bool?
-        keepAlive.onInterrupt = { shouldResume in
-            resumeFlag = shouldResume
-        }
+    // MARK: - toneKind
 
-        keepAlive.handleInterruption(type: .ended, options: [])
-
-        XCTAssertEqual(resumeFlag, false, "ended이지만 shouldResume 없으면 onInterrupt(false)로 자동 재개 안 함")
-        #endif
+    func testToneKind_notChewing_isNone() {
+        let pace = ChewPaceSample(isChewing: false, avgInterval: 1.0)
+        XCTAssertEqual(BackgroundAudioKeepAlive.toneKind(for: pace), .none,
+            "안 씹는 중이면 소리를 내지 않는다")
     }
 
-    func testHandleInterruption_beganSetsInterruptionBeganAt() throws {
-        #if targetEnvironment(simulator)
-        throw XCTSkip("interruptionBeganAt은 실기기 전용")
-        #else
-        let keepAlive = BackgroundAudioKeepAlive()
-        let before = Date()
-        keepAlive.handleInterruption(type: .began, options: [])
-        let after = Date()
-
-        guard let beganAt = keepAlive.interruptionBeganAt else {
-            XCTFail("began 후 interruptionBeganAt이 설정되어야 한다")
-            return
-        }
-        XCTAssertGreaterThanOrEqual(beganAt, before)
-        XCTAssertLessThanOrEqual(beganAt, after)
-        #endif
+    func testToneKind_noIntervalData_isGoodFallback() {
+        let pace = ChewPaceSample(isChewing: true, avgInterval: 0)
+        XCTAssertEqual(BackgroundAudioKeepAlive.toneKind(for: pace), .good,
+            "3초 지속 씹기 이벤트가 온 상태면 간격 데이터가 아직 없어도 기본 낮은 톤을 낸다")
     }
 
-    // MARK: - IMUSessionRecorder 갭 기록
-
-    func testIMUSessionRecorder_recordInterruptionGap_appearsInOutput() {
-        let recorder = IMUSessionRecorder(startedAt: Date())
-        let began = Date(timeIntervalSinceNow: -10)
-        let ended = Date(timeIntervalSinceNow: -5)
-
-        recorder.recordInterruptionGap(began: began, ended: ended)
-
-        let output = recorder.finalize(endedAt: Date())
-        XCTAssertEqual(output.interruptionGaps.count, 1, "갭 1건이 Output에 포함되어야 한다")
-        XCTAssertEqual(output.interruptionGaps[0].began, began)
-        XCTAssertEqual(output.interruptionGaps[0].ended, ended)
+    func testToneKind_fastChewing_isTooFast() {
+        let pace = ChewPaceSample(isChewing: true, avgInterval: 0.65)
+        XCTAssertEqual(BackgroundAudioKeepAlive.toneKind(for: pace), .tooFast,
+            "간격이 임계값보다 짧으면 너무 빠른 것으로 보고 경고 톤")
     }
 
-    func testIMUSessionRecorder_noGap_outputHasEmptyGaps() {
-        let recorder = IMUSessionRecorder(startedAt: Date())
-        let output = recorder.finalize(endedAt: Date())
-        XCTAssertTrue(output.interruptionGaps.isEmpty, "갭 없이 finalize 시 interruptionGaps는 빈 배열이어야 한다")
+    func testToneKind_slowChewing_isGood() {
+        let pace = ChewPaceSample(isChewing: true, avgInterval: 1.2)
+        XCTAssertEqual(BackgroundAudioKeepAlive.toneKind(for: pace), .good,
+            "간격이 임계값 이상이면 적정 페이스로 보고 낮은 톤")
     }
 
-    // MARK: - setMuted (crash 없음 assert)
-
-    func testSetMuted_doesNotCrash() {
-        let keepAlive = BackgroundAudioKeepAlive()
-        // 플레이어 없이 호출해도 crash 없이 종료되어야 한다
-        keepAlive.setMuted(true)
-        keepAlive.setMuted(false)
+    func testToneKind_atThreshold_isGood() {
+        let pace = ChewPaceSample(isChewing: true, avgInterval: 0.8)
+        XCTAssertEqual(BackgroundAudioKeepAlive.toneKind(for: pace, fastThreshold: 0.8), .good,
+            "정확히 임계값이면 적정(경계 포함)")
     }
 }

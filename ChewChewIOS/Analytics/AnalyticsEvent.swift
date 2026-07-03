@@ -17,7 +17,7 @@ struct AnalyticsEvent {
 // MARK: - 표준 이벤트 팩토리 (v1 트래킹 플랜)
 
 extension AnalyticsEvent {
-    /// 온보딩(이름 입력 + 튜토리얼)을 끝까지 마침. 활성화 깔때기의 핵심 전환점.
+    /// 온보딩(닉네임 입력 + 튜토리얼)을 끝까지 마침. 활성화 깔때기의 핵심 전환점.
     static func onboardingCompleted() -> AnalyticsEvent {
         .init("onboarding_completed")
     }
