@@ -13,7 +13,7 @@ struct ChewCounterSnapshot: Sendable {
 ///
 /// Feed every raw IMU sample via `feed(_:)`.
 /// `isChewing`은 feed()가 DSP 저작상태 검출기(ChewingStateDetector) 출력을 매 샘플 반영한다 —
-/// 과거 ML 분류기가 setChewing으로 넣던 값을 대체한다. keep-alive 신호등 톤 등 외부가 "지금 씹는지"를 읽는다.
+/// keep-alive 신호등 톤 등 외부가 "지금 씹는지"를 읽는 단일 통로다.
 /// 최근 신호가 씹기 상태로 판단될 때만 후보 피크를 카운트한다.
 actor ChewCounter {
 
@@ -124,7 +124,6 @@ actor ChewCounter {
         guard sampleCount >= 3 else { return }
 
         // f1 is a local maximum: f1 > f0, f1 > f2, above zero (one chew oscillation peak).
-        // ML `isChewing` gate removed — ML missed micro-chewing (closed-mouth teeth tapping).
         // 단발 피크는 버리고, 짧은 시간 동안 씹기형 신호가 지속될 때만 카운트한다.
         if f1 > f0 &&
             f1 > f2 &&
@@ -189,7 +188,7 @@ actor ChewCounter {
         avgInterval > 0 ? intervalStd / avgInterval : 0
     }
 
-    /// 세션 종료 시 chewing_session 분석 6필드를 산출한다(ML SessionStatsBuilder 대체).
+    /// 세션 종료 시 chewing_session 분석 6필드를 산출한다.
     /// chewing/rest 초는 ChewingStateDetector가 씹기로 판단한 샘플 비율(50Hz 가정)로,
     /// estimatedTotalChews는 DSP 피크 카운트로, chewingTimeline은 1초 버킷 과반으로 채운다.
     func sessionStats(modelVersion: String) -> SessionStats {
