@@ -56,6 +56,14 @@ ChewChewIOS/
     └── AccentColor
 ```
 
+## 온보딩 닉네임
+
+첫 실행 온보딩은 닉네임 입력 후 사용법 튜토리얼로 이어진다. 사용자가 닉네임 입력을 건너뛰면 앱이 `다람이 1234` 형태의 랜덤 닉네임을 생성해 동일한 저장 경로로 처리한다.
+
+- 앱 책임: 랜덤 닉네임 생성, `AppState.saveDisplayName` 호출, 로컬 캐시 갱신.
+- 서버 책임: 기존 `PUT /v1/me/profile` 요청의 `displayName` 저장과 온보딩 완료 처리.
+- 별도 서버 API는 두지 않는다. 수동 입력과 건너뛰기 모두 같은 `displayName` 계약을 사용한다.
+
 ## 데모와의 매핑
 
 | 데모 (React/Tailwind) | 네이티브 (SwiftUI) |

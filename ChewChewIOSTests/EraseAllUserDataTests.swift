@@ -38,13 +38,13 @@ final class SpyRemoteStore: RemoteStore {
 final class SpyAuthSessionManager: AuthSessionManaging {
     private(set) var logoutCallCount = 0
     /// me() 가 반환할 값. nil이면 throw(오프라인 시뮬레이션).
-    var meResult: (displayName: String?, onboardingCompleted: Bool)? = nil
+    var meResult: (displayName: String?, onboardingCompleted: Bool, alertVolume: Double?)? = nil
 
     func logout() async {
         logoutCallCount += 1
         TokenManager.clear()
     }
-    func me() async throws -> (displayName: String?, onboardingCompleted: Bool) {
+    func me() async throws -> (displayName: String?, onboardingCompleted: Bool, alertVolume: Double?) {
         guard let result = meResult else { throw RemoteStoreError.offline }
         return result
     }

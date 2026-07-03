@@ -1,58 +1,73 @@
 import AVFoundation
 import Foundation
 
-/// 식사 세션 동안 백그라운드에서도 AirPods IMU 콜백이 끊기지 않도록,
-/// 번들의 `ambient_loop.m4a`(저진폭 brown noise)를 루프 재생해 앱이 suspend 되지 않게 잡아둔다.
+/// 씹기 페이스를 알려주는 신호와, 백그라운드에서 AirPods IMU 콜백을 살려두는 keep-alive를
+/// 하나의 오디오 재생으로 겸한다.
+///
+/// 문제 상황:
+/// - `AVAudioSession`만 active로 둬도 iOS는 몇 초 뒤 앱을 suspend → `CMHeadphoneMotionManager`
+///   콜백이 끊긴다. 실제로 "들리는 오디오"를 내보내는 앱만 백그라운드에서 계속 살아있는다.
+/// - 예전 구현은 저진폭 brown noise를 상시 루프해 이 문제를 풀었지만, 소리에 의미가 없어
+///   App Review 2.5.4(오디오의 실사용 목적) 관점에서 정당화가 약했다.
+///
+/// 해결:
+/// - 상시 루프 대신, `ChewCounter`가 3초 지속 씹기를 감지할 때 신호등형 톤을 낸다.
+///   적정 페이스면 낮은 톤, 너무 빠르면 경고 톤 — 소리 자체가 제품 UX(천천히 씹기 유도)를 수행하고,
+///   그 오디오가 백그라운드 세션을 정당화한다.
+/// - 톤과 톤 사이에도 `AVAudioEngine`은 계속 돌아 세션이 active로 유지된다(= 앱이 안 죽는다).
 ///
 /// 원리:
-/// - `AVAudioSession`만 active 상태로 두면 iOS는 몇 초 뒤 앱을 suspend → `CMHeadphoneMotionManager`
-///   콜백이 끊긴다.
-/// - 실제로 오디오 파일을 재생해야 "오디오 재생 중인 앱"으로 분류되어 백그라운드에서도 살아있는다.
-/// - 카테고리는 `.playback` + `.mixWithOthers`로 설정해 유튜브/스포티파이 등 외부 오디오를 끊지 않음.
-/// - 재생 볼륨은 `keepAliveVolume`(기본 0.03)으로 매우 낮지만 0보다 크게 유지해
-///   App Store 2.5.4 완전무음 재생 금지 정책을 준수한다.
+/// - 카테고리는 `.playback` + `.mixWithOthers`로 둬 유튜브/스포티파이 등 외부 오디오를 끊지 않는다.
+/// - 톤 파형은 번들 리소스가 아니라 사인파로 즉석 합성한다(에셋 불필요, 주파수/길이 자유).
+/// - 재생 볼륨 `volume`은 서버 원격값(변경 3, iOS-C)으로 주입한다. 0이면 무음이지만 세션은 유지된다
+///   (수용한 리스크 — 스펙 문서 참조).
 ///
-/// 전화 인터럽트 대응:
-/// - `handleInterruption(type:options:)` — 테스트 가능하도록 순수 메서드로 분리.
-///   `.began` 시 플레이어를 pause, `.ended + .shouldResume` 시 resume.
-/// - `onInterrupt` 콜백으로 AppState가 IMU 루프 pause/resume 여부를 결정한다.
-///
-/// 시뮬레이터에선 `start()` 노옵 — CMHeadphoneMotion 자체가 없어 keep-alive 의미가 없고,
-/// 불필요한 오디오 세션 활성화로 다른 소리를 잡지 않도록.
+/// 시뮬레이터에선 전 구간 노옵 — `CMHeadphoneMotion` 자체가 없어 keep-alive 의미가 없고,
+/// 불필요한 오디오 세션 활성화로 다른 소리를 잡지 않도록. 페이스 분류(`toneKind`)만 순수 함수로
+/// 남겨 유닛 테스트가 하드웨어 없이 검증할 수 있게 한다.
 final class BackgroundAudioKeepAlive {
 
-    // MARK: - Public state
+    // MARK: - Public state (플랫폼 공통)
 
-    /// 재생 볼륨. 0보다 크게 유지해 App Store 정책 준수.
-    let keepAliveVolume: Float = 0.03
+    /// 톤 재생 볼륨(0.0~1.0). 서버 원격값 주입 지점(변경 3). 기본 0.5는 서버 응답 전/오프라인
+    /// fallback으로, App Review가 실제로 소리를 들을 수 있게 잡은 값이다(ODO-105 리젝 사유 3 =
+    /// 이전 0.03이 리뷰어에게 안 들려서 발생 → 재발 방지). 0이면 무음이지만 세션은 유지된다.
+    /// 세팅 즉시 재생 노드에 반영한다.
+    var volume: Float = 0.5 {
+        didSet { applyVolume() }
+    }
+
+    /// 씹기 페이스를 신호등 톤으로 분류하는 순수 함수(테스트 가능, 플랫폼 무관).
+    ///
+    /// `avgInterval`은 씹기 간격(초)이다. `ChewCounter`의 `minPeakGap`(32샘플=0.64초)이
+    /// 간격 하한이므로 실측 간격은 0.64초 이상에서 움직인다. 그 위에서 상대적으로 짧으면(빨리 씹으면)
+    /// 경고, 충분히 길면(천천히 씹으면) 적정으로 본다. 안 씹는 중이면 무음.
+    /// 3초 지속 씹기 이벤트가 이미 들어온 상태에서 아직 평균 간격이 없으면 기본 적정 톤을 낸다.
+    /// `fastThreshold` 기본 0.8초는 1차 값 — 실기기 튜닝 대상이다.
+    static func toneKind(for pace: ChewPaceSample, fastThreshold: Double = 0.8) -> ChewToneKind {
+        guard pace.isChewing else { return .none }
+        guard pace.avgInterval > 0 else { return .good }
+        return pace.avgInterval < fastThreshold ? .tooFast : .good
+    }
 
     #if os(iOS) && !targetEnvironment(simulator)
 
     // MARK: - Private state
 
-    private var audioPlayer: AVAudioPlayer?
+    private let engine = AVAudioEngine()
+    private let player = AVAudioPlayerNode()
+    private let toneFormat = AVAudioFormat(standardFormatWithSampleRate: 44_100, channels: 1)!
+    private var toneBuffers: [ChewToneKind: AVAudioPCMBuffer] = [:]
+    private var graphConfigured = false
 
-    /// `.began` 인터럽트가 왔을 때 저장해두는 시작 시각 — 갭 기록용.
-    private(set) var interruptionBeganAt: Date?
+    private let fastThreshold: Double = 0.8
 
-    /// `.began` → IMU stop / `.ended + shouldResume` → IMU resume 을 AppState에 위임.
-    /// 인수: (shouldResume: Bool) — true면 재개, false면 중단 유지.
-    var onInterrupt: ((Bool) -> Void)?
-
-    var isRunning: Bool { audioPlayer?.isPlaying == true }
-
-    /// 통화(CXCallObserver) 감지처럼 오디오 인터럽트 없이 측정만 멈출 때 중단 시각을 기록한다.
-    /// `.mixWithOthers` 세션은 통화에 인터럽트를 안 받아 `interruptionBeganAt`이 안 잡히므로,
-    /// AppState가 통화 감지 시 이걸 호출해 "계속하기" 때 통화 구간이 갭으로 빠지게 한다.
-    /// 이미 인터럽트 진행 중이면(began 설정됨) 덮어쓰지 않는다.
-    func markInterruptionBegan() {
-        if interruptionBeganAt == nil { interruptionBeganAt = Date() }
-    }
+    var isRunning: Bool { engine.isRunning }
 
     // MARK: - Lifecycle
 
     func start() {
-        guard !isRunning else { return }
+        guard !engine.isRunning else { return }
 
         do {
             let session = AVAudioSession.sharedInstance()
@@ -63,97 +78,100 @@ final class BackgroundAudioKeepAlive {
             return
         }
 
-        guard let url = Bundle.main.url(forResource: "ambient_loop", withExtension: "m4a") else {
-            print("[KeepAlive] ambient_loop.m4a 번들 누락")
-            return
-        }
+        prepareToneBuffersIfNeeded()
+        configureGraphIfNeeded()
 
         do {
-            let player = try AVAudioPlayer(contentsOf: url)
-            player.numberOfLoops = -1
-            player.volume = keepAliveVolume
-            player.prepareToPlay()
-            player.play()
-            audioPlayer = player
-            subscribeInterruptionNotification()
-            print("[KeepAlive] ambient 루프 시작 (volume=\(keepAliveVolume))")
+            try engine.start()
         } catch {
-            print("[KeepAlive] AVAudioPlayer 생성 실패: \(error)")
+            print("[KeepAlive] AVAudioEngine 시작 실패: \(error)")
+            return
         }
+        player.play()
+        applyVolume()
+        subscribeInterruptionNotification()
+        print("[KeepAlive] 신호등 톤 keep-alive 시작 (volume=\(volume))")
     }
 
     func stop() {
         unsubscribeInterruptionNotification()
-        audioPlayer?.stop()
-        audioPlayer = nil
-        interruptionBeganAt = nil
+        player.stop()
+        engine.stop()
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        print("[KeepAlive] ambient 루프 정지")
+        print("[KeepAlive] 신호등 톤 keep-alive 정지")
     }
 
-    // MARK: - Mute
-
-    /// ambient만 멈추고 `AVAudioSession`은 active 유지 (세션 유효 = IMU 콜백 유지).
-    func setMuted(_ muted: Bool) {
-        if muted {
-            audioPlayer?.pause()
-        } else {
-            audioPlayer?.play()
-        }
+    /// 3초 지속 씹기 이벤트가 들어왔을 때 현재 페이스에 맞는 신호등 톤을 한 번 낸다.
+    func playTone(for pace: ChewPaceSample) {
+        let kind = Self.toneKind(for: pace, fastThreshold: fastThreshold)
+        print("[KeepAlive] sustained isChewing=\(pace.isChewing) avg=\(String(format: "%.2f", pace.avgInterval)) → \(kind)")
+        playTone(kind)
     }
 
-    // MARK: - Resume
+    // MARK: - Graph / tone synthesis
 
-    /// 인터럽트(전화 등)로 일시정지된 ambient 재생을 사용자 동작으로 다시 켠다.
-    /// 세션을 active로 되돌린 뒤 기존 플레이어를 재생 — `start()`를 다시 부르면
-    /// 인터럽션 옵저버가 중복 등록되므로, 살아있는 플레이어가 있으면 재생만 한다.
-    /// 플레이어가 사라졌으면(앱 종료 후 복귀 등) `start()`로 폴백.
-    func resume() {
-        guard let audioPlayer else {
-            start()
-            return
-        }
-        do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, options: .mixWithOthers)
-            try session.setActive(true)
-        } catch {
-            print("[KeepAlive] resume 세션 재활성화 실패: \(error)")
-        }
-        audioPlayer.play()
-        interruptionBeganAt = nil
-        print("[KeepAlive] ambient 재개")
+    /// 노드 attach/connect는 한 번만 — 재시작(stop→start) 때 중복 attach로 크래시하지 않게 가드한다.
+    private func configureGraphIfNeeded() {
+        guard !graphConfigured else { return }
+        engine.attach(player)
+        engine.connect(player, to: engine.mainMixerNode, format: toneFormat)
+        graphConfigured = true
     }
 
-    // MARK: - Interruption (테스트 가능하게 분리)
+    private func prepareToneBuffersIfNeeded() {
+        guard toneBuffers.isEmpty else { return }
+        // 적정=낮은 톤(부드러운 저음), 빠름=높은 경고 톤(짧게).
+        toneBuffers[.good] = makeToneBuffer(frequency: 440, duration: 0.18)
+        toneBuffers[.tooFast] = makeToneBuffer(frequency: 880, duration: 0.12)
+    }
 
-    /// 인터럽트 처리 진입점. `AVAudioSession.interruptionNotification` 핸들러와
-    /// 단위테스트 양쪽에서 직접 호출 가능.
-    func handleInterruption(type: AVAudioSession.InterruptionType, options: AVAudioSession.InterruptionOptions) {
-        switch type {
-        case .began:
-            interruptionBeganAt = Date()
-            audioPlayer?.pause()
-            onInterrupt?(false)
+    /// 사인파 한 사이클 버퍼를 합성한다. 클릭음을 막으려 앞뒤 짧은 페이드 엔벨로프를 건다.
+    /// 진폭은 0.9로 고정하고 실제 크기는 재생 시 `player.volume`(=서버 볼륨)으로만 조절한다.
+    private func makeToneBuffer(frequency: Double, duration: Double) -> AVAudioPCMBuffer? {
+        let sampleRate = toneFormat.sampleRate
+        let frames = AVAudioFrameCount(duration * sampleRate)
+        guard frames > 0,
+              let buffer = AVAudioPCMBuffer(pcmFormat: toneFormat, frameCapacity: frames),
+              let channel = buffer.floatChannelData?[0]
+        else { return nil }
+        buffer.frameLength = frames
 
-        case .ended:
-            let shouldResume = options.contains(.shouldResume)
-            if shouldResume {
-                do {
-                    try AVAudioSession.sharedInstance().setActive(true)
-                } catch {
-                    print("[KeepAlive] 인터럽트 종료 후 세션 재활성화 실패: \(error)")
-                }
-                audioPlayer?.play()
+        let twoPiF = 2.0 * Double.pi * frequency
+        let fadeFrames = max(1.0, min(Double(frames) / 4.0, 0.01 * sampleRate))
+        for frame in 0..<Int(frames) {
+            let pos = Double(frame)
+            let envelope: Double
+            if pos < fadeFrames {
+                envelope = pos / fadeFrames
+            } else if pos > Double(frames) - fadeFrames {
+                envelope = (Double(frames) - pos) / fadeFrames
+            } else {
+                envelope = 1.0
             }
-            onInterrupt?(shouldResume)
-
-        @unknown default:
-            break
+            channel[frame] = Float(sin(twoPiF * pos / sampleRate) * envelope * 0.9)
         }
+        return buffer
     }
 
-    // MARK: - Notification subscription
+    private func applyVolume() {
+        guard graphConfigured else { return }
+        player.volume = max(0.0, min(1.0, volume))
+    }
+
+    /// 지정 신호등 톤을 한 번 재생한다. 재생 노드는 계속 playing 상태라 스케줄만 하면 즉시 난다.
+    private func playTone(_ kind: ChewToneKind) {
+        guard kind != .none, let buffer = toneBuffers[kind] else { return }
+        applyVolume()
+        if !engine.isRunning { try? engine.start() }
+        if !player.isPlaying { player.play() }
+        player.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
+        // 진단용 — 톤을 실제로 스케줄했는지 + 엔진/노드/볼륨 상태. 안정화되면 제거.
+        print("[KeepAlive] tone \(kind) scheduled vol=\(player.volume) engine=\(engine.isRunning) playing=\(player.isPlaying)")
+    }
+
+    // MARK: - Interruption (엔진 자체 회복용, 내부 전용)
+    // 전화 등으로 세션이 인터럽트되면 톤 엔진도 멈춘다. keep-alive가 죽지 않도록 종료 시 스스로 되살린다.
+    // 측정 정지·통화 갭 기록은 여기서 하지 않는다 — 그건 AppState의 CallInterruptionMonitor 경로 담당.
 
     private func subscribeInterruptionNotification() {
         NotificationCenter.default.addObserver(
@@ -179,9 +197,23 @@ final class BackgroundAudioKeepAlive {
             let type = AVAudioSession.InterruptionType(rawValue: typeValue)
         else { return }
 
-        let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
-        let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-        handleInterruption(type: type, options: options)
+        switch type {
+        case .began:
+            player.pause()
+        case .ended:
+            let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+            let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+            guard options.contains(.shouldResume) else { return }
+            do {
+                try AVAudioSession.sharedInstance().setActive(true)
+                if !engine.isRunning { try engine.start() }
+                player.play()
+            } catch {
+                print("[KeepAlive] 인터럽트 종료 후 세션 재활성화 실패: \(error)")
+            }
+        @unknown default:
+            break
+        }
     }
 
     #else
@@ -189,14 +221,29 @@ final class BackgroundAudioKeepAlive {
     // MARK: - Simulator stubs
 
     var isRunning: Bool { false }
-    var onInterrupt: ((Bool) -> Void)?
 
     func start() {}
     func stop() {}
-    func setMuted(_ muted: Bool) {}
-    func resume() {}
-    func markInterruptionBegan() {}
-    func handleInterruption(type: AVAudioSession.InterruptionType, options: AVAudioSession.InterruptionOptions) {}
+    func playTone(for pace: ChewPaceSample) {}
+    private func applyVolume() {}
 
     #endif
+}
+
+/// 씹기 페이스 한 컷 — keep-alive가 톤을 고르는 데 필요한 최소 정보.
+struct ChewPaceSample: Sendable, Equatable {
+    /// 지금 씹는 중으로 판단되는지.
+    let isChewing: Bool
+    /// 평균 씹기 간격(초). 0이면 아직 간격 데이터 없음.
+    let avgInterval: Double
+}
+
+/// 신호등 톤 종류. 색이 아니라 톤(높낮이)으로 상태를 구분한다.
+enum ChewToneKind: Equatable {
+    /// 소리 없음(안 씹는 중 / 데이터 부족).
+    case none
+    /// 적정 페이스 — 낮은 톤.
+    case good
+    /// 너무 빠름 — 경고(높은) 톤.
+    case tooFast
 }

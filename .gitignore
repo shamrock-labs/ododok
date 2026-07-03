@@ -60,3 +60,6 @@ observability-report.html
 .signing/
 *.p12
 *.mobileprovision
+
+# 설계 스펙(리스크 기록 포함) 로컬 전용
+docs/appstore-review-bg-audio-volume-design.md

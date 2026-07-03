@@ -73,7 +73,7 @@ final class AppState {
     /// `freezeInventory`로 갱신하고 HomeView가 "🛡️N"으로 표시한다. 마일스톤 적립·소진 계산은 모두 서버.
     var freezeInventory: Int = 0
 
-    /// 사용자가 onboarding에서 입력한 표시 이름. `profiles.displayName`과 매핑.
+    /// 사용자가 온보딩에서 정한 표시 닉네임. `profiles.displayName`과 매핑.
     /// nil이면 HomeView는 "친구" 등 fallback. didSet에서 UserDefaults 캐시 갱신.
     var displayName: String? {
         didSet {
@@ -126,7 +126,7 @@ final class AppState {
     /// false인 동안 ContentView가 LoginView를 fullScreenCover로 띄운다.
     var isLoggedIn: Bool = TokenManager.isLoggedIn
 
-    /// 온보딩(이름 입력 + 사용법 튜토리얼)을 끝까지 마쳤는지. false인 동안 ContentView가
+    /// 온보딩(닉네임 입력 + 사용법 튜토리얼)을 끝까지 마쳤는지. false인 동안 ContentView가
     /// onboarding sheet를 띄운다. 튜토리얼 마지막 "시작하기"/"건너뛰기"의 `completeOnboarding()`
     /// 에서 true로. 출석/스트릭 보상은 이 값이 true가 되기 전엔 트리거하지 않아, 보상이 온보딩
     /// 위로 떠버리는 회귀를 막는다. didSet으로 UserDefaults에 영속(단, init 내 대입은 didSet이
@@ -200,16 +200,26 @@ final class AppState {
     @ObservationIgnored private var demoIMUWaveformTimer: Timer?
     @ObservationIgnored private var imuWaveformPhase: Double = 0
 
-    /// 식사 세션 동안 백그라운드 IMU 수집이 끊기지 않도록 무음 오디오를 굴려 앱을 깨워두는 keep-alive.
-    /// 식사 종료 시 stop. 시뮬레이터에선 노옵 (`BackgroundAudioKeepAlive` 내부 가드).
-    @ObservationIgnored private let backgroundKeepAlive = BackgroundAudioKeepAlive()
-
-    /// 식사 세션 동안 전화 통화 시작을 관찰해, 오디오 인터럽트가 전화 때문인지 판별한다.
+    /// 식사 세션 동안 전화 통화 시작을 관찰해, 측정을 멈추고 통화 종료 시 이어가기를 유도한다.
     @ObservationIgnored private let callMonitor = CallInterruptionMonitor()
 
-    /// 직전 인터럽트가 전화였는지 표시. 전화면 `.ended`에서 자동 재개하지 않고,
-    /// 중단 알림의 "계속하기"를 누를 때까지 기다린다. 재난문자 등은 false라 자동 재개.
+    /// 직전 인터럽트가 전화였는지 표시. 전화면 자동 재개하지 않고,
+    /// 중단 알림의 "계속하기"를 누를 때까지 기다린다.
     @ObservationIgnored private var interruptionWasCall = false
+
+    /// 통화 등으로 측정이 멈춘 시각. 이어가기 시 이 구간을 IMU 세션 갭으로 기록해
+    /// 한 끼가 통화로 두 세션으로 쪼개지지 않게 한다.
+    @ObservationIgnored private var interruptionBeganAt: Date?
+
+    /// 식사 세션 동안 백그라운드에서 AirPods IMU 콜백이 끊기지 않도록 오디오 세션을 살려두고,
+    /// 3초 지속 씹기 감지마다 씹기 페이스 신호등 톤을 낸다(변경 2). 시뮬레이터에선 내부 가드로 노옵.
+    /// 통화 인터럽트 감지·갭 기록은 `callMonitor`(CXCallObserver) 경로가 담당하고,
+    /// 여기서는 백그라운드 유지 오디오와 페이스 톤만 맡는다.
+    @ObservationIgnored private let backgroundKeepAlive = BackgroundAudioKeepAlive()
+
+    /// 서버 원격 알림음 볼륨(변경 3). `/auth/me`의 `alertVolume`으로 갱신하고 식사 시작 시 keep-alive에 주입한다.
+    /// 서버 미수신(오프라인·미로그인·필드 부재) 시 기본 0.5 — 리뷰어에게 들리는 fallback. 서버값은 앱 경계에서 0...1로 정규화한다.
+    @ObservationIgnored private var alertVolume: Float = 0.5
 
     /// 식사 측정 Live Activity(잠금화면·다이내믹 아일랜드) 관리자. 설정에서 꺼져 있으면 노옵.
     @ObservationIgnored private let mealActivity = MealActivityController()
@@ -334,6 +344,10 @@ final class AppState {
 
     // MARK: - Eating actions
 
+    private static func normalizedAlertVolume(_ volume: Double) -> Float {
+        Float(max(0.0, min(1.0, volume)))
+    }
+
     func startEating() {
         guard !isEating else { return }
         isEating = true
@@ -346,42 +360,19 @@ final class AppState {
         // raw IMU 6채널을 모을 봉투 — 식사 종료 시 finalize + 업로드.
         imuSessionRecorder = IMUSessionRecorder(startedAt: now)
         // DSP 씹기 카운터 — 식사 종료 시 chewing_session 분석 5필드 산출용.
-        chewCounter = ChewCounter()
+        let counter = ChewCounter()
+        chewCounter = counter
         // 다람이 씹기 모션용 고정 주기 펄스 — 식사 내내 일정 간격으로 animKey만 올려
         // 화면 속 다람이가 자연스럽게 우물거리게 한다. 실제 씹기 검출과는 무관.
         startChewAnimationLoop()
 
-        // 잠금 화면/홈 화면으로 빠져도 AirPods IMU 콜백이 끊기지 않도록 ambient 오디오 keep-alive 활성.
-        // 시뮬레이터에선 내부적으로 노옵.
         interruptionWasCall = false
-        backgroundKeepAlive.onInterrupt = { [weak self] shouldResume in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                if shouldResume {
-                    // 전화였다면 자동 재개하지 않고 중단 알림의 "계속하기"를 기다린다.
-                    guard AppState.shouldAutoResume(
-                        interruptionWasCall: self.interruptionWasCall,
-                        shouldResume: true
-                    ) else { return }
-                    // 재난문자 등 통화가 아닌 인터럽트 — 갭 기록 후 자동 재개.
-                    #if os(iOS) && !targetEnvironment(simulator)
-                    if let began = self.backgroundKeepAlive.interruptionBeganAt {
-                        self.imuSessionRecorder?.recordInterruptionGap(began: began, ended: Date())
-                    }
-                    #endif
-                    _ = self.startHeadphoneMotionLoop()
-                } else {
-                    // 인터럽트 시작 — IMU 루프 중단.
-                    self.stopHeadphoneMotionLoop()
-                }
-            }
-        }
-        // 통화가 시작되면(앱이 살아있는 동안) 중단 알림을 띄워 통화 후 이어가게 한다.
+        interruptionBeganAt = nil
+        // 통화가 시작되면 측정을 멈추고, 통화 종료 시 중단 알림을 띄워 이어가게 한다.
         callMonitor.onCallStarted = { [weak self] in
             Task { @MainActor [weak self] in
                 guard let self, self.isEating else { return }
-                // keep-alive 오디오 세션이 .mixWithOthers라 통화는 우리 세션을 인터럽트하지 않는다
-                // (onInterrupt 안 불림) → 측정 정지·카드 갱신을 통화 감지(CXCallObserver) 경로에서 직접 한다.
+                // 측정 정지·카드 갱신을 통화 감지(CXCallObserver) 경로에서 직접 한다.
                 // beginBackgroundTask로 실행시간을 확보해 "측정 정지 → 카드(통화 중 멈춤)"가 suspend 전에 끝나게 한다.
                 // 통화 중엔 버튼·알림을 띄우지 않고(callActive=true), 종료 시점(onCallEnded)에 계속하기 + 알림을 보여준다.
                 #if canImport(UIKit)
@@ -391,7 +382,7 @@ final class AppState {
                 }
                 #endif
                 self.interruptionWasCall = true
-                self.backgroundKeepAlive.markInterruptionBegan()
+                if self.interruptionBeganAt == nil { self.interruptionBeganAt = Date() }
                 self.stopHeadphoneMotionLoop()                              // 측정 정지
                 await self.mealActivity.setPaused(true, callActive: true)   // 통화 중 → 멈춤(버튼 없음)
             }
@@ -414,7 +405,21 @@ final class AppState {
         callMonitor.start()
         // 중단 알림이 권한 부재로 막히지 않도록 세션 시작 시 1회 권한 확보(이미 결정됐으면 노옵).
         Task { await MealNotificationService.requestAuthorizationIfNeeded() }
+
+        // 백그라운드 IMU 유지 + 씹기 페이스 신호등 톤. 소리 발생 조건/반복은 원격 main 방식처럼
+        // "씹기 3초 지속마다"로 두고, 톤 높낮이와 볼륨은 현재 브랜치 방식(페이스 기반 + 서버 원격 볼륨)을 쓴다.
+        backgroundKeepAlive.volume = alertVolume
         backgroundKeepAlive.start()
+        let keepAlive = backgroundKeepAlive
+        Task {
+            await counter.setSustainedChewingHandler {
+                Task { @MainActor in
+                    let isChewing = await counter.isChewing
+                    let avgInterval = await counter.avgInterval
+                    keepAlive.playTone(for: ChewPaceSample(isChewing: isChewing, avgInterval: avgInterval))
+                }
+            }
+        }
         mealActivity.start(startedAt: now)
 
         if !startHeadphoneMotionLoop() {
@@ -431,15 +436,15 @@ final class AppState {
         stopHeadphoneMotionLoop()
         stopChewAnimationLoop()
         stopDemoIMUWaveformLoop()
-        // 식사가 끝나면 더 이상 백그라운드 wake가 필요 없으므로 즉시 stop —
-        // ambient 오디오 세션이 살아있는 동안엔 다른 앱(타이머/시스템 사운드 등)
-        // 미디어 라우팅에 영향이 가니, 세션 끝과 동시에 해제하는 게 안전.
-        backgroundKeepAlive.onInterrupt = nil
+        // 식사가 끝나면 백그라운드 wake가 더 필요 없으므로 오디오 세션을 즉시 해제한다 —
+        // 세션이 살아있는 동안엔 다른 앱 미디어 라우팅에 영향이 가니 세션 끝과 함께 내린다.
+        Task { await chewCounter?.setSustainedChewingHandler(nil) }
         backgroundKeepAlive.stop()
         callMonitor.onCallStarted = nil
         callMonitor.onCallEnded = nil
         callMonitor.stop()
         interruptionWasCall = false
+        interruptionBeganAt = nil
         MealNotificationService.cancelInterruptionPrompt()
         mealActivity.end()
         resetIMUWaveform()
@@ -479,12 +484,15 @@ final class AppState {
         stopHeadphoneMotionLoop()
         stopChewAnimationLoop()
         stopDemoIMUWaveformLoop()
-        backgroundKeepAlive.onInterrupt = nil
+        // 식사가 끝나면 백그라운드 wake가 더 필요 없으므로 오디오 세션을 즉시 해제한다 —
+        // 세션이 살아있는 동안엔 다른 앱 미디어 라우팅에 영향이 가니 세션 끝과 함께 내린다.
+        Task { await chewCounter?.setSustainedChewingHandler(nil) }
         backgroundKeepAlive.stop()
         callMonitor.onCallStarted = nil
         callMonitor.onCallEnded = nil
         callMonitor.stop()
         interruptionWasCall = false
+        interruptionBeganAt = nil
         MealNotificationService.cancelInterruptionPrompt()
         mealActivity.end()
         resetIMUWaveform()
@@ -511,15 +519,13 @@ final class AppState {
             requestStartHighlight()
             return
         }
-        #if os(iOS) && !targetEnvironment(simulator)
-        if let began = backgroundKeepAlive.interruptionBeganAt {
+        if let began = interruptionBeganAt {
             imuSessionRecorder?.recordInterruptionGap(began: began, ended: Date())
         }
-        #endif
         interruptionWasCall = false
+        interruptionBeganAt = nil
         MealNotificationService.cancelInterruptionPrompt()
         Task { await self.mealActivity.setPaused(false) }
-        backgroundKeepAlive.resume()
         _ = startHeadphoneMotionLoop()
     }
 
@@ -646,7 +652,7 @@ final class AppState {
             if ProcessInfo.processInfo.arguments.contains("-skipAttendanceDialog") {
                 return
             }
-            // 신규 디바이스 첫 실행에선 온보딩(이름 입력 + 사용법 튜토리얼)이 끝나기 전까지
+            // 신규 디바이스 첫 실행에선 온보딩(닉네임 입력 + 사용법 튜토리얼)이 끝나기 전까지
             // 출석/스트릭 보상 다이얼로그를 띄우지 않는다. 보상이 온보딩 sheet 위로 먼저 떠
             // 사용자가 보상→온보딩 순으로 마주치는 회귀를 차단. completeOnboarding()이
             // 튜토리얼 종료 직후 동일 경로를 호출해 이어준다.
@@ -1324,6 +1330,11 @@ final class AppState {
                 if let name = result.displayName, !name.isEmpty, name != displayName {
                     displayName = name
                 }
+                // 서버 원격 알림음 볼륨(있을 때만) 반영. 식사 중이면 keep-alive에 즉시, 아니면 다음 startEating에서.
+                if let volume = result.alertVolume {
+                    alertVolume = Self.normalizedAlertVolume(volume)
+                    backgroundKeepAlive.volume = alertVolume
+                }
                 meSucceeded = true
             }
         }
@@ -1388,6 +1399,16 @@ final class AppState {
         } catch {
             handleRemoteError(error)
         }
+    }
+
+    static func generatedNickname(number: Int) -> String {
+        let normalized = max(0, min(9999, number))
+        return "다람이 \(String(format: "%04d", normalized))"
+    }
+
+    @MainActor
+    func saveGeneratedDisplayName() async {
+        await saveDisplayName(Self.generatedNickname(number: Int.random(in: 1000...9999)))
     }
 
     /// 사용법 튜토리얼의 마지막 "시작하기"(또는 우상단 "건너뛰기")에서 호출. 온보딩 완료를

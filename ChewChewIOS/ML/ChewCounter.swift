@@ -12,7 +12,8 @@ struct ChewCounterSnapshot: Sendable {
 /// Real-time chew counter using a band-pass IIR filter (0.5–3 Hz) + peak detection.
 ///
 /// Feed every raw IMU sample via `feed(_:)`.
-/// Call `setChewing(_:)` whenever the Level-1 classifier (ChewingPredictor) updates.
+/// `isChewing`은 feed()가 DSP 저작상태 검출기(ChewingStateDetector) 출력을 매 샘플 반영한다 —
+/// 과거 ML 분류기가 setChewing으로 넣던 값을 대체한다. keep-alive 신호등 톤 등 외부가 "지금 씹는지"를 읽는다.
 /// 최근 신호가 씹기 상태로 판단될 때만 후보 피크를 카운트한다.
 actor ChewCounter {
 
@@ -43,6 +44,13 @@ actor ChewCounter {
     private let headingMotionThreshold: Double = 0.12
     private var chewingStateDetector = ChewingStateDetector()
 
+    // 지속 씹기 알림: ChewingStateDetector의 씹기 상태가 3초(150샘플 @50Hz) 이어질 때마다
+    // handler를 1회 호출하고 누적을 0으로 되돌린다. 계속 씹으면 3초 간격으로 반복 발화.
+    // 씹기 상태가 풀리면(detector exit) 누적도 리셋 — 3초 미만 구간은 발화하지 않는다.
+    private let sustainedAlertSamples = 150
+    private var sustainedChewingSamples = 0
+    private var onSustainedChewing: (@Sendable () -> Void)?
+
     private(set) var isChewing: Bool = false
     private(set) var chewCount: Int = 0
     private(set) var chewTimestamps: [Double] = []
@@ -53,8 +61,9 @@ actor ChewCounter {
     // 서버 chewing_session.chewing_timeline 칼럼(문자열 인덱스 = 경과 초)과 1:1.
     private var timelineAccumulator = ChewingTimelineAccumulator()
 
-    func setChewing(_ chewing: Bool) {
-        isChewing = chewing
+    /// 씹기 3초 지속마다 호출될 handler 등록. actor 밖(오디오 등)으로 신호를 보내는 유일한 통로.
+    func setSustainedChewingHandler(_ handler: (@Sendable () -> Void)?) {
+        onSustainedChewing = handler
     }
 
     func feed(rotX: Double, rotY: Double, rotZ: Double) {
@@ -79,6 +88,18 @@ actor ChewCounter {
             accelZ: accelZ
         )
         if chewingState.isChewing { chewingSamples += 1 }
+        // DSP 검출기의 실시간 저작 상태를 actor 프로퍼티에 반영 — 외부(keep-alive 신호등 톤)가 읽는 값.
+        isChewing = chewingState.isChewing
+        // 지속 씹기 알림 누적 — 3초(150샘플)마다 발화 후 리셋, 씹기 끊기면 리셋.
+        if chewingState.isChewing {
+            sustainedChewingSamples += 1
+            if sustainedChewingSamples >= sustainedAlertSamples {
+                sustainedChewingSamples = 0
+                onSustainedChewing?()
+            }
+        } else {
+            sustainedChewingSamples = 0
+        }
         // 초당 타임라인은 sampleCount·chewingSamples와 동일 시점에 누적한다(heading-guard return 이전).
         timelineAccumulator.feed(isChewing: chewingState.isChewing)
 
@@ -124,6 +145,8 @@ actor ChewCounter {
         sampleCount = 0; lastPeakSample = 0
         chewCount = 0; isChewing = false
         chewingSamples = 0
+        sustainedChewingSamples = 0
+        onSustainedChewing = nil
         timelineAccumulator.reset()
         chewTimestamps.removeAll()
         chewAmplitudes.removeAll()

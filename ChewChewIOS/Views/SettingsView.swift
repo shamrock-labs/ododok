@@ -116,7 +116,7 @@ struct SettingsView: View {
     /// 이름 + provider 뱃지를 텍스트 헤더로 표시. 카드/탭 없음.
     private var profileHeader: some View {
         HStack(spacing: 10) {
-            Text(state.displayName ?? "이름 없음")
+            Text(state.displayName ?? "닉네임 없음")
                 .font(.appFont(.heavy, size: 22))
                 .foregroundStyle(Color.textPrimary)
             providerBadge

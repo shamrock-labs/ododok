@@ -17,7 +17,6 @@ let appInfoPlist: [String: Plist.Value] = [
     "BackendBaseURL": "$(BACKEND_BASE_URL)",
     "KakaoInviteMobileWebURL": "$(KAKAO_INVITE_MOBILE_WEB_URL)",
     "NSMotionUsageDescription": "식사 중 AirPods 움직임을 분석해 저작 리듬을 시각화합니다.",
-    "NSMicrophoneUsageDescription": "AirPods IMU 동작 신뢰성 분석을 위해 마이크 권한이 필요할 수 있어요. 음성 녹음은 하지 않습니다.",
     "UIBackgroundModes": [
         "audio",
     ],
@@ -294,6 +293,9 @@ let project = Project(
             ],
             settings: .settings(
                 base: [
+                    // 테스트 번들은 시뮬레이터에서만 돌리므로 서명하지 않는다. 실기기 앱 서명(수동/match)과
+                    // 얽혀 "requires a development team or provisioning profile" 에러가 뜨는 걸 막는다.
+                    "CODE_SIGNING_ALLOWED": "NO",
                     "BUNDLE_LOADER": "$(TEST_HOST)",
                     "TEST_HOST": "$(BUILT_PRODUCTS_DIR)/ChewChewIOS.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/ChewChewIOS",
                     "GENERATE_INFOPLIST_FILE": "YES",
@@ -323,6 +325,8 @@ let project = Project(
             ],
             settings: .settings(
                 base: [
+                    // UI 테스트도 시뮬레이터 전용 — 서명 끔(위 유닛 테스트와 동일 이유).
+                    "CODE_SIGNING_ALLOWED": "NO",
                     "TEST_TARGET_NAME": "ChewChewIOS",
                     "GENERATE_INFOPLIST_FILE": "YES",
                     "IPHONEOS_DEPLOYMENT_TARGET": .string(deploymentTarget),
@@ -338,21 +342,30 @@ let project = Project(
         ),
     ],
     schemes: [
+        // 앱 전용 스킴 — 실기기 Run/빌드가 테스트 번들 서명을 요구하지 않도록 testAction을 분리했다.
+        // 실기기에서 앱만 서명해 돌릴 때 com.shamrock.ChewChewIOSTests/UITests 프로비저닝 요구가 안 뜬다.
+        // 유닛/UI 테스트는 아래 "ChewChewIOSTests" 스킴(시뮬레이터)으로 돌린다.
         .scheme(
             name: "ChewChewIOS",
             shared: true,
             buildAction: .buildAction(targets: ["ChewChewIOS"]),
+            runAction: .runAction(configuration: "Debug"),
+            archiveAction: .archiveAction(configuration: "Release"),
+            profileAction: .profileAction(configuration: "Release"),
+            analyzeAction: .analyzeAction(configuration: "Debug")
+        ),
+        // 테스트 전용 스킴. 앱 스킴에서 떼어내 실기기 서명과 얽히지 않게 한다(시뮬레이터에서 실행).
+        .scheme(
+            name: "ChewChewIOSTests",
+            shared: true,
+            buildAction: .buildAction(targets: ["ChewChewIOSTests", "ChewChewIOSUITests"]),
             testAction: .targets(
                 [
                     "ChewChewIOSTests",
                     "ChewChewIOSUITests",
                 ],
                 configuration: "Debug"
-            ),
-            runAction: .runAction(configuration: "Debug"),
-            archiveAction: .archiveAction(configuration: "Release"),
-            profileAction: .profileAction(configuration: "Release"),
-            analyzeAction: .analyzeAction(configuration: "Debug")
+            )
         ),
     ]
 )
