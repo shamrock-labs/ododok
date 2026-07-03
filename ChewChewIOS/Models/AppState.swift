@@ -340,11 +340,9 @@ final class AppState {
 
     // MARK: - Eating actions
 
-    private static let minimumAudibleAlertVolume: Float = 0.05
-
     private static func normalizedAlertVolume(_ volume: Double) -> Float {
-        guard volume.isFinite else { return minimumAudibleAlertVolume }
-        return max(minimumAudibleAlertVolume, Float(max(0.0, min(1.0, volume))))
+        guard volume.isFinite else { return 0.5 }
+        return Float(max(0.0, min(1.0, volume)))
     }
 
     func startEating() {
