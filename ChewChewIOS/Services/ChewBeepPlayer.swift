@@ -16,6 +16,7 @@ final class ChewBeepPlayer {
     private let player = AVAudioPlayerNode()
     private var beepBuffer: AVAudioPCMBuffer?
     private var isPrepared = false
+    private var isGraphAttached = false
 
     // 비프 파라미터 — 880Hz(A5) 0.18초. 어택/릴리즈 램프로 클릭 노이즈를 없앤다.
     private let toneFrequency = 880.0
@@ -47,12 +48,14 @@ final class ChewBeepPlayer {
 
         engine.attach(player)
         engine.connect(player, to: engine.mainMixerNode, format: format)
+        isGraphAttached = true
         engine.prepare()
         do {
             try engine.start()
             player.play()
             isPrepared = true
         } catch {
+            resetEngineGraph()
             print("[ChewBeep] AVAudioEngine 시작 실패: \(error)")
         }
     }
@@ -66,10 +69,17 @@ final class ChewBeepPlayer {
     /// 엔진 정지 + 상태 해제. 식사 세션 종료 시 호출.
     /// 오디오 세션 deactivate는 하지 않는다(keep-alive가 소유).
     func stop() {
-        guard isPrepared else { return }
+        guard isPrepared || isGraphAttached || beepBuffer != nil else { return }
+        resetEngineGraph()
+    }
+
+    private func resetEngineGraph() {
         player.stop()
         engine.stop()
-        engine.detach(player)
+        if isGraphAttached {
+            engine.detach(player)
+            isGraphAttached = false
+        }
         beepBuffer = nil
         isPrepared = false
     }
