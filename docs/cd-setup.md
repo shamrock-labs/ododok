@@ -86,6 +86,8 @@ TestFlight의 사용자 노출 버전은 `Config/Version.xcconfig`의 `MARKETING
 
 예를 들어 `MARKETING_VERSION = 1.0`이고 TestFlight/App Store Connect에 `1.0 (5)`가 이미 있으면, 다음 main 머지는 `1.0 (6)`을 올린다.
 
+앱은 자체 비면제 암호화를 사용하지 않는다는 전제로 `ITSAppUsesNonExemptEncryption = false`를 Info.plist에 넣는다. 이 키가 빠지면 App Store Connect에서 빌드마다 수출 규정 답변을 요구하고, 답변 전까지 TestFlight 앱에 새 빌드가 보이지 않을 수 있다.
+
 ### 새 마케팅 버전으로 올릴 때
 
 기능 PR마다 `MARKETING_VERSION`을 바꾸지 않는다. 사용자가 보는 앱 버전이 바뀌는 릴리즈에서만 별도 PR로 `Config/Version.xcconfig`를 수정한다.
@@ -126,5 +128,6 @@ CURRENT_PROJECT_VERSION = 1
 - **서명 실패(프로파일 이름 불일치)**: `Project.swift`의 `PROVISIONING_PROFILE_SPECIFIER`와 match 프로파일 이름이 어긋난 경우. 번들 ID를 바꿨다면 양쪽을 함께 고친다.
 - **빌드번호 중복 업로드 거부**: 같은 (버전, 빌드번호) 조합은 재업로드가 안 된다. CD가 App Store Connect 최신 빌드번호 + 1을 계산하므로 보통 자동 회피된다. 실패한 실행을 그대로 재시도했는데 같은 번호를 쓰면 App Store Connect 상태를 확인한 뒤 새 실행으로 올린다.
 - **GitHub Actions는 성공했는데 TestFlight 앱에 새 빌드가 안 보임**: `ios-cd-testflight.yml`이 build processing 완료까지 기다리는지 확인한다. `skip_waiting_for_build_processing`을 켜면 업로드만 하고 테스터 배포/처리 완료를 기다리지 않아 TestFlight 앱에는 이전 빌드만 보일 수 있다.
+- **App Store Connect가 수출 규정 답변을 요구함**: `Project.swift`의 앱/확장 Info.plist에 `ITSAppUsesNonExemptEncryption = false`가 들어 있는지 확인한다. 자체 암호화 기능을 추가했다면 이 값을 그대로 두면 안 되고 수출 규정 판단을 다시 해야 한다.
 - **Secrets.xcconfig 없음으로 tuist generate 실패**: `SECRETS_XCCONFIG_BASE64` 미등록. 등록 후 재실행.
 - **entitlements(푸시·App Groups) 불일치**: match 프로파일이 앱 entitlements를 지원해야 한다. capability를 추가했다면 Developer Portal에서 App ID에 반영 후 `match`를 로컬에서 다시 실행(생성 모드)해 프로파일을 갱신한다.

@@ -31,6 +31,9 @@ let appInfoPlist: [String: Plist.Value] = [
     "AmplitudeAPIKey": "$(AMPLITUDE_API_KEY)",
     "BackendBaseURL": "$(BACKEND_BASE_URL)",
     "KakaoInviteMobileWebURL": "$(KAKAO_INVITE_MOBILE_WEB_URL)",
+    // HTTPS/Firebase/Apple 기본 보안 외 자체 비면제 암호화를 사용하지 않는다.
+    // 이 값이 없으면 App Store Connect가 빌드마다 수출 규정 확인을 요구할 수 있다.
+    "ITSAppUsesNonExemptEncryption": false,
     "NSMotionUsageDescription": "식사 중 AirPods 움직임을 분석해 저작 리듬을 시각화합니다.",
     "NSMicrophoneUsageDescription": "AirPods IMU 동작 신뢰성 분석을 위해 마이크 권한이 필요할 수 있어요. 음성 녹음은 하지 않습니다.",
     "UIBackgroundModes": [
@@ -79,6 +82,7 @@ let widgetsInfoPlist: [String: Plist.Value] = [
     "CFBundleShortVersionString": "$(MARKETING_VERSION)",
     "CFBundleVersion": "$(CURRENT_PROJECT_VERSION)",
     "CFBundleDisplayName": "오도독",
+    "ITSAppUsesNonExemptEncryption": false,
     "NSExtension": [
         "NSExtensionPointIdentifier": "com.apple.widgetkit-extension",
     ],
@@ -88,6 +92,7 @@ let notificationContentInfoPlist: [String: Plist.Value] = [
     "CFBundleShortVersionString": "$(MARKETING_VERSION)",
     "CFBundleVersion": "$(CURRENT_PROJECT_VERSION)",
     "CFBundleDisplayName": "오도독",
+    "ITSAppUsesNonExemptEncryption": false,
     "NSExtension": [
         "NSExtensionPointIdentifier": "com.apple.usernotifications.content-extension",
         "NSExtensionPrincipalClass": "$(PRODUCT_MODULE_NAME).NotificationViewController",
