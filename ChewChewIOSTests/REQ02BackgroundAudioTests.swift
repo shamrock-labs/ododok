@@ -2,8 +2,7 @@ import AVFoundation
 import XCTest
 @testable import ChewChewIOS
 
-/// 오디오 엔진은 실기기 전용이라 시뮬레이터 유닛테스트에선 하드웨어 없이 검증 가능한
-/// 볼륨 기본값과 씹기 페이스→톤 분류(`toneKind`)만 확인한다.
+/// 실기기 오디오 엔진을 직접 띄우지 않고, 볼륨 정책과 페이스→톤 분류만 검증한다.
 final class REQ02BackgroundAudioTests: XCTestCase {
 
     // MARK: - volume
@@ -31,7 +30,7 @@ final class REQ02BackgroundAudioTests: XCTestCase {
         XCTAssertEqual(keepAlive.volume, 0.0, accuracy: 0.0001)
     }
 
-    // MARK: - toneKind (신호등 분류, 순수 함수)
+    // MARK: - toneKind
 
     func testToneKind_notChewing_isNone() {
         let pace = ChewPaceSample(isChewing: false, avgInterval: 1.0)
@@ -46,8 +45,6 @@ final class REQ02BackgroundAudioTests: XCTestCase {
     }
 
     func testToneKind_fastChewing_isTooFast() {
-        // fastThreshold(기본 0.8초)보다 짧은 간격 = 빨리 씹음 → 경고 톤.
-        // 0.65초는 ChewCounter minPeakGap(0.64초) 바로 위 — 실측 가능한 빠른 페이스.
         let pace = ChewPaceSample(isChewing: true, avgInterval: 0.65)
         XCTAssertEqual(BackgroundAudioKeepAlive.toneKind(for: pace), .tooFast,
             "간격이 임계값보다 짧으면 너무 빠른 것으로 보고 경고 톤")
@@ -60,7 +57,6 @@ final class REQ02BackgroundAudioTests: XCTestCase {
     }
 
     func testToneKind_atThreshold_isGood() {
-        // 경계값(== fastThreshold)은 '적정'으로 — tooFast는 strict less-than.
         let pace = ChewPaceSample(isChewing: true, avgInterval: 0.8)
         XCTAssertEqual(BackgroundAudioKeepAlive.toneKind(for: pace, fastThreshold: 0.8), .good,
             "정확히 임계값이면 적정(경계 포함)")

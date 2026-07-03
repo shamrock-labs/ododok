@@ -1,9 +1,7 @@
 import SwiftUI
 
-/// 앱 첫 실행 시 앱에서 쓸 닉네임을 정하는 onboarding sheet.
-/// 여기서 받는 값은 사용자가 앱에서 고르는 표시용 닉네임이다.
-/// 저장 → `AppState.saveDisplayName` → in-memory + UserDefaults + `profiles.displayName` upsert.
-/// 우상단 건너뛰기는 앱이 `다람이 1234` 형태의 랜덤 닉네임을 생성해 같은 저장 경로를 탄다.
+/// 앱 첫 실행 시 표시용 닉네임을 정하는 온보딩 화면.
+/// 직접 입력과 건너뛰기 모두 `AppState.saveDisplayName` 계열 경로로 저장한다.
 struct OnboardingNameView: View {
     @Environment(AppState.self) private var state
     let onComplete: () -> Void
@@ -61,8 +59,6 @@ struct OnboardingNameView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.pageBackground.ignoresSafeArea())
-        // 좌상단: 잘못된 계정으로 로그인했을 때 빠져나가는 출구. 서버 refresh 토큰 폐기 후
-        // 로컬 세션 종료 → isLoggedIn=false라 ContentView가 LoginView로 돌아간다.
         .overlay(alignment: .topLeading) {
             Button {
                 Task { await state.logoutFromServer() }

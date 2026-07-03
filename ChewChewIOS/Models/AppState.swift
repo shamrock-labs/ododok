@@ -351,58 +351,78 @@ final class AppState {
         analytics.track(.mealSessionStarted())
         let now = Date()
         eatingStartedAt = now
-        // 새 세션 시작 시 IMU 진단 지표 리셋 — 백그라운드 수집 여부 검증에 깨끗한 기준 제공
-        imuSampleCount = 0
-        lastIMUSampleAt = nil
-        // raw IMU 6채널을 모을 봉투 — 식사 종료 시 finalize + 업로드.
-        imuSessionRecorder = IMUSessionRecorder(startedAt: now)
-        // DSP 씹기 카운터 — 식사 종료 시 chewing_session 분석 5필드 산출용.
+
+        prepareEatingSession(startedAt: now)
         let counter = ChewCounter()
         chewCounter = counter
-        // 다람이 씹기 모션용 고정 주기 펄스 — 식사 내내 일정 간격으로 animKey만 올려
-        // 화면 속 다람이가 자연스럽게 우물거리게 한다. 실제 씹기 검출과는 무관.
         startChewAnimationLoop()
 
+        configureCallInterruptionHandling()
+        Task { await MealNotificationService.requestAuthorizationIfNeeded() }
+        startAudioFeedback(counter: counter)
+        mealActivity.start(startedAt: now)
+
+        if !startHeadphoneMotionLoop() {
+            startDemoIMUWaveformLoop(source: imuWaveformSource)
+        }
+    }
+
+    private func prepareEatingSession(startedAt: Date) {
+        imuSampleCount = 0
+        lastIMUSampleAt = nil
+        imuSessionRecorder = IMUSessionRecorder(startedAt: startedAt)
         interruptionWasCall = false
         interruptionBeganAt = nil
-        // 통화가 시작되면 측정을 멈추고, 통화 종료 시 중단 알림을 띄워 이어가게 한다.
+    }
+
+    /// 통화가 식사 측정을 끊었을 때 멈춤 카드와 이어가기 알림을 연결한다.
+    private func configureCallInterruptionHandling() {
         callMonitor.onCallStarted = { [weak self] in
             Task { @MainActor [weak self] in
-                guard let self, self.isEating else { return }
-                // 측정 정지·카드 갱신을 통화 감지(CXCallObserver) 경로에서 직접 한다.
-                // beginBackgroundTask로 실행시간을 확보해 "측정 정지 → 카드(통화 중 멈춤)"가 suspend 전에 끝나게 한다.
-                // 통화 중엔 버튼·알림을 띄우지 않고(callActive=true), 종료 시점(onCallEnded)에 계속하기 + 알림을 보여준다.
-                #if canImport(UIKit)
-                let bgTask = UIApplication.shared.beginBackgroundTask(withName: "MealCallPause")
-                defer {
-                    if bgTask != .invalid { UIApplication.shared.endBackgroundTask(bgTask) }
-                }
-                #endif
-                self.interruptionWasCall = true
-                if self.interruptionBeganAt == nil { self.interruptionBeganAt = Date() }
-                self.stopHeadphoneMotionLoop()                              // 측정 정지
-                await self.mealActivity.setPaused(true, callActive: true)   // 통화 중 → 멈춤(버튼 없음)
+                await self?.pauseMeasurementForCall()
             }
         }
-        // 통화 종료 → 카드에 계속하기/그만하기 노출 + "이어서 진행할까요?" 알림.
-        // 종료 시점에 앱이 깨어나야(오디오 .ended 또는 CXCallObserver 콜백) 갱신되므로 여기서도 실행시간을 확보한다.
         callMonitor.onCallEnded = { [weak self] in
             Task { @MainActor [weak self] in
-                guard let self, self.isEating, self.interruptionWasCall else { return }
-                #if canImport(UIKit)
-                let bgTask = UIApplication.shared.beginBackgroundTask(withName: "MealCallEnded")
-                defer {
-                    if bgTask != .invalid { UIApplication.shared.endBackgroundTask(bgTask) }
-                }
-                #endif
-                await self.mealActivity.setPaused(true, callActive: false)  // 통화 끝 → 계속/그만 노출
-                await MealNotificationService.scheduleInterruptionPrompt()  // "이어서 진행할까요?" 알림
+                await self?.showResumePromptAfterCall()
             }
         }
         callMonitor.start()
-        // 중단 알림이 권한 부재로 막히지 않도록 세션 시작 시 1회 권한 확보(이미 결정됐으면 노옵).
-        Task { await MealNotificationService.requestAuthorizationIfNeeded() }
+    }
 
+    @MainActor
+    private func pauseMeasurementForCall() async {
+        guard isEating else { return }
+        await withMealBackgroundTask(named: "MealCallPause") {
+            interruptionWasCall = true
+            if interruptionBeganAt == nil { interruptionBeganAt = Date() }
+            stopHeadphoneMotionLoop()
+            await mealActivity.setPaused(true, callActive: true)
+        }
+    }
+
+    @MainActor
+    private func showResumePromptAfterCall() async {
+        guard isEating, interruptionWasCall else { return }
+        await withMealBackgroundTask(named: "MealCallEnded") {
+            await mealActivity.setPaused(true, callActive: false)
+            await MealNotificationService.scheduleInterruptionPrompt()
+        }
+    }
+
+    @MainActor
+    private func withMealBackgroundTask(named name: String, operation: () async -> Void) async {
+        #if canImport(UIKit)
+        let bgTask = UIApplication.shared.beginBackgroundTask(withName: name)
+        defer {
+            if bgTask != .invalid { UIApplication.shared.endBackgroundTask(bgTask) }
+        }
+        #endif
+        await operation()
+    }
+
+    /// 서버 `alertVolume`을 적용하고, 지속 씹기 이벤트를 페이스 톤으로 연결한다.
+    private func startAudioFeedback(counter: ChewCounter) {
         backgroundKeepAlive.volume = alertVolume
         backgroundKeepAlive.start()
         let keepAlive = backgroundKeepAlive
@@ -415,46 +435,21 @@ final class AppState {
                 }
             }
         }
-        mealActivity.start(startedAt: now)
-
-        if !startHeadphoneMotionLoop() {
-            startDemoIMUWaveformLoop(source: imuWaveformSource)
-        }
     }
 
     func stopEating() {
         guard isEating else { return }
         isEating = false
-        // eatingStartedAt을 nil로 비우기 전에 측정 시간 캡처(중단/실패 이벤트의 duration_sec).
         let sessionDurationSec = eatingStartedAt.map { Int(Date().timeIntervalSince($0)) } ?? 0
         eatingStartedAt = nil
-        stopHeadphoneMotionLoop()
-        stopChewAnimationLoop()
-        stopDemoIMUWaveformLoop()
-        let counter = chewCounter
-        Task { await counter?.setSustainedChewingHandler(nil) }
-        backgroundKeepAlive.stop()
-        callMonitor.onCallStarted = nil
-        callMonitor.onCallEnded = nil
-        callMonitor.stop()
-        interruptionWasCall = false
-        interruptionBeganAt = nil
-        MealNotificationService.cancelInterruptionPrompt()
-        mealActivity.end()
-        resetIMUWaveform()
-        imuWaveformSource = .idle
-        // 식사 종료 시 게임 진행 상태를 디스크에 한 번에 스냅샷 저장
+        let counter = stopEatingRuntime()
         persistSnapshot()
 
-        // IMU 세션 봉인 → Storage 업로드 → chewing_session INSERT.
-        // 결과를 sessionUploadStatus로 publish해서 UI alert이 관찰할 수 있게 한다.
         chewCounter = nil
         if let recorder = imuSessionRecorder {
             imuSessionRecorder = nil
             let endedAt = Date()
             let output = recorder.finalize(endedAt: endedAt)
-            // 분석이 불가능한 세션(IMU 샘플 0개)은 DB·도토리·리포트 어디에도
-            // 흔적을 남기지 않는다 — 사용자 입장에서 "아무 일도 안 일어난" 상태.
             guard output.sampleCount > 0 else {
                 analytics.track(.mealSessionAborted(reason: "no_samples", durationSec: sessionDurationSec))
                 return
@@ -467,13 +462,7 @@ final class AppState {
         }
     }
 
-    /// 너무 짧게 끝낸 세션을 사용자가 "그만두기" 선택했을 때 호출.
-    /// 측정 상태만 정리하고 DB·도토리·리포트엔 어떤 흔적도 남기지 않는다.
-    func discardCurrentSession() {
-        guard isEating else { return }
-        isEating = false
-        let sessionDurationSec = eatingStartedAt.map { Int(Date().timeIntervalSince($0)) } ?? 0
-        eatingStartedAt = nil
+    private func stopEatingRuntime() -> ChewCounter? {
         stopHeadphoneMotionLoop()
         stopChewAnimationLoop()
         stopDemoIMUWaveformLoop()
@@ -489,6 +478,17 @@ final class AppState {
         mealActivity.end()
         resetIMUWaveform()
         imuWaveformSource = .idle
+        return counter
+    }
+
+    /// 너무 짧게 끝낸 세션을 사용자가 "그만두기" 선택했을 때 호출.
+    /// 측정 상태만 정리하고 DB·도토리·리포트엔 어떤 흔적도 남기지 않는다.
+    func discardCurrentSession() {
+        guard isEating else { return }
+        isEating = false
+        let sessionDurationSec = eatingStartedAt.map { Int(Date().timeIntervalSince($0)) } ?? 0
+        eatingStartedAt = nil
+        _ = stopEatingRuntime()
         persistSnapshot()
         chewCounter = nil
         if let recorder = imuSessionRecorder {
