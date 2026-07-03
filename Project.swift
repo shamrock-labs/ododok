@@ -20,6 +20,10 @@ if FileManager.default.fileExists(atPath: googleServiceInfoPlistPath) {
 }
 
 let appInfoPlist: [String: Plist.Value] = [
+    // 버전/빌드번호를 빌드 설정(MARKETING_VERSION/CURRENT_PROJECT_VERSION)과 연결한다.
+    // 연결하지 않으면 Tuist 기본값(1.0/1)이 하드코딩돼 CI의 빌드번호 주입이 무시된다.
+    "CFBundleShortVersionString": "$(MARKETING_VERSION)",
+    "CFBundleVersion": "$(CURRENT_PROJECT_VERSION)",
     "CFBundleDisplayName": "Ododok",
     "InsForgeAPIKey": "$(INSFORGE_API_KEY)",
     "SentryDSN": "$(SENTRY_DSN)",
@@ -71,6 +75,8 @@ let appInfoPlist: [String: Plist.Value] = [
 ]
 
 let widgetsInfoPlist: [String: Plist.Value] = [
+    "CFBundleShortVersionString": "$(MARKETING_VERSION)",
+    "CFBundleVersion": "$(CURRENT_PROJECT_VERSION)",
     "CFBundleDisplayName": "오도독",
     "NSExtension": [
         "NSExtensionPointIdentifier": "com.apple.widgetkit-extension",
@@ -78,6 +84,8 @@ let widgetsInfoPlist: [String: Plist.Value] = [
 ]
 
 let notificationContentInfoPlist: [String: Plist.Value] = [
+    "CFBundleShortVersionString": "$(MARKETING_VERSION)",
+    "CFBundleVersion": "$(CURRENT_PROJECT_VERSION)",
     "CFBundleDisplayName": "오도독",
     "NSExtension": [
         "NSExtensionPointIdentifier": "com.apple.usernotifications.content-extension",
