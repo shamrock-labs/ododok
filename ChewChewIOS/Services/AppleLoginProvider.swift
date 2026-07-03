@@ -2,7 +2,7 @@ import AuthenticationServices
 import UIKit
 
 /// Sign in with Apple(네이티브). SDK 없이 AuthenticationServices로 id_token을 받는다.
-/// 실명(fullName)은 요청하지 않는다 — 개인정보 최소화(App Review 5.1.1). 표시명은 온보딩 닉네임으로 받는다.
+/// 표시명은 온보딩 닉네임으로 받는다.
 @MainActor
 final class AppleLoginProvider: NSObject, SocialLoginProvider {
     private var continuation: CheckedContinuation<SocialCredential, Error>?
@@ -29,7 +29,6 @@ extension AppleLoginProvider: ASAuthorizationControllerDelegate {
             finish(.failure(SocialLoginError.missingIdToken))
             return
         }
-        // 실명은 수집하지 않는다(5.1.1). 표시명은 서버가 닉네임을 생성하거나 온보딩에서 입력받는다.
         finish(.success(SocialCredential(provider: "apple", idToken: idToken, name: nil)))
     }
 

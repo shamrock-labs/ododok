@@ -1,38 +1,13 @@
 import AVFoundation
 import Foundation
 
-/// 씹기 페이스를 알려주는 신호와, 백그라운드에서 AirPods IMU 콜백을 살려두는 keep-alive를
-/// 하나의 오디오 재생으로 겸한다.
-///
-/// 문제 상황:
-/// - `AVAudioSession`만 active로 둬도 iOS는 몇 초 뒤 앱을 suspend → `CMHeadphoneMotionManager`
-///   콜백이 끊긴다. 실제로 "들리는 오디오"를 내보내는 앱만 백그라운드에서 계속 살아있는다.
-/// - 예전 구현은 저진폭 brown noise를 상시 루프해 이 문제를 풀었지만, 소리에 의미가 없어
-///   App Review 2.5.4(오디오의 실사용 목적) 관점에서 정당화가 약했다.
-///
-/// 해결:
-/// - 상시 루프 대신, `ChewCounter`가 3초 지속 씹기를 감지할 때 신호등형 톤을 낸다.
-///   적정 페이스면 낮은 톤, 너무 빠르면 경고 톤 — 소리 자체가 제품 UX(천천히 씹기 유도)를 수행하고,
-///   그 오디오가 백그라운드 세션을 정당화한다.
-/// - 톤과 톤 사이에도 `AVAudioEngine`은 계속 돌아 세션이 active로 유지된다(= 앱이 안 죽는다).
-///
-/// 원리:
-/// - 카테고리는 `.playback` + `.mixWithOthers`로 둬 유튜브/스포티파이 등 외부 오디오를 끊지 않는다.
-/// - 톤 파형은 번들 리소스가 아니라 사인파로 즉석 합성한다(에셋 불필요, 주파수/길이 자유).
-/// - 재생 볼륨 `volume`은 서버 원격값(변경 3, iOS-C)으로 주입한다. 0이면 무음이지만 세션은 유지된다
-///   (수용한 리스크 — 스펙 문서 참조).
-///
-/// 시뮬레이터에선 전 구간 노옵 — `CMHeadphoneMotion` 자체가 없어 keep-alive 의미가 없고,
-/// 불필요한 오디오 세션 활성화로 다른 소리를 잡지 않도록. 페이스 분류(`toneKind`)만 순수 함수로
-/// 남겨 유닛 테스트가 하드웨어 없이 검증할 수 있게 한다.
+/// 식사 세션 동안 오디오 세션을 유지하고, 씹기 페이스 피드백 톤을 재생한다.
+/// 시뮬레이터에서는 하드웨어 백그라운드 수집 의미가 없어 노옵으로 둔다.
 final class BackgroundAudioKeepAlive {
 
     // MARK: - Public state (플랫폼 공통)
 
-    /// 톤 재생 볼륨(0.0~1.0). 서버 원격값 주입 지점(변경 3). 기본 0.5는 서버 응답 전/오프라인
-    /// fallback으로, App Review가 실제로 소리를 들을 수 있게 잡은 값이다(ODO-105 리젝 사유 3 =
-    /// 이전 0.03이 리뷰어에게 안 들려서 발생 → 재발 방지). 0이면 무음이지만 세션은 유지된다.
-    /// 세팅 즉시 재생 노드에 반영한다.
+    /// 톤 재생 볼륨(0.0~1.0). 세팅 즉시 재생 노드에 반영한다.
     var volume: Float = 0.5 {
         didSet { applyVolume() }
     }
@@ -165,7 +140,6 @@ final class BackgroundAudioKeepAlive {
         if !engine.isRunning { try? engine.start() }
         if !player.isPlaying { player.play() }
         player.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
-        // 진단용 — 톤을 실제로 스케줄했는지 + 엔진/노드/볼륨 상태. 안정화되면 제거.
         print("[KeepAlive] tone \(kind) scheduled vol=\(player.volume) engine=\(engine.isRunning) playing=\(player.isPlaying)")
     }
 

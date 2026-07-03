@@ -211,14 +211,10 @@ final class AppState {
     /// 한 끼가 통화로 두 세션으로 쪼개지지 않게 한다.
     @ObservationIgnored private var interruptionBeganAt: Date?
 
-    /// 식사 세션 동안 백그라운드에서 AirPods IMU 콜백이 끊기지 않도록 오디오 세션을 살려두고,
-    /// 3초 지속 씹기 감지마다 씹기 페이스 신호등 톤을 낸다(변경 2). 시뮬레이터에선 내부 가드로 노옵.
-    /// 통화 인터럽트 감지·갭 기록은 `callMonitor`(CXCallObserver) 경로가 담당하고,
-    /// 여기서는 백그라운드 유지 오디오와 페이스 톤만 맡는다.
+    /// 식사 세션 동안 오디오 세션을 유지하고 씹기 페이스 톤을 낸다.
     @ObservationIgnored private let backgroundKeepAlive = BackgroundAudioKeepAlive()
 
-    /// 서버 원격 알림음 볼륨(변경 3). `/auth/me`의 `alertVolume`으로 갱신하고 식사 시작 시 keep-alive에 주입한다.
-    /// 서버 미수신(오프라인·미로그인·필드 부재) 시 기본 0.5 — 리뷰어에게 들리는 fallback. 서버값은 앱 경계에서 0...1로 정규화한다.
+    /// `/auth/me`의 `alertVolume`으로 갱신하고 식사 시작 시 keep-alive에 주입한다.
     @ObservationIgnored private var alertVolume: Float = 0.5
 
     /// 식사 측정 Live Activity(잠금화면·다이내믹 아일랜드) 관리자. 설정에서 꺼져 있으면 노옵.
@@ -406,8 +402,6 @@ final class AppState {
         // 중단 알림이 권한 부재로 막히지 않도록 세션 시작 시 1회 권한 확보(이미 결정됐으면 노옵).
         Task { await MealNotificationService.requestAuthorizationIfNeeded() }
 
-        // 백그라운드 IMU 유지 + 씹기 페이스 신호등 톤. 소리 발생 조건/반복은 원격 main 방식처럼
-        // "씹기 3초 지속마다"로 두고, 톤 높낮이와 볼륨은 현재 브랜치 방식(페이스 기반 + 서버 원격 볼륨)을 쓴다.
         backgroundKeepAlive.volume = alertVolume
         backgroundKeepAlive.start()
         let keepAlive = backgroundKeepAlive
@@ -436,8 +430,6 @@ final class AppState {
         stopHeadphoneMotionLoop()
         stopChewAnimationLoop()
         stopDemoIMUWaveformLoop()
-        // 식사가 끝나면 백그라운드 wake가 더 필요 없으므로 오디오 세션을 즉시 해제한다 —
-        // 세션이 살아있는 동안엔 다른 앱 미디어 라우팅에 영향이 가니 세션 끝과 함께 내린다.
         Task { await chewCounter?.setSustainedChewingHandler(nil) }
         backgroundKeepAlive.stop()
         callMonitor.onCallStarted = nil
@@ -484,8 +476,6 @@ final class AppState {
         stopHeadphoneMotionLoop()
         stopChewAnimationLoop()
         stopDemoIMUWaveformLoop()
-        // 식사가 끝나면 백그라운드 wake가 더 필요 없으므로 오디오 세션을 즉시 해제한다 —
-        // 세션이 살아있는 동안엔 다른 앱 미디어 라우팅에 영향이 가니 세션 끝과 함께 내린다.
         Task { await chewCounter?.setSustainedChewingHandler(nil) }
         backgroundKeepAlive.stop()
         callMonitor.onCallStarted = nil

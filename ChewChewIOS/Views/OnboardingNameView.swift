@@ -1,8 +1,7 @@
 import SwiftUI
 
 /// 앱 첫 실행 시 앱에서 쓸 닉네임을 정하는 onboarding sheet.
-/// Sign in with Apple이 이름을 제공하더라도, 여기서 받는 값은 개인정보(실명)가 아니라
-/// 사용자가 앱에서 고르는 표시용 닉네임이다(App Store Guideline 4 대응).
+/// 여기서 받는 값은 사용자가 앱에서 고르는 표시용 닉네임이다.
 /// 저장 → `AppState.saveDisplayName` → in-memory + UserDefaults + `profiles.displayName` upsert.
 /// 우상단 건너뛰기는 앱이 `다람이 1234` 형태의 랜덤 닉네임을 생성해 같은 저장 경로를 탄다.
 struct OnboardingNameView: View {
