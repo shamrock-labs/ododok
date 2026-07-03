@@ -219,6 +219,9 @@ final class AppState {
     /// 식사 세션 동안 활성. IMU 샘플을 받아 DSP로 씹기 피크를 세고, 종료 시 세션 통계 산출.
     @ObservationIgnored private var chewCounter: ChewCounter?
 
+    /// 씹기 3초 지속 감지마다 울리는 코드 합성 비프(에셋 없음). 식사 세션 동안만 활성.
+    @ObservationIgnored private let chewBeepPlayer = ChewBeepPlayer()
+
     /// 현재 사용 중인 감지 알고리즘 식별자. DB의 `model_version` 컬럼에 저장.
     private static let modelVersion = "dsp-chewcounter-1"
 
@@ -346,7 +349,19 @@ final class AppState {
         // raw IMU 6채널을 모을 봉투 — 식사 종료 시 finalize + 업로드.
         imuSessionRecorder = IMUSessionRecorder(startedAt: now)
         // DSP 씹기 카운터 — 식사 종료 시 chewing_session 분석 5필드 산출용.
-        chewCounter = ChewCounter()
+        let counter = ChewCounter()
+        chewCounter = counter
+        // 씹기 3초 지속마다 비프 — ChewCounter actor에서 발화하므로 재생은 MainActor로 홉.
+        // AppState(self) 대신 플레이어만 캡처해 순환 참조·옵셔널 self 걱정을 없앤다.
+        chewBeepPlayer.prepare()
+        let beepPlayer = chewBeepPlayer
+        Task {
+            await counter.setSustainedChewingHandler {
+                Task { @MainActor in
+                    beepPlayer.play()
+                }
+            }
+        }
         // 다람이 씹기 모션용 고정 주기 펄스 — 식사 내내 일정 간격으로 animKey만 올려
         // 화면 속 다람이가 자연스럽게 우물거리게 한다. 실제 씹기 검출과는 무관.
         startChewAnimationLoop()
@@ -447,6 +462,8 @@ final class AppState {
         // 식사 종료 시 게임 진행 상태를 디스크에 한 번에 스냅샷 저장
         persistSnapshot()
 
+        chewBeepPlayer.stop()
+
         // IMU 세션 봉인 → Storage 업로드 → chewing_session INSERT.
         // 결과를 sessionUploadStatus로 publish해서 UI alert이 관찰할 수 있게 한다.
         let counter = chewCounter
@@ -490,6 +507,7 @@ final class AppState {
         resetIMUWaveform()
         imuWaveformSource = .idle
         persistSnapshot()
+        chewBeepPlayer.stop()
         chewCounter = nil
         if let recorder = imuSessionRecorder {
             imuSessionRecorder = nil
