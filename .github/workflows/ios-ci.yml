@@ -19,14 +19,50 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect docs-only changes
+        id: changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+          else
+            base="${{ github.event.before }}"
+            head="${{ github.sha }}"
+          fi
+
+          if [[ "$base" =~ ^0+$ ]]; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          changed_files="$(git diff --name-only "$base" "$head")"
+          if [[ -z "$changed_files" ]]; then
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          non_docs="$(printf '%s\n' "$changed_files" | grep -Ev '^([^/]+\.md|docs/.*|\.github/[^/]+\.md)$' || true)"
+          if [[ -z "$non_docs" ]]; then
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+            echo "Docs-only change; skipping iOS build."
+          else
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Show toolchain
+        if: steps.changes.outputs.docs_only != 'true'
         run: |
           sw_vers
           xcodebuild -version
           swift --version
 
       - name: Install Tuist
+        if: steps.changes.outputs.docs_only != 'true'
         run: |
           TUIST_VERSION=4.200.5
           curl -L "https://github.com/tuist/tuist/releases/download/${TUIST_VERSION}/tuist.zip" -o /tmp/tuist.zip
@@ -35,18 +71,32 @@ jobs:
           echo "/tmp/tuist" >> "$GITHUB_PATH"
           /tmp/tuist/tuist version
 
+      - name: Restore SwiftPM cache
+        if: steps.changes.outputs.docs_only != 'true'
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/org.swift.swiftpm
+            .spm-source-packages
+          key: ${{ runner.os }}-spm-${{ hashFiles('.package.resolved', 'Project.swift', 'Tuist.swift') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+
       # Project.swift는 Config/Secrets.xcconfig를 config file로 참조한다.
       # 실제 키는 gitignore라 CI 러너엔 파일이 없다.
       # 빌드 검증에는 실제 키가 필요 없으니 더미 값으로 stub 파일을 만들어둔다.
       - name: Stub Secrets.xcconfig
+        if: steps.changes.outputs.docs_only != 'true'
         run: |
           mkdir -p Config
           [ -f Config/Secrets.xcconfig ] || printf 'INSFORGE_API_KEY = ik_dummy_for_ci_build_only\nODODOK_BUNDLE_PREFIX = com.shamrock\n' > Config/Secrets.xcconfig
 
       - name: Generate Xcode workspace
+        if: steps.changes.outputs.docs_only != 'true'
         run: tuist generate --no-open
 
       - name: Build for iOS Simulator
+        if: steps.changes.outputs.docs_only != 'true'
         env:
           NSUnbufferedIO: YES
         run: |
@@ -56,7 +106,9 @@ jobs:
             -scheme ChewChewIOS \
             -configuration Debug \
             -destination 'generic/platform=iOS Simulator' \
+            -clonedSourcePackagesDirPath .spm-source-packages \
             -skipPackagePluginValidation \
+            ONLY_ACTIVE_ARCH=YES \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
