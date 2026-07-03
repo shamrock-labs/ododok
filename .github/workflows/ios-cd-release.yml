@@ -16,7 +16,8 @@ concurrency:
 jobs:
   release:
     name: Build & submit to App Store
-    runs-on: macos-15
+    # Xcode 26(iOS 26 SDK) 기본 탑재. App Store는 2026-04부터 iOS 26 SDK 빌드만 허용한다.
+    runs-on: macos-26
     timeout-minutes: 40
 
     env:
