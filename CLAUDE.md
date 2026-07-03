@@ -29,7 +29,7 @@ SwiftUI 기반 오도독 iOS 앱. AirPods IMU 신호를 신호처리(DSP)로 분
 
 - 커밋: `type(ODO-NN): 요약` (type = feat/fix/refactor/docs/test/chore). 한 커밋에 한 가지 목적만. 상세는 `.github/COMMIT_CONVENTION.md`.
 - 브랜치: `type/odo-NN-짧은-설명` (type + Linear 키 + 설명, 소문자, 하이픈).
-- PR: `.github/PULL_REQUEST_TEMPLATE.md`를 사용한다. 제목은 Linear 키로 시작한다. 머지는 사용자가 본인 검토 후 직접 한다.
+- PR: `.github/PULL_REQUEST_TEMPLATE.md`를 사용한다. 제목은 `type(ODO-NN): 요약` 형식으로 쓴다. 머지는 사용자가 본인 검토 후 직접 한다.
 
 ## Linear · 레포 (작업 상태 정본)
 
