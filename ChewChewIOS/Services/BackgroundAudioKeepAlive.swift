@@ -9,7 +9,10 @@ final class BackgroundAudioKeepAlive {
 
     /// 톤 재생 볼륨(0.0~1.0). 세팅 즉시 재생 노드에 반영한다.
     var volume: Float = 0.5 {
-        didSet { applyVolume() }
+        didSet {
+            volume = max(0.0, min(1.0, volume))
+            applyVolume()
+        }
     }
 
     /// 씹기 페이스를 신호등 톤으로 분류하는 순수 함수(테스트 가능, 플랫폼 무관).
@@ -65,7 +68,9 @@ final class BackgroundAudioKeepAlive {
         player.play()
         applyVolume()
         subscribeInterruptionNotification()
+        #if DEBUG
         print("[KeepAlive] 신호등 톤 keep-alive 시작 (volume=\(volume))")
+        #endif
     }
 
     func stop() {
@@ -73,13 +78,17 @@ final class BackgroundAudioKeepAlive {
         player.stop()
         engine.stop()
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        #if DEBUG
         print("[KeepAlive] 신호등 톤 keep-alive 정지")
+        #endif
     }
 
     /// 3초 지속 씹기 이벤트가 들어왔을 때 현재 페이스에 맞는 신호등 톤을 한 번 낸다.
     func playTone(for pace: ChewPaceSample) {
         let kind = Self.toneKind(for: pace, fastThreshold: fastThreshold)
+        #if DEBUG
         print("[KeepAlive] sustained isChewing=\(pace.isChewing) avg=\(String(format: "%.2f", pace.avgInterval)) → \(kind)")
+        #endif
         playTone(kind)
     }
 
@@ -140,7 +149,9 @@ final class BackgroundAudioKeepAlive {
         if !engine.isRunning { try? engine.start() }
         if !player.isPlaying { player.play() }
         player.scheduleBuffer(buffer, at: nil, options: [], completionHandler: nil)
+        #if DEBUG
         print("[KeepAlive] tone \(kind) scheduled vol=\(player.volume) engine=\(engine.isRunning) playing=\(player.isPlaying)")
+        #endif
     }
 
     // MARK: - Interruption (엔진 자체 회복용, 내부 전용)

@@ -11,7 +11,6 @@ final class AppleLoginProvider: NSObject, SocialLoginProvider {
         try await withCheckedThrowingContinuation { continuation in
             self.continuation = continuation
             let request = ASAuthorizationAppleIDProvider().createRequest()
-            request.requestedScopes = [.email]
             let controller = ASAuthorizationController(authorizationRequests: [request])
             controller.delegate = self
             controller.presentationContextProvider = self

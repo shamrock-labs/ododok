@@ -2,7 +2,6 @@ import AVFoundation
 import XCTest
 @testable import ChewChewIOS
 
-/// 변경 2(백그라운드 오디오 + 신호등 알림음) 계약 검증.
 /// 오디오 엔진은 실기기 전용이라 시뮬레이터 유닛테스트에선 하드웨어 없이 검증 가능한
 /// 볼륨 기본값과 씹기 페이스→톤 분류(`toneKind`)만 확인한다.
 final class REQ02BackgroundAudioTests: XCTestCase {
@@ -12,14 +11,24 @@ final class REQ02BackgroundAudioTests: XCTestCase {
     func testVolume_defaultIsAudible() {
         let keepAlive = BackgroundAudioKeepAlive()
         XCTAssertGreaterThan(keepAlive.volume, 0.0,
-            "기본 볼륨은 App Store 2.5.4(리뷰어에게 실제로 들려야 함) 대응으로 0보다 커야 한다")
+            "기본 볼륨은 0보다 커야 한다")
     }
 
     func testVolume_isInjectable() {
         let keepAlive = BackgroundAudioKeepAlive()
         keepAlive.volume = 0.5
         XCTAssertEqual(keepAlive.volume, 0.5, accuracy: 0.0001,
-            "서버 원격 볼륨(변경 3) 주입을 위해 volume은 외부에서 세팅 가능해야 한다")
+            "원격 볼륨 주입을 위해 volume은 외부에서 세팅 가능해야 한다")
+    }
+
+    func testVolume_isClampedToSupportedRange() {
+        let keepAlive = BackgroundAudioKeepAlive()
+
+        keepAlive.volume = 2.0
+        XCTAssertEqual(keepAlive.volume, 1.0, accuracy: 0.0001)
+
+        keepAlive.volume = -1.0
+        XCTAssertEqual(keepAlive.volume, 0.0, accuracy: 0.0001)
     }
 
     // MARK: - toneKind (신호등 분류, 순수 함수)

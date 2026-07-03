@@ -340,8 +340,11 @@ final class AppState {
 
     // MARK: - Eating actions
 
+    private static let minimumAudibleAlertVolume: Float = 0.05
+
     private static func normalizedAlertVolume(_ volume: Double) -> Float {
-        Float(max(0.0, min(1.0, volume)))
+        guard volume.isFinite else { return minimumAudibleAlertVolume }
+        return max(minimumAudibleAlertVolume, Float(max(0.0, min(1.0, volume))))
     }
 
     func startEating() {
@@ -430,7 +433,8 @@ final class AppState {
         stopHeadphoneMotionLoop()
         stopChewAnimationLoop()
         stopDemoIMUWaveformLoop()
-        Task { await chewCounter?.setSustainedChewingHandler(nil) }
+        let counter = chewCounter
+        Task { await counter?.setSustainedChewingHandler(nil) }
         backgroundKeepAlive.stop()
         callMonitor.onCallStarted = nil
         callMonitor.onCallEnded = nil
@@ -446,7 +450,6 @@ final class AppState {
 
         // IMU 세션 봉인 → Storage 업로드 → chewing_session INSERT.
         // 결과를 sessionUploadStatus로 publish해서 UI alert이 관찰할 수 있게 한다.
-        let counter = chewCounter
         chewCounter = nil
         if let recorder = imuSessionRecorder {
             imuSessionRecorder = nil
@@ -476,7 +479,8 @@ final class AppState {
         stopHeadphoneMotionLoop()
         stopChewAnimationLoop()
         stopDemoIMUWaveformLoop()
-        Task { await chewCounter?.setSustainedChewingHandler(nil) }
+        let counter = chewCounter
+        Task { await counter?.setSustainedChewingHandler(nil) }
         backgroundKeepAlive.stop()
         callMonitor.onCallStarted = nil
         callMonitor.onCallEnded = nil
