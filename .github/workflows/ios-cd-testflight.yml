@@ -6,8 +6,10 @@ on:
     branches: [main]
 
 # 배포는 중간에 취소하지 않는다. 앞 배포가 끝나야 다음이 시작된다.
+# App Store Connect 업로드는 빌드번호 공간을 공유하므로 release 워크플로우와
+# 같은 group으로 묶어 전역 직렬화한다(동시 실행 시 빌드번호 충돌 방지).
 concurrency:
-  group: ios-cd-testflight
+  group: ios-cd-appstore-upload
   cancel-in-progress: false
 
 jobs:

@@ -7,8 +7,10 @@ on:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
 
+# testflight 워크플로우와 같은 group으로 묶어 App Store Connect 업로드를
+# 전역 직렬화한다(동시 실행 시 빌드번호 충돌 방지).
 concurrency:
-  group: ios-cd-release
+  group: ios-cd-appstore-upload
   cancel-in-progress: false
 
 jobs:
