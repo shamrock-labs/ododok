@@ -66,11 +66,6 @@ actor ChewCounter {
         onSustainedChewing = handler
     }
 
-    /// 씹기 3초 지속마다 호출될 handler 등록. actor 밖(오디오 등)으로 신호를 보내는 유일한 통로.
-    func setSustainedChewingHandler(_ handler: (@Sendable () -> Void)?) {
-        onSustainedChewing = handler
-    }
-
     func feed(rotX: Double, rotY: Double, rotZ: Double) {
         feed(rotX: rotX, rotY: rotY, rotZ: rotZ, accelX: 0, accelY: 0, accelZ: 0)
     }
