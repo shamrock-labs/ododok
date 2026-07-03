@@ -4,6 +4,7 @@ import ProjectDescription
 let organizationName = "Shamrock"
 let developmentTeam = "26SRR6SP9B"
 let deploymentTarget = "17.0"
+let versionConfig: Path = "Config/Version.xcconfig"
 let secretsConfig: Path = "Config/Secrets.xcconfig"
 
 let appBundleId = "$(ODODOK_BUNDLE_PREFIX).ododok"
@@ -167,9 +168,11 @@ let project = Project(
     settings: .settings(
         base: [
             "SWIFT_VERSION": "5.9",
-            "MARKETING_VERSION": "0.1.0",
-            "CURRENT_PROJECT_VERSION": "1",
             "DEVELOPMENT_TEAM": .string(developmentTeam),
+        ],
+        configurations: [
+            .debug(name: "Debug", xcconfig: versionConfig),
+            .release(name: "Release", xcconfig: versionConfig),
         ],
         defaultSettings: .recommended
     ),

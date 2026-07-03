@@ -1,0 +1,5 @@
+// User-facing app version. Bump this only for intentional release-version changes.
+MARKETING_VERSION = 1.0
+
+// CI/CD overrides this for App Store Connect uploads.
+CURRENT_PROJECT_VERSION = 1
