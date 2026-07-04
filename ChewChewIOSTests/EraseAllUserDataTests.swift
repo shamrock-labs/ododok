@@ -121,6 +121,18 @@ final class EraseAllUserDataTests: XCTestCase {
         XCTAssertEqual(state.streak, 0, "삭제 후 streak은 0이어야 한다")
     }
 
+    func testEraseAllUserDataReturnsToLoginGate() async {
+        TokenManager.save(access: "access-token", refresh: "refresh-token")
+        let spy = SpyRemoteStore()
+        let state = AppState(remoteStore: spy)
+
+        XCTAssertTrue(state.isLoggedIn)
+
+        await state.eraseAllUserData()
+
+        XCTAssertFalse(state.isLoggedIn, "계정 삭제 후 ContentView가 로그인 게이트로 돌아가야 스피너 오버레이에 갇히지 않는다")
+    }
+
     func testLogoutClearsLocalAccountCacheWithoutDeletingRemoteData() {
         TokenManager.save(access: "access-token", refresh: "refresh-token")
         let spy = SpyRemoteStore()
