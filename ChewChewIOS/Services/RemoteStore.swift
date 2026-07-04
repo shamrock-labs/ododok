@@ -16,6 +16,7 @@ protocol RemoteStore {
     func fetchProfile() async throws -> ProfileDTO?
     func fetchUserStats() async throws -> UserStatsDTO?
     func deleteUserData() async throws
+    func deleteUserData(accessToken: String?) async throws
     /// 정책 세션 저장 — 세션을 저장하고 서버가 계산한 적립/스트릭/오늘/홈을 함께 받는다.
     /// 도토리·스트릭·오늘완료 정본은 서버이므로 iOS는 응답값을 표시만 한다(재계산 금지).
     func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO
@@ -51,6 +52,10 @@ protocol RemoteStore {
 }
 
 extension RemoteStore {
+    func deleteUserData(accessToken: String?) async throws {
+        try await deleteUserData()
+    }
+
     // push: 레거시/테스트 스토어는 기본 no-op. Spring 구현만 실제 서버와 통신한다.
     func registerPushToken(_ token: String, environment: String) async throws {}
     func deactivatePushToken(_ token: String) async throws {}

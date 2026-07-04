@@ -709,9 +709,12 @@ final class AppState {
         MealNotificationService.cancelMealReminders()
         Task { await mealPushCoordinator.clearRegistration() }
 
-        // UI는 즉시 로그인 게이트로 돌려보내고, 서버 삭제는 현재 Keychain 토큰이 살아있는 동안 뒤에서 수행한다.
+        // 삭제 요청은 현재 access token 스냅샷으로 보내고, canonical session 저장소는 즉시 비운다.
+        let deletionAccessToken = TokenManager.accessToken
+        TokenManager.clear()
+
         clearPersistedSnapshot()
-        scheduleRemoteUserDataDeletion(clearTokensWhenFinished: true)
+        scheduleRemoteUserDataDeletion(accessToken: deletionAccessToken)
     }
 
     // MARK: - Reset
@@ -1144,16 +1147,13 @@ final class AppState {
         homeApplyVersion += 1   // 초기화 직전 시작된 refreshFromServerHome이 완료 후 applyHome을 실행하지 못하게.
     }
 
-    private func scheduleRemoteUserDataDeletion(clearTokensWhenFinished: Bool = false) {
+    private func scheduleRemoteUserDataDeletion(accessToken: String?) {
         // 같은 체인으로 — 직전 작업이 끝난 뒤 delete가 나가야 결과가 결정적.
         let store = remoteStore
         let previous = remoteSyncChain
         remoteSyncChain = Task.detached {
             _ = await previous.value
-            try? await store.deleteUserData()
-            if clearTokensWhenFinished {
-                TokenManager.clear()
-            }
+            try? await store.deleteUserData(accessToken: accessToken)
         }
     }
 

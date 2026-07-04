@@ -49,6 +49,11 @@ final class SpringRemoteStore: RemoteStore {
         let idempotencyKey: String
     }
 
+    private enum AuthorizationSource {
+        case tokenManager
+        case captured(String?)
+    }
+
     init(config: SpringConfig, session: URLSession = .shared) {
         self.config = config
         self.session = session
@@ -109,6 +114,11 @@ final class SpringRemoteStore: RemoteStore {
 
     func deleteUserData() async throws {
         let req = jsonRequest(method: "DELETE", path: "/v1/me")
+        _ = try await sendExpectingSuccess(req)
+    }
+
+    func deleteUserData(accessToken: String?) async throws {
+        let req = jsonRequest(method: "DELETE", path: "/v1/me", authorization: .captured(accessToken))
         _ = try await sendExpectingSuccess(req)
     }
 
@@ -238,21 +248,36 @@ final class SpringRemoteStore: RemoteStore {
     // MARK: - Helpers
 
     /// JSON Content-Type 포함 요청 빌더.
-    private func jsonRequest(method: String, path: String) -> URLRequest {
-        var req = baseRequest(method: method, path: path)
+    private func jsonRequest(
+        method: String,
+        path: String,
+        authorization: AuthorizationSource = .tokenManager
+    ) -> URLRequest {
+        var req = baseRequest(method: method, path: path, authorization: authorization)
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         return req
     }
 
     /// 공통 요청 빌더 — JWT Bearer 첨부. `/v1/me/*`는 user_id로만 스코프하므로 device 헤더는 보내지 않는다.
-    private func baseRequest(method: String, path: String) -> URLRequest {
+    private func baseRequest(
+        method: String,
+        path: String,
+        authorization: AuthorizationSource = .tokenManager
+    ) -> URLRequest {
         var base = config.baseURL.absoluteString
         if base.hasSuffix("/") { base.removeLast() }
         let url = URL(string: base + path)!
         var req = URLRequest(url: url)
         req.httpMethod = method
         // ODO-47: 로그인 토큰이 있으면 Bearer 첨부.
-        if let token = TokenManager.accessToken {
+        let token: String?
+        switch authorization {
+        case .tokenManager:
+            token = TokenManager.accessToken
+        case .captured(let capturedToken):
+            token = capturedToken
+        }
+        if let token {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         return req
