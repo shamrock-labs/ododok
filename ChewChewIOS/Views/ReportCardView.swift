@@ -195,22 +195,21 @@ struct ReportCardView: View {
     @State private var showScoreGuide = false
 
     var body: some View {
-        VStack(spacing: 18) {
-            header
-            sectionDivider
-            scoreSection
-            sectionDivider
-            recommendedSection
-            sectionDivider
-            chewRestSection
-            if onDeepReport != nil {
+        AppCard(padding: AppSpacing.reportCardLarge) {
+            VStack(spacing: AppSpacing.homeVertical) {
+                header
                 sectionDivider
-                deepReportCTA
+                scoreSection
+                sectionDivider
+                recommendedSection
+                sectionDivider
+                chewRestSection
+                if onDeepReport != nil {
+                    sectionDivider
+                    deepReportCTA
+                }
             }
         }
-        .padding(24)
-        .frame(maxWidth: .infinity)
-        .background(Color.surface, in: RoundedRectangle(cornerRadius: 24))
         .sheet(isPresented: $showScoreGuide) {
             ScoreGuideView()
         }
@@ -219,20 +218,20 @@ struct ReportCardView: View {
     /// 섹션 사이 실선 구분선(배경 카드 대신). 점선은 섹션 안 영역 구분에만 따로 쓴다.
     private var sectionDivider: some View {
         Rectangle()
-            .fill(Color.hairline)
-            .frame(height: 1)
+            .fill(Color.borderDefault)
+            .frame(height: AppSize.border)
             .frame(maxWidth: .infinity)
     }
 
     private var header: some View {
         HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: AppSpacing.one) {
                 Text(headerDateLabel)
-                    .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.textSecondary)
+                    .font(.appFont(.semiboldCallout))
+                    .foregroundStyle(Color.textMuted)
                 Text("식사 리포트")
                     .font(.appFont(.display))
-                    .foregroundStyle(Color.textPrimary)
+                    .foregroundStyle(Color.textDefault)
             }
             Spacer()
         }
@@ -243,15 +242,15 @@ struct ReportCardView: View {
     /// 내부에서 계산만 하고 버리던 0~100 점수 + 4축(속도·리듬·연속·길이)을 실제로 노출한다.
     /// 흐리멍덩한 형용사 배지의 정량 근거가 된다.
     private var scoreSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
+        VStack(alignment: .leading, spacing: AppSpacing.three) {
+            HStack(alignment: .firstTextBaseline, spacing: AppSpacing.oneHalf) {
                 Text("씹기 점수")
-                    .font(.appFont(.heavy, size: 15))
-                    .foregroundStyle(Color.textPrimary)
+                    .font(.appFont(.heavyBody))
+                    .foregroundStyle(Color.textDefault)
                 if !rendersStatically {
                     Button { showScoreGuide = true } label: {
                         Image(systemName: "info.circle")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.appFont(.semibold, size: AppSize.headerPillIcon))
                             .foregroundStyle(Color.textTertiary)
                     }
                     .buttonStyle(.plain)
@@ -259,17 +258,17 @@ struct ReportCardView: View {
                 }
                 Spacer(minLength: 0)
                 Text("\(scoreCountUpValue(progress: rendersStatically ? 1 : scoreProgress, target: model.score))")
-                    .font(.appFont(.heavy, size: 28))
+                    .font(.appFont(.heavyDisplay))
                     .foregroundStyle(scoreColor)
                     .monospacedDigit()
                     .contentTransition(.numericText())
                 Text("/ 100")
-                    .font(.appFont(.bold, size: 12))
+                    .font(.appFont(.boldCaption))
                     .foregroundStyle(Color.textTertiary)
             }
             // 라벨은 실제 측정값과 1:1로 맞춘다(점수 4축 = 권장 4지표와 동일 대상):
             // speed=분당 속도, rhythm=씹은 시간 비율, continuity=총 저작 횟수, length=식사 시간.
-            VStack(spacing: 8) {
+            VStack(spacing: AppSpacing.two) {
                 scoreAxisRow(label: "속도", value: model.speedScore)
                 scoreAxisRow(label: "비율", value: model.rhythmScore)
                 scoreAxisRow(label: "횟수", value: model.continuityScore)
@@ -283,24 +282,24 @@ struct ReportCardView: View {
     }
 
     private func scoreAxisRow(label: String, value: Int) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: AppSpacing.inner) {
             Text(label)
-                .font(.appFont(.bold, size: 12))
-                .foregroundStyle(Color.textSecondary)
-                .frame(width: 28, alignment: .leading)
+                .font(.appFont(.boldCaption))
+                .foregroundStyle(Color.textMuted)
+                .frame(width: AppSize.scoreAxisLabelWidth, alignment: .leading)
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.hairline)
+                    Capsule().fill(Color.borderDefault)
                     Capsule().fill(scoreColor.opacity(0.85))
-                        .frame(width: max(6, geo.size.width * CGFloat(max(0, min(100, value))) / 100))
+                        .frame(width: max(AppSize.scoreAxisMinFillWidth, geo.size.width * CGFloat(max(0, min(100, value))) / 100))
                 }
             }
-            .frame(height: 8)
+            .frame(height: AppSpacing.two)
             Text("\(value)")
-                .font(.appFont(.heavy, size: 12))
-                .foregroundStyle(Color.textPrimary)
+                .font(.appFont(.heavyCaption))
+                .foregroundStyle(Color.textDefault)
                 .monospacedDigit()
-                .frame(width: 26, alignment: .trailing)
+                .frame(width: AppSize.scoreAxisValueWidth, alignment: .trailing)
         }
     }
 
@@ -317,17 +316,17 @@ struct ReportCardView: View {
     /// 중복됐다. 단일 헤더 + 4지표 그리드로 합쳐 워딩 중복을 없앤다.
     private var recommendedSection: some View {
         let summary = recommendedComparisonSummary
-        return VStack(alignment: .leading, spacing: 16) {
+        return VStack(alignment: .leading, spacing: AppSpacing.four) {
             // 헤더 — "권장 기준보다 ~~한 식사였어요" 한 줄만(배지 제거). 색은 카드 배경으로만 준다(플랫).
             Text(summary.title)
-                .font(.appFont(.heavy, size: 19))
-                .foregroundStyle(Color.textPrimary)
+                .font(.appFont(.heavyTitleCompact))
+                .foregroundStyle(Color.textDefault)
                 .lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
 
             LazyVGrid(
-                columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)],
-                spacing: 18
+                columns: [GridItem(.flexible(), spacing: AppSpacing.four), GridItem(.flexible(), spacing: AppSpacing.four)],
+                spacing: AppSpacing.inputH
             ) {
                 recommendedComparisonCell(
                     label: "저작 횟수",
@@ -376,63 +375,63 @@ struct ReportCardView: View {
         ratio: Double,
         color: Color
     ) -> some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 6) {
+        VStack(alignment: .leading, spacing: AppSpacing.badgeH) {
+            HStack(spacing: AppSpacing.oneHalf) {
                 Text(label)
-                    .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.textSecondary)
+                    .font(.appFont(.semiboldCallout))
+                    .foregroundStyle(Color.textMuted)
                 Spacer(minLength: 0)
                 Text(delta)
-                    .font(.appFont(.heavy, size: 11))
+                    .font(.appFont(.heavyMicro))
                     .foregroundStyle(color)
                     .monospacedDigit()
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
+                    .padding(.horizontal, AppSpacing.badgeH)
+                    .padding(.vertical, AppSpacing.badgeV)
                     .background(color.opacity(0.12), in: Capsule())
             }
             Text(current)
-                .font(.appFont(.heavy, size: 20))
-                .foregroundStyle(Color.textPrimary)
+                .font(.appFont(.heavyTitle))
+                .foregroundStyle(Color.textDefault)
                 .lineLimit(1)
                 .minimumScaleFactor(0.62)
                 .monospacedDigit()
             RecommendedDeltaBar(ratio: ratio, color: color)
-                .frame(height: 12)
+                .frame(height: AppSpacing.three)
             Text(recommended)
-                .font(.appFont(.semibold, size: 13))
-                .foregroundStyle(Color.textSecondary.opacity(0.8))
+                .font(.appFont(.semiboldCallout))
+                .foregroundStyle(Color.textMuted.opacity(0.8))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 4)
+        .padding(.vertical, AppSpacing.one)
     }
 
     private var coachPanel: some View {
         let summary = recommendedComparisonSummary
-        return HStack(spacing: 12) {
+        return HStack(spacing: AppSpacing.three) {
             Image(summary.imageName)
                 .resizable()
                 .scaledToFit()
-                .frame(width: 64, height: 64)
+                .frame(width: AppSize.coachAvatar, height: AppSize.coachAvatar)
                 .background(Color.butter100.opacity(0.7), in: Circle())
-            VStack(alignment: .leading, spacing: 5) {
+            VStack(alignment: .leading, spacing: AppSpacing.microLabelGap) {
                 Text(coachTitle)
-                    .font(.appFont(.heavy, size: 15))
-                    .foregroundStyle(Color.textPrimary)
+                    .font(.appFont(.heavyBody))
+                    .foregroundStyle(Color.textDefault)
                 Text(coachMessage)
-                    .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.textSecondary)
+                    .font(.appFont(.semiboldCallout))
+                    .foregroundStyle(Color.textMuted)
                     .lineSpacing(2)
             }
             Spacer(minLength: 0)
         }
-        .padding(14)
+        .padding(AppSpacing.reportCell)
         .frame(maxWidth: .infinity)
-        .background(Color.sage50.opacity(0.82), in: RoundedRectangle(cornerRadius: 18))
+        .background(Color.statusSuccessMuted.opacity(0.82), in: RoundedRectangle(cornerRadius: AppRadius.container))
         .overlay(
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(Color.sage100, lineWidth: 1)
+            RoundedRectangle(cornerRadius: AppRadius.container)
+                .stroke(Color.statusSuccessBorder, lineWidth: AppSize.border)
         )
     }
 
@@ -441,7 +440,7 @@ struct ReportCardView: View {
     private var chewRestSection: some View {
         let segments = model.visibleChewRestSegments
         let total = segments.reduce(0) { $0 + $1.durationSec }
-        return VStack(alignment: .leading, spacing: 8) {
+        return VStack(alignment: .leading, spacing: AppSpacing.two) {
             sectionTitle("씹기 · 쉬기 구간")
             Canvas { context, size in
                 // 고정 너비 바를 1pt 칸으로 쪼개고, 각 칸을 그 시간 구간의 다수
@@ -465,9 +464,9 @@ struct ReportCardView: View {
                     x += width
                 }
             }
-            .frame(height: 14)
-            .clipShape(RoundedRectangle(cornerRadius: 7))
-            HStack(spacing: 16) {
+            .frame(height: AppSpacing.reportCell)
+            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.badgeH))
+            HStack(spacing: AppSpacing.four) {
                 legendDot(color: .sage500, label: "씹기 \(formatDurationShort(model.chewingSeconds))")
                 legendDot(color: .acorn200, label: "쉬기 \(formatDurationShort(model.restSeconds))")
                 Spacer(minLength: 0)
@@ -476,47 +475,47 @@ struct ReportCardView: View {
     }
 
     private func legendDot(color: Color, label: String) -> some View {
-        HStack(spacing: 5) {
-            Circle().fill(color).frame(width: 8, height: 8)
+        HStack(spacing: AppSpacing.microLabelGap) {
+            Circle().fill(color).frame(width: AppSpacing.two, height: AppSpacing.two)
             Text(label)
-                .font(.appFont(.semibold, size: 13))
-                .foregroundStyle(Color.textSecondary)
+                .font(.appFont(.semiboldCallout))
+                .foregroundStyle(Color.textMuted)
         }
     }
 
     private var captionSection: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: AppSpacing.inner) {
             Image(systemName: "quote.opening")
-                .font(.appFont(.bold, size: 13))
+                .font(.appFont(.boldCallout))
                 .foregroundStyle(Color.acorn300)
             Text(model.caption ?? "오늘 한 끼 잘 먹었어요.")
-                .font(.appFont(.semibold, size: 15))
-                .foregroundStyle(Color.textSecondary)
+                .font(.appFont(.semiboldBody))
+                .foregroundStyle(Color.textMuted)
                 .lineSpacing(3)
             Spacer(minLength: 0)
         }
-        .padding(14)
+        .padding(AppSpacing.reportCell)
         .frame(maxWidth: .infinity)
-        .background(Color.acorn50.opacity(0.5), in: RoundedRectangle(cornerRadius: 14))
+        .background(Color.bgSunken.opacity(0.5), in: RoundedRectangle(cornerRadius: AppRadius.element))
     }
 
     private var deepReportCTA: some View {
         Button(action: { onDeepReport?() }) {
-            HStack(spacing: 8) {
+            HStack(spacing: AppSpacing.two) {
                 Text("심층 분석 보기")
-                    .font(.appFont(.bold, size: 14))
+                    .font(.appFont(.boldLabel))
                     .foregroundStyle(Color.acorn700)
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .bold))
+                    .font(.appFont(.boldCaption))
                     .foregroundStyle(Color.acorn600)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+            .padding(.horizontal, AppSpacing.four)
+            .padding(.vertical, AppSpacing.reportCell)
             .frame(maxWidth: .infinity)
-            .background(Color.acorn50, in: RoundedRectangle(cornerRadius: 14))
+            .background(Color.bgSunken, in: RoundedRectangle(cornerRadius: AppRadius.element))
             .overlay(
-                RoundedRectangle(cornerRadius: 14).stroke(Color.acorn200, lineWidth: 1)
+                RoundedRectangle(cornerRadius: AppRadius.element).stroke(Color.borderEmphasized, lineWidth: AppSize.border)
             )
         }
         .buttonStyle(.plain)
@@ -524,7 +523,7 @@ struct ReportCardView: View {
 
     private func sectionTitle(_ text: String) -> some View {
         Text(text)
-            .font(.appFont(.bold, size: 13))
+            .font(.appFont(.boldCallout))
             .foregroundStyle(Color.textSecondary)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -655,17 +654,17 @@ private struct RecommendedDeltaBar: View {
                     .fill(Color.hairline.opacity(0.8))
                 Rectangle()
                     .fill(Color.textTertiary.opacity(0.32))
-                    .frame(width: 1)
+                    .frame(width: AppSize.chartHairline)
                     .offset(x: center)
                 Capsule()
                     .fill(color.opacity(0.24))
-                    .frame(width: abs(markerX - center), height: 8)
+                    .frame(width: abs(markerX - center), height: AppSize.chartDeltaHeight)
                     .offset(x: min(center, markerX))
                 Circle()
-                    .fill(Color.white)
-                    .frame(width: 12, height: 12)
+                    .fill(Color.bgSurface)
+                    .frame(width: AppSize.chartMarkerWidth, height: AppSize.chartMarkerWidth)
                     .overlay(Circle().stroke(color, lineWidth: 2))
-                    .offset(x: min(max(0, markerX - 6), width - 12))
+                    .offset(x: min(max(0, markerX - AppSize.chartMarkerRadius), width - AppSize.chartMarkerWidth))
             }
         }
     }
@@ -679,48 +678,48 @@ private struct ScoreGuideView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: AppSpacing.four) {
                     Text("씹기 점수는 한 끼를 얼마나 천천히·꼼꼼히 씹었는지를 0~100으로 나타낸 값이에요. 아래 네 요소를 각각 0~100으로 매기고 평균낸 점수예요.")
-                        .font(.appFont(.semibold, size: 14))
-                        .foregroundStyle(Color.textSecondary)
+                        .font(.appFont(.semiboldLabel))
+                        .foregroundStyle(Color.textMuted)
                         .lineSpacing(3)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    VStack(spacing: 10) {
+                    VStack(spacing: AppSpacing.inner) {
                         guideRow("속도", "분당 저작 횟수예요. 권장(약 28회/분)에 가까울수록 높고, 너무 빠르거나 느리면 낮아져요.", .blush500)
                         guideRow("비율", "식사 중 실제로 씹은 시간의 비율(씹기 비율)이에요. 50% 이상이면 만점에 가까워요.", .butter600)
                         guideRow("횟수", "한 끼의 총 저작 횟수예요. 약 200회 이상이면 만점에 가까워요.", .acorn700)
                         guideRow("시간", "식사에 들인 시간이에요. 약 12분 근처에서 가장 높아요.", .sage600)
                     }
 
-                    VStack(alignment: .leading, spacing: 8) {
+                    VStack(alignment: .leading, spacing: AppSpacing.two) {
                         Text("등급 기준")
-                            .font(.appFont(.heavy, size: 14))
-                            .foregroundStyle(Color.textPrimary)
+                            .font(.appFont(.heavyLabel))
+                            .foregroundStyle(Color.textDefault)
                         Text("80점 이상은 잘 씹은 식사, 60~79점은 보통, 60점 미만은 조금 빠른 편이에요.")
-                            .font(.appFont(.semibold, size: 13))
-                            .foregroundStyle(Color.textSecondary)
+                            .font(.appFont(.semiboldCallout))
+                            .foregroundStyle(Color.textMuted)
                             .lineSpacing(2)
                             .fixedSize(horizontal: false, vertical: true)
                     }
 
                     Text("AirPods 모션 센서 신호를 기기 안에서 분석해 추정한 값이라, 정확한 측정값이 아닌 참고용 지표예요.")
-                        .font(.appFont(.medium, size: 12))
-                        .foregroundStyle(Color.textTertiary)
+                        .font(.appFont(.mediumCaption))
+                        .foregroundStyle(Color.textSubtle)
                         .lineSpacing(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                .padding(20)
+                .padding(AppSpacing.page)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .background(Color.pageBackground.ignoresSafeArea())
+            .background(Color.bgPage.ignoresSafeArea())
             .navigationTitle("씹기 점수 가이드")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("닫기") { dismiss() }
-                        .font(.appFont(.bold, size: 15))
-                        .foregroundStyle(Color.acorn700)
+                        .font(.appFont(.boldBody))
+                        .foregroundStyle(Color.textAction)
                 }
             }
         }
@@ -728,21 +727,21 @@ private struct ScoreGuideView: View {
     }
 
     private func guideRow(_ title: String, _ desc: String, _ color: Color) -> some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: AppSpacing.three) {
             Text(title)
-                .font(.appFont(.heavy, size: 14))
+                .font(.appFont(.heavyLabel))
                 .foregroundStyle(color)
-                .frame(width: 36, alignment: .leading)
+                .frame(width: AppSize.guideLabelWidth, alignment: .leading)
             Text(desc)
-                .font(.appFont(.semibold, size: 13))
-                .foregroundStyle(Color.textSecondary)
+                .font(.appFont(.semiboldCallout))
+                .foregroundStyle(Color.textMuted)
                 .lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
-        .padding(12)
+        .padding(AppSpacing.three)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+        .background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: AppRadius.element))
     }
 }
 
@@ -759,7 +758,7 @@ struct DashedDivider: View {
             .stroke(style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
             .foregroundStyle(color)
         }
-        .frame(height: 1)
+        .frame(height: AppSize.chartHairline)
     }
 }
 
@@ -783,7 +782,7 @@ struct DashedDivider: View {
             mood: .champ,
             endedAt: Date()
         ), onDeepReport: {})
-        .padding(20)
+        .padding(AppSpacing.page)
     }
 }
 
@@ -807,7 +806,7 @@ struct DashedDivider: View {
             mood: .puffy,
             endedAt: Date()
         ))
-        .padding(20)
+        .padding(AppSpacing.page)
     }
 }
 
@@ -831,7 +830,7 @@ struct DashedDivider: View {
             mood: .sleepy,
             endedAt: Date()
         ), onDeepReport: {})
-        .padding(20)
+        .padding(AppSpacing.page)
     }
 }
 
@@ -923,20 +922,20 @@ struct EmptyReportCardView: View {
     var subtitle: String = "식사 시간이 너무 짧거나 AirPods 신호를 받지 못했어요."
 
     var body: some View {
-        VStack(spacing: 14) {
-            Text(emoji).font(.appFont(.regular, size: 40))
+        VStack(spacing: AppSpacing.reportCell) {
+            Text(emoji).font(.appFont(.regularEmojiXXLarge))
             Text(title)
-                .font(.appFont(.heavy, size: 18))
-                .foregroundStyle(Color.textPrimary)
+                .font(.appFont(.heavyHeadlineLarge))
+                .foregroundStyle(Color.textDefault)
             Text(subtitle)
-                .font(.appFont(.semibold, size: 15))
-                .foregroundStyle(Color.textSecondary)
+                .font(.appFont(.semiboldBody))
+                .foregroundStyle(Color.textMuted)
                 .multilineTextAlignment(.center)
                 .lineSpacing(3)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 48)
-        .padding(.horizontal, 24)
-        .background(Color.surface, in: RoundedRectangle(cornerRadius: 24))
+        .padding(.vertical, AppSize.emptyStateV)
+        .padding(.horizontal, AppSpacing.six)
+        .background(Color.bgCard, in: RoundedRectangle(cornerRadius: AppRadius.lg))
     }
 }

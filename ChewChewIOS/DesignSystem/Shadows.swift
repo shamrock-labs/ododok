@@ -6,7 +6,7 @@ struct NeuoShadow: ViewModifier {
     let size: Size
 
     func body(content: Content) -> some View {
-        let warm = Color(red: 180/255, green: 150/255, blue: 110/255)
+        let warm = Color.highlightShadow
         switch size {
         case .sm:
             content
@@ -25,8 +25,8 @@ struct SoftShadow: ViewModifier {
     let size: Size
 
     func body(content: Content) -> some View {
-        let amber = Color(red: 180/255, green: 140/255, blue: 80/255)
-        let copper = Color(red: 200/255, green: 149/255, blue: 109/255)
+        let amber = Color.rewardAcorn
+        let copper = Color.highlightShadow
         switch size {
         case .base: content.shadow(color: amber.opacity(0.10), radius: 10, x: 0, y: 6)
         case .lg:   content.shadow(color: amber.opacity(0.18), radius: 25, x: 0, y: 16)
@@ -42,5 +42,21 @@ extension View {
 
     func softShadow(_ size: SoftShadow.Size = .base) -> some View {
         modifier(SoftShadow(size: size))
+    }
+
+    @ViewBuilder
+    func appElevation(_ elevation: AppElevation) -> some View {
+        switch elevation {
+        case .flat:
+            self
+        case .low:
+            self.softShadow(.base)
+        case .medium:
+            self.neuoShadow(.sm)
+        case .high:
+            self.shadow(color: .black.opacity(0.18), radius: 24, y: 8)
+        case .inset:
+            self
+        }
     }
 }

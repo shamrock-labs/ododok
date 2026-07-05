@@ -27,9 +27,9 @@ struct SessionResultSheet: View {
                         analyzingView
                     }
                 }
-                .padding(20)
+                .padding(AppSpacing.sheetContent)
             }
-            .background(Color.pageBackground.ignoresSafeArea())
+            .background(Color.bgPage.ignoresSafeArea())
             .navigationTitle(dto == nil ? "분석 중" : "식사 리포트")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -38,7 +38,7 @@ struct SessionResultSheet: View {
                         ShareLink(item: payload, preview: SharePreview("식사 리포트")) {
                             Image(systemName: "square.and.arrow.up")
                         }
-                        .foregroundStyle(Color.acorn600)
+                        .foregroundStyle(Color.textActionStrong)
                     }
                 }
                 if dto != nil {
@@ -46,7 +46,7 @@ struct SessionResultSheet: View {
                     // 사용자가 잠깐 기다리도록 유도. 인터랙티브 dismiss도 같이 차단.
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("닫기") { onClose() }
-                            .foregroundStyle(Color.textSecondary)
+                            .foregroundStyle(Color.textMuted)
                     }
                 }
             }
@@ -64,22 +64,22 @@ struct SessionResultSheet: View {
     /// 분석 중 화면 — 스피너 + 안내 문구. 측정 종료 직후 사용자가 잠깐 머무는
     /// 공간이라 정보 밀도는 의도적으로 낮춤.
     private var analyzingView: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: AppSpacing.homeVertical) {
             Spacer(minLength: 48)
             ProgressView()
                 .controlSize(.large)
-                .tint(Color.acorn500)
-            VStack(spacing: 6) {
+                .tint(Color.dataChew)
+            VStack(spacing: AppSpacing.oneHalf) {
                 Text("씹기 분석 중이에요")
-                    .font(.appFont(.bold, size: 16))
-                    .foregroundStyle(Color.textPrimary)
+                    .font(.appFont(.boldBodyLarge))
+                    .foregroundStyle(Color.textDefault)
                 Text("잠시만요")
-                    .font(.appFont(.semibold, size: 15))
-                    .foregroundStyle(Color.textSecondary)
+                    .font(.appFont(.semiboldBody))
+                    .foregroundStyle(Color.textMuted)
             }
             Spacer(minLength: 48)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 32)
+        .padding(.vertical, AppSpacing.eight)
     }
 }

@@ -9,47 +9,47 @@ struct RewardDialogView: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: AppSpacing.reportCell) {
             Image(grant.kind.imageName)
                 .resizable()
                 .scaledToFit()
-                .frame(width: 110, height: 110)
+                .frame(width: AppSize.rewardImage, height: AppSize.rewardImage)
 
             Text(grant.kind.title)
-                .font(.appFont(.heavy, size: 18))
-                .foregroundStyle(Color.textPrimary)
+                .font(.appFont(.heavyHeadlineLarge))
+                .foregroundStyle(Color.textDefault)
 
             if grant.kind.isAcorn {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: AppSpacing.one) {
                     Text("+\(grant.amount)")
-                        .font(.appFont(.heavy, size: 36))
-                        .foregroundStyle(Color.acorn700)
+                        .font(.appFont(.rewardNumber))
+                        .foregroundStyle(Color.rewardAcorn)
                         .monospacedDigit()
-                    OpenIconView(icon: .acorn, color: .acorn700, lineWidth: 2.2)
-                        .frame(width: 26, height: 26)
+                    OpenIconView(icon: .acorn, color: .rewardAcorn, lineWidth: 2.2)
+                        .frame(width: AppSize.rewardIcon, height: AppSize.rewardIcon)
                 }
             } else if grant.kind.isFreezeGain {
-                HStack(alignment: .firstTextBaseline, spacing: 4) {
+                HStack(alignment: .firstTextBaseline, spacing: AppSpacing.one) {
                     Text("+\(grant.amount)")
-                        .font(.appFont(.heavy, size: 36))
-                        .foregroundStyle(Color.sage600)
+                        .font(.appFont(.rewardNumber))
+                        .foregroundStyle(Color.statusSuccess)
                         .monospacedDigit()
                     Text("🛡️")
-                        .font(.appFont(.regular, size: 28))
+                        .font(.appFont(.regularEmojiMedium))
                 }
             }
 
             Text(grant.kind.subtitle)
-                .font(.appFont(.semibold, size: 14))
-                .foregroundStyle(Color.textSecondary)
+                .font(.appFont(.semiboldLabel))
+                .foregroundStyle(Color.textMuted)
                 .multilineTextAlignment(.center)
                 .lineSpacing(3)
         }
-        .padding(.vertical, 24)
-        .padding(.horizontal, 22)
-        .frame(maxWidth: 320)
-        .background(Color.surface, in: RoundedRectangle(cornerRadius: 28))
-        .neuoShadow(.md)
+        .padding(.vertical, AppSpacing.dialogContentV)
+        .padding(.horizontal, AppSpacing.dialogContentH)
+        .frame(maxWidth: AppSize.dialogMaxWidth)
+        .background(Color.bgPopover, in: RoundedRectangle(cornerRadius: AppRadius.page))
+        .appElevation(.medium)
         .contentShape(Rectangle())
         .onTapGesture { onDismiss() }
         .task {

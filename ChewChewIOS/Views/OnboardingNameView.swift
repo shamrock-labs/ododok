@@ -17,64 +17,59 @@ struct OnboardingNameView: View {
             Image("DaramHi")
                 .resizable()
                 .scaledToFit()
-                .frame(width: 140, height: 140)
+                .frame(width: AppSize.onboardingHeroImage, height: AppSize.onboardingHeroImage)
 
             VStack(spacing: 8) {
                 Text("처음 오셨네요!")
-                    .font(.appFont(.heavy, size: 22))
-                    .foregroundStyle(Color.textPrimary)
+                    .font(.appFont(.heavyTitleXLarge))
+                    .foregroundStyle(Color.textDefault)
                 Text("앱에서 쓸 닉네임을 정해주세요")
-                    .font(.appFont(.regular, size: 14))
-                    .foregroundStyle(Color.textSecondary)
+                    .font(.appFont(.regularLabel))
+                    .foregroundStyle(Color.textMuted)
             }
 
-            TextField("닉네임", text: $name)
+            AppTextField(placeholder: "닉네임", text: $name) {
+                submit()
+            }
                 .focused($isFocused)
-                .submitLabel(.done)
-                .onSubmit { submit() }
-                .font(.appFont(.semibold, size: 16))
-                .padding(.horizontal, 18)
-                .padding(.vertical, 14)
-                .background(Color.white.opacity(0.85), in: RoundedRectangle(cornerRadius: 14))
-                .neuoShadow(.sm)
-                .padding(.horizontal, 40)
+                .padding(.horizontal, AppSpacing.overlayH)
                 .accessibilityIdentifier("OnboardingNameField")
 
             Button { submit() } label: {
                 Text("시작하기")
-                    .font(.appFont(.heavy, size: 16))
-                    .foregroundStyle(.white)
+                    .font(.appFont(.heavyBodyLarge))
+                    .foregroundStyle(Color.textActionInverse)
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
+                    .padding(.vertical, AppSpacing.inputV)
                     .background(
-                        canSubmit ? Color.tintInteractive : Color.textTertiary.opacity(0.4),
-                        in: RoundedRectangle(cornerRadius: 14)
+                        canSubmit ? Color.tintInteractive : Color.textDisabled.opacity(0.62),
+                        in: RoundedRectangle(cornerRadius: AppRadius.element)
                     )
             }
             .disabled(!canSubmit || isSaving)
-            .padding(.horizontal, 40)
+            .padding(.horizontal, AppSpacing.overlayH)
             .accessibilityIdentifier("OnboardingSubmit")
 
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.pageBackground.ignoresSafeArea())
+        .background(Color.bgPage.ignoresSafeArea())
         .overlay(alignment: .topLeading) {
             Button {
                 Task { await state.logoutFromServer() }
             } label: {
-                HStack(spacing: 4) {
+                HStack(spacing: AppSpacing.one) {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.appFont(.boldCallout))
                     Text("다른 계정으로 로그인")
                 }
-                .font(.appFont(.bold, size: 14))
-                .foregroundStyle(Color.textSecondary)
-                .padding(.vertical, 6)
-                .padding(.horizontal, 10)
+                .font(.appFont(.boldLabel))
+                .foregroundStyle(Color.textMuted)
+                .padding(.vertical, AppSpacing.oneHalf)
+                .padding(.horizontal, AppSpacing.inner)
             }
-            .padding(.leading, 12)
-            .padding(.top, 22)
+            .padding(.leading, AppSpacing.three)
+            .padding(.top, AppSpacing.dialogH)
             .accessibilityIdentifier("OnboardingSwitchAccount")
         }
         .overlay(alignment: .topTrailing) {
@@ -82,14 +77,14 @@ struct OnboardingNameView: View {
                 skip()
             } label: {
                 Text("건너뛰기")
-                    .font(.appFont(.bold, size: 14))
-                    .foregroundStyle(Color.textSecondary)
-                    .padding(.vertical, 6)
-                    .padding(.horizontal, 10)
+                    .font(.appFont(.boldLabel))
+                    .foregroundStyle(Color.textMuted)
+                    .padding(.vertical, AppSpacing.oneHalf)
+                    .padding(.horizontal, AppSpacing.inner)
             }
             .disabled(isSaving)
-            .padding(.trailing, 12)
-            .padding(.top, 22)
+            .padding(.trailing, AppSpacing.three)
+            .padding(.top, AppSpacing.dialogH)
             .accessibilityIdentifier("OnboardingNameSkip")
         }
         .interactiveDismissDisabled()

@@ -100,6 +100,78 @@ extension Color {
     static let accentWarn  = Color(light: 0xE88C7B, dark: 0xF4A99B) // 주의
 }
 
+// MARK: - Usage-first semantic aliases
+//
+// Astryx Foundations의 color 원칙처럼 호출부는 raw hex/palette보다 용도 이름을 우선한다.
+// 값은 기존 semantic token을 그대로 가리켜 main 화면의 시각값을 바꾸지 않는다.
+extension Color {
+    // Text
+    static let textDefault       = textPrimary
+    static let textMuted         = textSecondary
+    static let textSubtle        = textTertiary
+    static let textPlaceholder   = textTertiary
+    static let textDisabled      = textTertiary.opacity(0.65)
+    static let textAction        = tintPrimary
+    static let textActionStrong  = tintInteractive
+    static let textActionInverse = surface
+    static let textDanger        = accentWarn
+
+    // Surface hierarchy: body -> surface -> sunken/input -> overlay.
+    static let bgBody          = pageBackground
+    static let bgPage          = pageBackground
+    static let bgSurface       = surface
+    static let bgCard          = surface
+    static let bgPopover       = surface
+    static let bgSunken        = surfaceSunken
+    static let bgInput         = surface
+    static let bgInputFocused  = surface
+    static let bgInputDisabled = surfaceSunken
+    static let bgOverlayScrim  = Color(light: 0x000000, dark: 0x000000).opacity(0.32)
+    static let bgSelected      = tintInteractive.opacity(0.12)
+
+    // Border / rings
+    static let borderDefault    = hairline
+    static let borderMuted      = hairline.opacity(0.8)
+    static let borderInput      = hairline
+    static let borderFocus      = tintInteractive
+    static let borderEmphasized = acorn200
+    static let borderSelected   = acorn100
+
+    // Status
+    static let statusSuccess = accentGood
+    static let statusWarning = accentFocus
+    static let statusDanger  = accentWarn
+    static let statusWarningMuted = butter100
+    static let statusDangerMuted = blush100
+    static let statusSuccessMuted = sage50
+    static let statusSuccessBorder = sage100
+
+    // Data / product feedback
+    static let dataChew = accentChew
+    static let dataTime = accentTime
+    static let dataSpeed = accentWarn
+    static let dataRatio = accentFocus
+    static let dataChewGradient = [acorn300, acorn500, acorn700]
+    static let rewardAcorn = tintPrimary
+    static let rewardAcornStrong = tintInteractive
+    static let controlOnSurface = surface.opacity(0.72)
+    static let controlOnAccent = surface
+    static let illustrationHalo = butter200
+    static let illustrationSparkle = butter500
+    static let mealStartGradient = [acorn400, acorn600]
+    static let mealStopGradient = [blush400, blush500]
+    static let highlightShadow = acorn400
+
+    // Input component aliases
+    static let inputBg            = bgInput
+    static let inputBgFocused     = bgInputFocused
+    static let inputBgDisabled    = bgInputDisabled
+    static let inputText          = textDefault
+    static let inputPlaceholder   = textPlaceholder
+    static let inputBorder        = borderInput
+    static let inputFocusedBorder = borderFocus
+}
+
 extension LinearGradient {
     /// 메인 탭 배경. 동적 색 엔드포인트라 colorScheme에 따라 자동 전환된다.
     /// 라이트 값은 기존 acorn50/cream/sage50와 동일(픽셀 동일), 다크는 warm near-black.

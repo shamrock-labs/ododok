@@ -19,22 +19,22 @@ struct OnboardingTutorialView: View {
             TabView(selection: $page) {
                 ForEach(steps) { step in
                     cardView(step)
-                        .padding(.horizontal, 28)
+                        .padding(.horizontal, AppSpacing.seven)
                         .tag(step.id)
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
 
             pageIndicator
-                .padding(.top, 4)
+                .padding(.top, AppSpacing.one)
 
             primaryButton
-                .padding(.horizontal, 32)
-                .padding(.top, 20)
-                .padding(.bottom, 12)
+                .padding(.horizontal, AppSpacing.eight)
+                .padding(.top, AppSpacing.sectionGap)
+                .padding(.bottom, AppSpacing.gap)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.pageBackground.ignoresSafeArea())
+        .background(Color.bgPage.ignoresSafeArea())
         .interactiveDismissDisabled()
     }
 
@@ -43,36 +43,36 @@ struct OnboardingTutorialView: View {
             Spacer()
             Button(action: onFinish) {
                 Text("건너뛰기")
-                    .font(.appFont(.semibold, size: 14))
-                    .foregroundStyle(Color.textTertiary)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
+                    .font(.appFont(.semiboldLabel))
+                    .foregroundStyle(Color.textSubtle)
+                    .padding(.horizontal, AppSpacing.cardH)
+                    .padding(.vertical, AppSpacing.gapTight)
             }
             .accessibilityIdentifier("OnboardingSkip")
         }
-        .padding(.horizontal, 12)
-        .padding(.top, 8)
+        .padding(.horizontal, AppSpacing.gap)
+        .padding(.top, AppSpacing.gapTight)
     }
 
     private func cardView(_ step: OnboardingStep) -> some View {
-        VStack(spacing: 22) {
+        VStack(spacing: AppSpacing.dialogH) {
             visual(step)
-                .frame(height: 188)
+                .frame(height: AppSize.onboardingVisualHeight)
 
             Text(step.title)
-                .font(.appFont(.heavy, size: 21))
-                .foregroundStyle(Color.textPrimary)
+                .font(.appFont(.heavyTitleLarge))
+                .foregroundStyle(Color.textDefault)
                 .multilineTextAlignment(.center)
 
             Text(step.message)
-                .font(.appFont(.regular, size: 16))
-                .foregroundStyle(Color.textSecondary)
+                .font(.appFont(.regularBodyLarge))
+                .foregroundStyle(Color.textMuted)
                 .multilineTextAlignment(.center)
                 .lineSpacing(6)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 24)
-        .padding(.vertical, 36)
+        .padding(.horizontal, AppSpacing.six)
+        .padding(.vertical, AppSpacing.nine)
         .frame(maxWidth: .infinity)
     }
 
@@ -88,12 +88,12 @@ struct OnboardingTutorialView: View {
     }
 
     private var pageIndicator: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: AppSpacing.two) {
             ForEach(0..<steps.count, id: \.self) { i in
                 Capsule()
-                    .fill(i == page ? Color.tintInteractive : Color.hairline)
-                    .frame(width: i == page ? 22 : 8, height: 8)
-                    .animation(.spring(response: 0.3), value: page)
+                    .fill(i == page ? Color.textActionStrong : Color.borderDefault)
+                    .frame(width: i == page ? AppSize.onboardingPageActive : AppSize.onboardingPageInactive, height: AppSize.onboardingPageInactive)
+                    .animation(.spring(response: AppMotion.springDemoResponse), value: page)
             }
         }
     }
@@ -107,11 +107,11 @@ struct OnboardingTutorialView: View {
             }
         } label: {
             Text(isLastPage ? "시작하기" : "다음")
-                .font(.appFont(.heavy, size: 16))
-                .foregroundStyle(.white)
+                .font(.appFont(.heavyBodyLarge))
+                .foregroundStyle(Color.textActionInverse)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 15)
-                .background(Color.tintInteractive, in: RoundedRectangle(cornerRadius: 16))
+                .padding(.vertical, AppSpacing.inputVLarge)
+                .background(Color.textActionStrong, in: RoundedRectangle(cornerRadius: AppRadius.elementLarge))
         }
         .buttonStyle(PressableButtonStyle())
         .accessibilityIdentifier(isLastPage ? "OnboardingStart" : "OnboardingNext")
@@ -128,23 +128,23 @@ private struct AirPodsConnectDemo: View {
         ZStack {
             ForEach(0..<3, id: \.self) { i in
                 Circle()
-                    .stroke(Color.tintInteractive.opacity(0.5), lineWidth: 1.5)
-                    .frame(width: 96, height: 96)
+                    .stroke(Color.textActionStrong.opacity(0.5), lineWidth: 1.5)
+                    .frame(width: AppSize.onboardingPulse, height: AppSize.onboardingPulse)
                     .scaleEffect(animate ? 1.9 : 0.72)
                     .opacity(animate ? 0 : 0.55)
                     .animation(
-                        .easeOut(duration: 2.2).repeatForever(autoreverses: false).delay(Double(i) * 0.72),
+                        .easeOut(duration: AppMotion.durationWave).repeatForever(autoreverses: false).delay(Double(i) * AppMotion.durationChew),
                         value: animate
                     )
             }
 
             Circle()
-                .fill(Color.surfaceSunken)
-                .frame(width: 116, height: 116)
+                .fill(Color.bgSunken)
+                .frame(width: AppSize.onboardingPulseCore, height: AppSize.onboardingPulseCore)
 
             Image(systemName: "airpodspro")
-                .font(.system(size: 58, weight: .regular))
-                .foregroundStyle(Color.tintInteractive)
+                .font(.appFont(.regular, size: AppSize.onboardingAirPodsGlyph))
+                .foregroundStyle(Color.textActionStrong)
         }
         .onAppear { animate = true }
     }
@@ -153,32 +153,32 @@ private struct AirPodsConnectDemo: View {
 /// 1 · 측정 — 실제 측정 화면의 라이브 파형 카드를 그대로 미리보기. 흐르는 IMU 파형 + 타이머 + "측정 중".
 private struct MeasureDemo: View {
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: AppSpacing.gap) {
             HStack {
                 HStack(spacing: 6) {
                     PulsingDot()
                     Text("측정 중")
-                        .font(.appFont(.bold, size: 12))
-                        .foregroundStyle(Color.tintPrimary)
+                        .font(.appFont(.boldCaption))
+                        .foregroundStyle(Color.textAction)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Color.surfaceSunken, in: Capsule())
+                .padding(.horizontal, AppSpacing.inner)
+                .padding(.vertical, AppSpacing.microLabelGap)
+                .background(Color.bgSunken, in: Capsule())
 
                 Spacer()
 
                 Text("00:42")
-                    .font(.appFont(.bold, size: 14))
-                    .foregroundStyle(Color.textSecondary)
+                    .font(.appFont(.boldLabel))
+                    .foregroundStyle(Color.textMuted)
             }
 
             WaveformDemo()
-                .frame(height: 72)
+                .frame(height: AppSize.onboardingWaveHeight)
         }
-        .padding(14)
-        .frame(width: 252)
-        .background(Color.surface, in: RoundedRectangle(cornerRadius: 20))
-        .neuoShadow(.sm)
+        .padding(AppSpacing.cardH)
+        .frame(width: AppSize.onboardingCardWidth)
+        .background(Color.bgCard, in: RoundedRectangle(cornerRadius: AppRadius.containerLoose))
+        .appElevation(.medium)
     }
 }
 
@@ -204,9 +204,9 @@ private struct PulsingDot: View {
     var body: some View {
         Circle()
             .fill(Color.accentChew)
-            .frame(width: 7, height: 7)
+            .frame(width: AppSize.onboardingProgressDot, height: AppSize.onboardingProgressDot)
             .opacity(on ? 0.3 : 1)
-            .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: on)
+            .animation(.easeInOut(duration: AppMotion.durationProgress).repeatForever(autoreverses: true), value: on)
             .onAppear { on = true }
     }
 }
@@ -217,24 +217,24 @@ private struct ChewDemo: View {
     @State private var chew = false
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: AppSpacing.inner) {
             Image("DaramEating")
                 .resizable()
                 .scaledToFit()
-                .frame(height: 96)
+                .frame(height: AppSize.onboardingDemoImageHeight)
                 .scaleEffect(chew ? 1.02 : 0.99)
-                .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: chew)
+                .animation(.easeInOut(duration: AppMotion.durationDemoChew).repeatForever(autoreverses: true), value: chew)
                 .onAppear { chew = true }
 
             VStack(spacing: 6) {
                 HStack {
                     Text("오늘 씹기")
-                        .font(.appFont(.semibold, size: 12))
-                        .foregroundStyle(Color.textSecondary)
+                        .font(.appFont(.semiboldCaption))
+                    .foregroundStyle(Color.textMuted)
                     Spacer()
                     Text("312 / 400")
-                        .font(.appFont(.bold, size: 12))
-                        .foregroundStyle(Color.tintPrimary)
+                        .font(.appFont(.boldCaption))
+                        .foregroundStyle(Color.textAction)
                 }
                 GeometryReader { geo in
                     ZStack(alignment: .leading) {
@@ -242,13 +242,13 @@ private struct ChewDemo: View {
                         Capsule().fill(Color.accentChew).frame(width: geo.size.width * 0.78)
                     }
                 }
-                .frame(height: 6)
+                .frame(height: AppSize.onboardingProgressHeight)
             }
         }
-        .padding(14)
-        .frame(width: 252)
-        .background(Color.surface, in: RoundedRectangle(cornerRadius: 20))
-        .neuoShadow(.sm)
+        .padding(AppSpacing.cardH)
+        .frame(width: AppSize.onboardingCardWidth)
+        .background(Color.bgCard, in: RoundedRectangle(cornerRadius: AppRadius.containerLoose))
+        .appElevation(.medium)
     }
 }
 
@@ -282,35 +282,35 @@ private struct StreakDemo: View {
     }
 
     private func strip(filled: Int) -> some View {
-        VStack(spacing: 16) {
-            HStack(spacing: 6) {
+        VStack(spacing: AppSpacing.four) {
+            HStack(spacing: AppSpacing.oneHalf) {
                 Image(systemName: "flame.fill")
-                    .font(.system(size: 18))
+                    .font(.appFont(.regular, size: AppSize.onboardingFlameIcon))
                     .foregroundStyle(Color.accentChew)
                 Text("7일째")
-                    .font(.appFont(.heavy, size: 20))
-                    .foregroundStyle(Color.tintPrimary)
+                    .font(.appFont(.heavyTitle))
+                    .foregroundStyle(Color.textAction)
             }
 
-            HStack(spacing: 9) {
+            HStack(spacing: AppSpacing.iconGap) {
                 ForEach(0..<7, id: \.self) { i in
-                    VStack(spacing: 5) {
+                    VStack(spacing: AppSpacing.microLabelGap) {
                         ZStack {
                             Circle()
-                                .fill(i < filled ? Color.tintInteractive : Color.hairline)
-                                .frame(width: 28, height: 28)
+                                .fill(i < filled ? Color.textActionStrong : Color.borderDefault)
+                                .frame(width: AppSize.onboardingStreakDot, height: AppSize.onboardingStreakDot)
                             Image(systemName: "checkmark")
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundStyle(.white)
+                                .font(.appFont(.bold, size: AppSize.onboardingCheckIcon))
+                                .foregroundStyle(Color.textActionInverse)
                                 .opacity(i < filled ? 1 : 0)
                         }
                         Text(days[i])
-                            .font(.appFont(.medium, size: 10))
-                            .foregroundStyle(Color.textTertiary)
+                            .font(.appFont(.mediumTiny))
+                                .foregroundStyle(Color.textSubtle)
                     }
                 }
             }
-            .animation(.spring(response: 0.3), value: filled)
+            .animation(.spring(response: AppMotion.springDemoResponse), value: filled)
         }
     }
 }

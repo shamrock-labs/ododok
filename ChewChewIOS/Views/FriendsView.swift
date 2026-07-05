@@ -6,26 +6,26 @@ struct FriendsView: View {
     @State private var toastMessage = ""
 
     var body: some View {
-        VStack(spacing: 18) {
+        VStack(spacing: AppSpacing.homeVertical) {
             header
             inviteCard
             rankingCard
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 24)
-        .padding(.bottom, 28)
+        .padding(.horizontal, AppSpacing.cardOuter)
+        .padding(.top, AppSpacing.cardOuter)
+        .padding(.bottom, AppSpacing.cardOuterBottom)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .overlay(alignment: .bottom) {
             if inviteToastVisible {
                 Text(toastMessage)
-                    .font(.appFont(.bold, size: 12))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .background(Color.textPrimary, in: RoundedRectangle(cornerRadius: 16))
+                    .font(.appFont(.boldCaption))
+                    .foregroundStyle(Color.textActionInverse)
+                    .padding(.horizontal, AppSpacing.toastH)
+                    .padding(.vertical, AppSpacing.toastV)
+                    .background(Color.textDefault, in: RoundedRectangle(cornerRadius: AppRadius.elementLarge))
                     .softShadow(.lg)
-                    .padding(.bottom, 110)
+                    .padding(.bottom, AppSpacing.overlayBottom)
                     .transition(.scale.combined(with: .opacity))
             }
         }
@@ -45,51 +45,48 @@ struct FriendsView: View {
     // MARK: Invite
 
     private var inviteCard: some View {
-        VStack(spacing: 14) {
+        AppCard(padding: AppSpacing.five, elevation: .medium) {
+            VStack(spacing: AppSpacing.reportCell) {
             // 카카오 초대를 가장 크게(주 액션). 카카오 공식 옐로우 + 어두운 텍스트.
             Button {
                 Task { await shareInvite() }
             } label: {
-                HStack(spacing: 8) {
+                HStack(spacing: AppSpacing.two) {
                     Image(systemName: "message.fill")
-                        .font(.appFont(.bold, size: 16))
+                        .font(.appFont(.boldBodyLarge))
                     Text("카카오톡으로 초대하기")
-                        .font(.appFont(.heavy, size: 17))
+                        .font(.appFont(.heavyHeadline))
                 }
-                .foregroundStyle(Color.textPrimary)
+                .foregroundStyle(Color.textDefault)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 18)
-                .background(Color.kakaoYellow, in: RoundedRectangle(cornerRadius: 18))
+                .padding(.vertical, AppSpacing.homeVertical)
+                .background(Color.kakaoYellow, in: RoundedRectangle(cornerRadius: AppRadius.container))
             }
             .buttonStyle(PressableButtonStyle())
             .softShadow(.pill)
 
             // 내 초대 코드는 작게 아래에. 영구 단일 코드라 "새로고침"은 두지 않고, 실패 시에만 다시 시도.
             inviteCodeLine
+            }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 20)
-        .frame(maxWidth: .infinity)
-        .background(Color.surface, in: RoundedRectangle(cornerRadius: 24))
-        .neuoShadow(.md)
     }
 
     /// 내 초대 코드(작게). 로딩 중 미니 스피너, 3회 재시도까지 실패하면 "다시 시도".
     private var inviteCodeLine: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: AppSpacing.oneHalf) {
             Text("내 초대 코드")
-                .font(.appFont(.semibold, size: 12))
-                .foregroundStyle(Color.textTertiary)
+                .font(.appFont(.semiboldCaption))
+                .foregroundStyle(Color.textSubtle)
             if let code = state.friendInviteCode {
                 Text(code)
-                    .font(.appFont(.bold, size: 13))
-                    .foregroundStyle(Color.textSecondary)
+                    .font(.appFont(.boldCallout))
+                    .foregroundStyle(Color.textMuted)
             } else if state.friendAreaLoadState == .failed {
                 Button("다시 시도") {
                     Task { await state.refreshFriendArea() }
                 }
-                .font(.appFont(.bold, size: 12))
-                .foregroundStyle(Color.sage600)
+                .font(.appFont(.boldCaption))
+                .foregroundStyle(Color.statusSuccess)
             } else {
                 ProgressView()
                     .controlSize(.mini)
@@ -99,10 +96,11 @@ struct FriendsView: View {
     }
 
     private var rankingCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        AppCard(padding: AppSpacing.dialogH, radius: AppRadius.page, elevation: .medium) {
+            VStack(alignment: .leading, spacing: AppSpacing.reportCell) {
             Text("친구 랭킹")
-                .font(.appFont(.heavy, size: 18))
-                .foregroundStyle(Color.textPrimary)
+                .font(.appFont(.heavyHeadlineLarge))
+                .foregroundStyle(Color.textDefault)
             if state.friendAreaLoadState == .loading && state.friendRankings.isEmpty {
                 // 첫 로딩(재시도 포함) 중엔 "없음" 대신 스피너.
                 ProgressView()
@@ -110,45 +108,41 @@ struct FriendsView: View {
             } else if state.friendAreaLoadState == .failed {
                 // 실패 시엔 직전 랭킹이 남아 있어도 성공처럼 보여주지 않는다(stale 노출 방지).
                 Text("잠시 후 다시 시도해 주세요")
-                    .font(.appFont(.semibold, size: 14))
-                    .foregroundStyle(Color.textTertiary)
+                    .font(.appFont(.semiboldLabel))
+                    .foregroundStyle(Color.textSubtle)
             } else if state.friendRankings.isEmpty {
                 Text("아직 랭킹이 없어요. 친구를 초대해 보세요.")
-                    .font(.appFont(.semibold, size: 14))
-                    .foregroundStyle(Color.textTertiary)
+                    .font(.appFont(.semiboldLabel))
+                    .foregroundStyle(Color.textSubtle)
             } else {
-                VStack(spacing: 4) {
+                VStack(spacing: AppSpacing.one) {
                     ForEach(Array(state.friendRankings.enumerated()), id: \.element.id) { index, row in
-                        HStack(spacing: 10) {
+                        HStack(spacing: AppSpacing.inner) {
                             Text("\(index + 1)")
-                                .font(.appFont(.heavy, size: 14))
-                                .foregroundStyle(row.me ? Color.sage600 : Color.textTertiary)
-                                .frame(minWidth: 18)
+                                .font(.appFont(.heavyLabel))
+                                .foregroundStyle(row.me ? Color.statusSuccess : Color.textSubtle)
+                                .frame(minWidth: AppSize.iconSmall)
                             Text(rankingName(row))
-                                .font(.appFont(.bold, size: 14))
-                                .foregroundStyle(Color.textPrimary)
+                                .font(.appFont(.boldLabel))
+                                .foregroundStyle(Color.textDefault)
                                 .lineLimit(1)
                             Spacer()
                             Text("\(row.points) 도토리")
-                                .font(.appFont(.semibold, size: 14))
-                                .foregroundStyle(Color.sage600)
+                                .font(.appFont(.semiboldLabel))
+                                .foregroundStyle(Color.statusSuccess)
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 11)
+                        .padding(.horizontal, AppSpacing.three)
+                        .padding(.vertical, AppRadius.iconContainer)
                         // 내 행은 은은한 배경 틴트로 자연스럽게 강조.
                         .background(
-                            row.me ? Color.sage50 : Color.clear,
-                            in: RoundedRectangle(cornerRadius: 12)
+                            row.me ? Color.statusSuccessMuted : Color.clear,
+                            in: RoundedRectangle(cornerRadius: AppSpacing.three)
                         )
                     }
                 }
             }
+            }
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 22)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.surface, in: RoundedRectangle(cornerRadius: 28))
-        .neuoShadow(.md)
     }
 
     /// 랭킹 행 표시 이름. 내 행은 내 닉네임(없으면 "나"), 친구는 서버 표시 이름(없으면 "친구").

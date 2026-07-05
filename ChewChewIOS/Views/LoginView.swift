@@ -64,11 +64,11 @@ struct LoginView: View {
             Spacer()
             VStack(spacing: 14) {
                 Text("오도독")
-                    .font(.system(size: 40, weight: .heavy))
-                    .foregroundStyle(Color.tintInteractive)
+                    .font(.appFont(.loginWordmark))
+                    .foregroundStyle(Color.textActionStrong)
                 Text("잘 씹는 습관을 만드는 가장 쉬운 방법")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.textMuted)
             }
             Spacer()
 
@@ -115,21 +115,21 @@ struct LoginView: View {
             Task { await signIn(with: option.makeProvider()) }
         } label: {
             ZStack {
-                Text(option.title).font(.system(size: 16, weight: .semibold))
+                Text(option.title).font(.appFont(.dialogAction))
                 HStack {
-                    brandIcon(option).frame(width: 22, height: 22)
+                    brandIcon(option).frame(width: AppSize.socialIcon, height: AppSize.socialIcon)
                     Spacer()
                 }
             }
-            .padding(.horizontal, 18)
+            .padding(.horizontal, AppSpacing.inputH)
             .frame(maxWidth: .infinity)
-            .frame(height: 52)
+            .frame(height: AppSize.socialButtonHeight)
             .foregroundStyle(option.foreground)
             .background(option.background)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.three, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(option.border ?? .clear, lineWidth: 1)
+                RoundedRectangle(cornerRadius: AppSpacing.three, style: .continuous)
+                    .strokeBorder(option.border ?? .clear, lineWidth: AppSize.border)
             )
         }
         .buttonStyle(.plain)
@@ -140,13 +140,13 @@ struct LoginView: View {
     private func brandIcon(_ option: LoginProviderOption) -> some View {
         switch option {
         case .apple:
-            Image(systemName: "apple.logo").font(.system(size: 18))
+            Image(systemName: "apple.logo").font(.appFont(.regular, size: AppSize.socialBrandIcon))
         case .google:
             Text("G")
-                .font(.system(size: 18, weight: .bold))
+                .font(.appFont(.bold, size: AppSize.socialBrandIcon))
                 .foregroundStyle(Color.googleBlue)
         case .kakao:
-            Image(systemName: "message.fill").font(.system(size: 15))
+            Image(systemName: "message.fill").font(.appFont(.regular, size: AppSize.kakaoBrandIcon))
         }
     }
 

@@ -54,7 +54,7 @@ struct SettingsView: View {
 
     private var providerBadge: some View {
         Text(loginMethodLabel)
-            .font(.appFont(.semibold, size: 11))
+            .font(.appFont(.semiboldMicro))
             .foregroundStyle(badgeForeground)
             .padding(.horizontal, 8)
             .padding(.vertical, 3)
@@ -76,8 +76,8 @@ struct SettingsView: View {
                     appSection
                     Spacer(minLength: 24)
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
+                .padding(.horizontal, AppSpacing.page)
+                .padding(.top, AppSpacing.gap)
             }
             .background(Color.pageBackground.ignoresSafeArea())
             .navigationTitle("설정")
@@ -86,7 +86,7 @@ struct SettingsView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("완료") { dismiss() }
                         .foregroundStyle(Color.tintInteractive)
-                        .font(.appFont(.semibold, size: 15))
+                        .font(.appFont(.semiboldBody))
                 }
             }
         }
@@ -117,7 +117,7 @@ struct SettingsView: View {
     private var profileHeader: some View {
         HStack(spacing: 10) {
             Text(state.displayName ?? "닉네임 없음")
-                .font(.appFont(.heavy, size: 22))
+                .font(.appFont(.heavyTitleXLarge))
                 .foregroundStyle(Color.textPrimary)
             providerBadge
             Spacer()
@@ -128,8 +128,8 @@ struct SettingsView: View {
 
     /// 계정 — 로그아웃, 계정 삭제.
     private var accountSection: some View {
-        VStack(spacing: 0) {
-            sectionHeader("계정")
+        VStack(spacing: AppSpacing.none) {
+            AppSettingsSectionHeader(title: "계정")
 
             Button {
                 Task {
@@ -137,47 +137,19 @@ struct SettingsView: View {
                     dismiss()
                 }
             } label: {
-                HStack {
-                    Image(systemName: "rectangle.portrait.and.arrow.right")
-                        .font(.appFont(.medium, size: 16))
-                        .foregroundStyle(Color.textSecondary)
-                        .frame(width: 26)
-
-                    Text("로그아웃")
-                        .font(.appFont(.semibold, size: 16))
-                        .foregroundStyle(Color.textPrimary)
-
-                    Spacer()
-                }
-                .padding(16)
-                .background(Color.surface, in: RoundedRectangle(cornerRadius: 18))
-                .neuoShadow(.sm)
+                AppSettingsRow(icon: "rectangle.portrait.and.arrow.right", title: "로그아웃")
             }
             .buttonStyle(.plain)
-            .padding(.top, 10)
+            .padding(.top, AppSpacing.topInsetCompact)
             .accessibilityIdentifier("Logout")
 
             Button {
                 showDeleteConfirmation = true
             } label: {
-                HStack {
-                    Image(systemName: "trash.fill")
-                        .font(.appFont(.medium, size: 16))
-                        .foregroundStyle(Color.textSecondary)
-                        .frame(width: 26)
-
-                    Text("계정 삭제")
-                        .font(.appFont(.semibold, size: 16))
-                        .foregroundStyle(Color.textPrimary)
-
-                    Spacer()
-                }
-                .padding(16)
-                .background(Color.surface, in: RoundedRectangle(cornerRadius: 18))
-                .neuoShadow(.sm)
+                AppSettingsRow(icon: "trash.fill", title: "계정 삭제")
             }
             .buttonStyle(.plain)
-            .padding(.top, 10)
+            .padding(.top, AppSpacing.topInsetCompact)
             .accessibilityIdentifier("DeleteMyData")
         }
     }
@@ -185,17 +157,12 @@ struct SettingsView: View {
     /// 측정 — AirPods 모델 선택.
     private var deviceSection: some View {
         VStack(spacing: 0) {
-            sectionHeader("측정")
+            AppSettingsSectionHeader(title: "측정")
 
             Button {
                 showAirPodsPicker = true
             } label: {
-                settingsRow(
-                    icon: "airpodspro",
-                    title: "측정 기기",
-                    value: airPodsModel.displayName,
-                    showsChevron: false
-                )
+                AppSettingsRow(icon: "airpodspro", title: "측정 기기", value: airPodsModel.displayName)
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("AirPodsModelPicker")
@@ -205,12 +172,12 @@ struct SettingsView: View {
     /// 앱 — 이용약관·개인정보처리방침(앱 내 뷰어)·문의·버전.
     private var appSection: some View {
         VStack(spacing: 0) {
-            sectionHeader("앱")
+            AppSettingsSectionHeader(title: "앱")
 
             NavigationLink {
                 LegalDocumentView(title: "이용약관", markdown: LegalDocumentView.termsMarkdown)
             } label: {
-                linkRow(icon: "doc.text", title: "이용약관")
+                AppSettingsRow(icon: "doc.text", title: "이용약관", showsChevron: true)
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("TermsOfService")
@@ -218,102 +185,29 @@ struct SettingsView: View {
             NavigationLink {
                 LegalDocumentView(title: "개인정보처리방침", markdown: LegalDocumentView.privacyMarkdown)
             } label: {
-                linkRow(icon: "hand.raised", title: "개인정보처리방침")
+                AppSettingsRow(icon: "hand.raised", title: "개인정보처리방침", showsChevron: true)
             }
             .buttonStyle(.plain)
-            .padding(.top, 10)
+            .padding(.top, AppSpacing.topInsetCompact)
             .accessibilityIdentifier("PrivacyPolicy")
 
             Button {
                 showFeedback = true
             } label: {
-                linkRow(icon: "envelope", title: "문의·피드백", showsChevron: false)
+                AppSettingsRow(icon: "envelope", title: "문의·피드백")
             }
             .buttonStyle(.plain)
-            .padding(.top, 10)
+            .padding(.top, AppSpacing.topInsetCompact)
             .accessibilityIdentifier("Feedback")
 
             HStack {
                 Text("버전 \(AppState.appVersion ?? "-")")
-                    .font(.appFont(.regular, size: 13))
+                    .font(.appFont(.regularCallout))
                     .foregroundStyle(Color.textTertiary)
                 Spacer()
             }
-            .padding(.top, 12)
+            .padding(.top, AppSpacing.gap)
         }
-    }
-
-    // MARK: - Row builders
-
-    /// 흰 카드 row — 아이콘 + 제목(좌) / 값(우) + (옵션)chevron. 좌우 한 줄 배치.
-    private func settingsRow(
-        icon: String,
-        title: String,
-        value: String,
-        showsChevron: Bool
-    ) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.appFont(.medium, size: 16))
-                .foregroundStyle(Color.textSecondary)
-                .frame(width: 26)
-
-            Text(title)
-                .font(.appFont(.semibold, size: 16))
-                .foregroundStyle(Color.textPrimary)
-
-            Spacer()
-
-            Text(value)
-                .font(.appFont(.semibold, size: 16))
-                .foregroundStyle(Color.textSecondary)
-                .lineLimit(1)
-
-            if showsChevron {
-                Image(systemName: "chevron.right")
-                    .font(.appFont(.semibold, size: 14))
-                    .foregroundStyle(Color.textSecondary)
-            }
-        }
-        .padding(16)
-        .background(Color.surface, in: RoundedRectangle(cornerRadius: 18))
-        .neuoShadow(.sm)
-    }
-
-    /// 단일 라벨 row — 약관·문의처럼 탭하면 이동/열기만 하는 항목.
-    /// `showsChevron`: NavigationLink push면 true, 다이얼로그·외부 링크는 false.
-    private func linkRow(icon: String, title: String, showsChevron: Bool = true) -> some View {
-        HStack {
-            Image(systemName: icon)
-                .font(.appFont(.medium, size: 16))
-                .foregroundStyle(Color.textSecondary)
-                .frame(width: 26)
-
-            Text(title)
-                .font(.appFont(.semibold, size: 16))
-                .foregroundStyle(Color.textPrimary)
-
-            Spacer()
-
-            if showsChevron {
-                Image(systemName: "chevron.right")
-                    .font(.appFont(.semibold, size: 14))
-                    .foregroundStyle(Color.textSecondary)
-            }
-        }
-        .padding(16)
-        .background(Color.surface, in: RoundedRectangle(cornerRadius: 18))
-        .neuoShadow(.sm)
-    }
-
-    private func sectionHeader(_ title: String) -> some View {
-        HStack {
-            Text(title)
-                .font(.appFont(.heavy, size: 17))
-                .foregroundStyle(Color.textPrimary)
-            Spacer()
-        }
-        .padding(.bottom, 10)
     }
 }
 
@@ -387,29 +281,29 @@ private struct LegalDocumentView: View {
         switch kind {
         case .h1(let text):
             Text(text)
-                .font(.appFont(.heavy, size: 20))
+                .font(.appFont(.heavyTitle))
                 .foregroundStyle(Color.textPrimary)
                 .padding(.top, 24)
                 .padding(.bottom, 6)
         case .h2(let text):
             Text(text)
-                .font(.appFont(.heavy, size: 17))
+                .font(.appFont(.heavyHeadline))
                 .foregroundStyle(Color.textPrimary)
                 .padding(.top, 20)
                 .padding(.bottom, 4)
         case .h3(let text):
             Text(text)
-                .font(.appFont(.bold, size: 15))
+                .font(.appFont(.boldBody))
                 .foregroundStyle(Color.textPrimary)
                 .padding(.top, 14)
                 .padding(.bottom, 2)
         case .bullet(let text):
             HStack(alignment: .top, spacing: 6) {
                 Text("•")
-                    .font(.appFont(.regular, size: 14))
+                    .font(.appFont(.regularLabel))
                     .foregroundStyle(Color.textSecondary)
                 Text(text)
-                    .font(.appFont(.regular, size: 14))
+                    .font(.appFont(.regularLabel))
                     .foregroundStyle(Color.textSecondary)
                     .lineSpacing(5)
                     .fixedSize(horizontal: false, vertical: true)
@@ -418,10 +312,10 @@ private struct LegalDocumentView: View {
         case .numbered(let text):
             HStack(alignment: .top, spacing: 6) {
                 Text("•")
-                    .font(.appFont(.regular, size: 14))
+                    .font(.appFont(.regularLabel))
                     .foregroundStyle(Color.textSecondary)
                 Text(text)
-                    .font(.appFont(.regular, size: 14))
+                    .font(.appFont(.regularLabel))
                     .foregroundStyle(Color.textSecondary)
                     .lineSpacing(5)
                     .fixedSize(horizontal: false, vertical: true)
@@ -429,13 +323,13 @@ private struct LegalDocumentView: View {
             .padding(.top, 3)
         case .body(let text):
             Text(text)
-                .font(.appFont(.regular, size: 14))
+                .font(.appFont(.regularLabel))
                 .foregroundStyle(Color.textSecondary)
                 .lineSpacing(5)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, 4)
         case .spacer:
-            Color.clear.frame(height: 8)
+            Color.clear.frame(height: AppSpacing.two)
         }
     }
 }
@@ -626,21 +520,21 @@ private struct AirPodsPickerDialog: View {
         VStack(spacing: 0) {
             // Header — title only, no body description.
             Text("사용 중인 AirPods 모델을 선택해요.")
-                .font(.appFont(.heavy, size: 17))
-                .foregroundStyle(Color.textPrimary)
+                .font(.appFont(.heavyHeadline))
+                .foregroundStyle(Color.textDefault)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 22)
-                .padding(.vertical, 20)
+                .padding(.horizontal, AppSpacing.dialogH)
+                .padding(.vertical, AppSpacing.dialogV)
                 .frame(maxWidth: .infinity)
 
             divider
 
             // Radio rows
-            VStack(spacing: 0) {
+            VStack(spacing: AppSpacing.none) {
                 ForEach(Array(AirPodsModel.allCases.enumerated()), id: \.element.id) { idx, model in
                     row(model)
                     if idx < AirPodsModel.allCases.count - 1 {
-                        divider.padding(.leading, 22)
+                        divider.padding(.leading, AppSpacing.dialogH)
                     }
                 }
             }
@@ -648,41 +542,41 @@ private struct AirPodsPickerDialog: View {
             divider
 
             // Footer — 취소 / 확인
-            HStack(spacing: 0) {
+            HStack(spacing: AppSpacing.none) {
                 Button {
                     onCancel()
                 } label: {
                     Text("취소")
-                        .font(.appFont(.semibold, size: 16))
-                        .foregroundStyle(Color.textSecondary)
+                        .font(.appFont(.semiboldBodyLarge))
+                        .foregroundStyle(Color.textMuted)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
 
-                Color.hairline.frame(width: 0.5)
+                Color.borderDefault.frame(width: AppSize.hairline)
 
                 Button {
                     onConfirm(draft)
                 } label: {
                     Text("확인")
-                        .font(.appFont(.bold, size: 16))
-                        .foregroundStyle(Color.tintPrimary)
+                        .font(.appFont(.boldBodyLarge))
+                        .foregroundStyle(Color.textAction)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
-            .frame(height: 44)
-            .padding(.bottom, 8)
+            .frame(height: AppSize.dialogActionHeight)
+            .padding(.bottom, AppSpacing.gapTight)
         }
-        .frame(maxWidth: 320)
-        .background(Color.surface, in: RoundedRectangle(cornerRadius: 14))
-        .shadow(color: .black.opacity(0.18), radius: 24, y: 8)
+        .frame(maxWidth: AppSize.dialogMaxWidth)
+        .background(Color.bgPopover, in: RoundedRectangle(cornerRadius: AppRadius.element))
+        .appElevation(.high)
     }
 
     private var divider: some View {
-        Color.hairline.frame(height: 0.5)
+        Color.borderDefault.frame(height: AppSize.hairline)
     }
 
     private func row(_ model: AirPodsModel) -> some View {
@@ -690,15 +584,15 @@ private struct AirPodsPickerDialog: View {
         return Button {
             draft = model
         } label: {
-            HStack(spacing: 14) {
+            HStack(spacing: AppSpacing.cardH) {
                 radio(isActive: isActive)
                 Text(model.displayName)
-                    .font(.appFont(.semibold, size: 15))
-                    .foregroundStyle(Color.textPrimary)
+                    .font(.appFont(.semiboldBody))
+                    .foregroundStyle(Color.textDefault)
                 Spacer()
             }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 14)
+            .padding(.horizontal, AppSpacing.dialogH)
+            .padding(.vertical, AppSpacing.inputV)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -708,12 +602,12 @@ private struct AirPodsPickerDialog: View {
     private func radio(isActive: Bool) -> some View {
         ZStack {
             Circle()
-                .stroke(isActive ? Color.tintInteractive : Color.textTertiary, lineWidth: 1.5)
-                .frame(width: 20, height: 20)
+                .stroke(isActive ? Color.textActionStrong : Color.textSubtle, lineWidth: 1.5)
+                .frame(width: AppSize.radioOuter, height: AppSize.radioOuter)
             if isActive {
                 Circle()
-                    .fill(Color.tintInteractive)
-                    .frame(width: 10, height: 10)
+                    .fill(Color.textActionStrong)
+                    .frame(width: AppSize.radioInner, height: AppSize.radioInner)
             }
         }
     }
@@ -727,7 +621,7 @@ private struct AirPodsPickerDialogOverlay: ViewModifier {
         ZStack {
             content
             if isPresented {
-                Color.black.opacity(0.32)
+                Color.bgOverlayScrim
                     .ignoresSafeArea()
                     .transition(.opacity)
                     .onTapGesture { isPresented = false }
@@ -739,11 +633,11 @@ private struct AirPodsPickerDialogOverlay: ViewModifier {
                     },
                     onCancel: { isPresented = false }
                 )
-                .padding(.horizontal, 32)
+                .padding(.horizontal, AppSpacing.eight)
                 .transition(.scale(scale: 0.96).combined(with: .opacity))
             }
         }
-        .animation(.spring(response: 0.28, dampingFraction: 0.88), value: isPresented)
+        .animation(.spring(response: AppMotion.springFastResponse, dampingFraction: AppMotion.springDampingFraction), value: isPresented)
     }
 }
 
