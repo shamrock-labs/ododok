@@ -5,6 +5,7 @@ import XCTest
 final class SpyRemoteStore: RemoteStore {
     private(set) var deleteUserDataCallCount = 0
     private(set) var deleteUserDataAccessToken: String?
+    private(set) var deleteUserDataRefreshToken: String?
     var fetchHomeError: Error?
 
     func upsertProfile(_ profile: ProfileDTO) async throws {}
@@ -13,6 +14,11 @@ final class SpyRemoteStore: RemoteStore {
     func deleteUserData() async throws { deleteUserDataCallCount += 1 }
     func deleteUserData(accessToken: String?) async throws {
         deleteUserDataAccessToken = accessToken
+        try await deleteUserData()
+    }
+    func deleteUserData(accessToken: String?, refreshToken: String?) async throws {
+        deleteUserDataAccessToken = accessToken
+        deleteUserDataRefreshToken = refreshToken
         try await deleteUserData()
     }
     func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO {
@@ -155,6 +161,7 @@ final class EraseAllUserDataTests: XCTestCase {
             await Task.yield()
         }
         XCTAssertEqual(spy.deleteUserDataAccessToken, "access-token", "서버 삭제 요청은 Keychain이 아니라 삭제 시점 token snapshot으로 인증해야 한다")
+        XCTAssertEqual(spy.deleteUserDataRefreshToken, "refresh-token", "삭제 요청 중 access token 만료 시에도 Keychain 없이 refresh snapshot으로 재시도해야 한다")
     }
 
     func testLogoutClearsLocalAccountCacheWithoutDeletingRemoteData() {

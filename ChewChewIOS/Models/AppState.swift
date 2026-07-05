@@ -711,10 +711,11 @@ final class AppState {
 
         // 삭제 요청은 현재 access token 스냅샷으로 보내고, canonical session 저장소는 즉시 비운다.
         let deletionAccessToken = TokenManager.accessToken
+        let deletionRefreshToken = TokenManager.refreshToken
         TokenManager.clear()
 
         clearPersistedSnapshot()
-        scheduleRemoteUserDataDeletion(accessToken: deletionAccessToken)
+        scheduleRemoteUserDataDeletion(accessToken: deletionAccessToken, refreshToken: deletionRefreshToken)
     }
 
     // MARK: - Reset
@@ -1147,13 +1148,13 @@ final class AppState {
         homeApplyVersion += 1   // 초기화 직전 시작된 refreshFromServerHome이 완료 후 applyHome을 실행하지 못하게.
     }
 
-    private func scheduleRemoteUserDataDeletion(accessToken: String?) {
+    private func scheduleRemoteUserDataDeletion(accessToken: String?, refreshToken: String?) {
         // 같은 체인으로 — 직전 작업이 끝난 뒤 delete가 나가야 결과가 결정적.
         let store = remoteStore
         let previous = remoteSyncChain
         remoteSyncChain = Task.detached {
             _ = await previous.value
-            try? await store.deleteUserData(accessToken: accessToken)
+            try? await store.deleteUserData(accessToken: accessToken, refreshToken: refreshToken)
         }
     }
 

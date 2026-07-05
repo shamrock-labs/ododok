@@ -139,6 +139,56 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
         XCTAssertEqual(TokenManager.accessToken, "new-access")
     }
 
+    func testDeleteUserData_usesRefreshSnapshotWithoutRestoringKeychainWhenAccessExpired() async throws {
+        let store = makeStore()
+        TokenManager.clear()
+
+        var paths: [String] = []
+        var deleteAuthorizations: [String?] = []
+        MockURLProtocol.handler = { request in
+            paths.append(request.url?.path ?? "")
+            if request.url?.path == "/auth/refresh" {
+                let body = try Self.bodyData(from: request)
+                let json = try JSONSerialization.jsonObject(with: body) as? [String: String]
+                XCTAssertEqual(json?["refreshToken"], "refresh-snapshot")
+                XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+                return (
+                    HTTPURLResponse(
+                        url: request.url!,
+                        statusCode: 200,
+                        httpVersion: nil,
+                        headerFields: ["Content-Type": "application/json"]
+                    )!,
+                    Self.refreshSuccessBody
+                )
+            }
+
+            deleteAuthorizations.append(request.value(forHTTPHeaderField: "Authorization"))
+            if deleteAuthorizations.count == 1 {
+                return (
+                    HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!,
+                    Data(#"{"code":5000,"message":"인증이 필요합니다."}"#.utf8)
+                )
+            }
+            return (
+                HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!,
+                Data(#"{"code":1000,"message":"요청에 성공하였습니다."}"#.utf8)
+            )
+        }
+
+        try await store.deleteUserData(accessToken: "expired-access", refreshToken: "refresh-snapshot")
+
+        XCTAssertEqual(paths, ["/v1/me", "/auth/refresh", "/v1/me"])
+        XCTAssertEqual(deleteAuthorizations, ["Bearer expired-access", "Bearer new-access"])
+        XCTAssertNil(TokenManager.accessToken)
+        XCTAssertNil(TokenManager.refreshToken)
+    }
+
     private func makeStore() -> SpringRemoteStore {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [MockURLProtocol.self]

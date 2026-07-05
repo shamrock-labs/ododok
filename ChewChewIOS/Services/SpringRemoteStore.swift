@@ -49,6 +49,14 @@ final class SpringRemoteStore: RemoteStore {
         let idempotencyKey: String
     }
 
+    private struct RefreshRequest: Encodable {
+        let refreshToken: String
+    }
+
+    private struct TokenResult: Decodable {
+        let accessToken: String
+    }
+
     private enum AuthorizationSource {
         case tokenManager
         case captured(String?)
@@ -120,6 +128,18 @@ final class SpringRemoteStore: RemoteStore {
     func deleteUserData(accessToken: String?) async throws {
         let req = jsonRequest(method: "DELETE", path: "/v1/me", authorization: .captured(accessToken))
         _ = try await sendExpectingSuccess(req)
+    }
+
+    func deleteUserData(accessToken: String?, refreshToken: String?) async throws {
+        let req = jsonRequest(method: "DELETE", path: "/v1/me", authorization: .captured(accessToken))
+        let (data, http) = try await sendRaw(req)
+        if http.statusCode == 401, let refreshToken {
+            let refreshedAccessToken = try await refreshAccessToken(refreshToken)
+            let retried = jsonRequest(method: "DELETE", path: "/v1/me", authorization: .captured(refreshedAccessToken))
+            _ = try await sendExpectingSuccess(retried)
+            return
+        }
+        try validateSuccess(statusCode: http.statusCode, data: data)
     }
 
     // MARK: - chewing_session
@@ -293,6 +313,23 @@ final class SpringRemoteStore: RemoteStore {
     }
 
     private func send(_ req: URLRequest, retryingOn401: Bool = true) async throws -> (Data, HTTPURLResponse) {
+        let (data, http) = try await sendRaw(req)
+        // ODO-47: access 만료(401) 처리. refresh 보유 시 1회 재발급 후 원요청 재시도하고,
+        // 재시도 후에도 401이면 만료로 확정해 authExpired를 던진다(AppState가 로그인 게이트로 내려보냄).
+        if http.statusCode == 401 {
+            guard retryingOn401 else { throw RemoteStoreError.authExpired }
+            guard TokenManager.refreshToken != nil else { throw RemoteStoreError.authExpired }
+            guard await authClient.refresh() else { throw RemoteStoreError.authExpired }
+            var retried = req
+            if let token = TokenManager.accessToken {
+                retried.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            }
+            return try await send(retried, retryingOn401: false)
+        }
+        return (data, http)
+    }
+
+    private func sendRaw(_ req: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let data: Data
         let response: URLResponse
         do {
@@ -307,19 +344,15 @@ final class SpringRemoteStore: RemoteStore {
         guard let http = response as? HTTPURLResponse else {
             throw RemoteStoreError.malformed("no HTTP response")
         }
-        // ODO-47: access 만료(401) 처리. refresh 보유 시 1회 재발급 후 원요청 재시도하고,
-        // 재시도 후에도 401이면 만료로 확정해 authExpired를 던진다(AppState가 로그인 게이트로 내려보냄).
-        if http.statusCode == 401 {
-            guard retryingOn401 else { throw RemoteStoreError.authExpired }
-            guard TokenManager.refreshToken != nil else { throw RemoteStoreError.authExpired }
-            guard await authClient.refresh() else { throw RemoteStoreError.authExpired }
-            var retried = req
-            if let token = TokenManager.accessToken {
-                retried.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-            }
-            return try await send(retried, retryingOn401: false)
-        }
         return (data, http)
+    }
+
+    private func refreshAccessToken(_ refreshToken: String) async throws -> String {
+        var req = jsonRequest(method: "POST", path: "/auth/refresh", authorization: .captured(nil))
+        req.httpBody = try encoder.encode(RefreshRequest(refreshToken: refreshToken))
+        let (data, http) = try await sendRaw(req)
+        try validateSuccess(statusCode: http.statusCode, data: data)
+        return try decodeResult(TokenResult.self, from: data).accessToken
     }
 
     private func validateSuccess(statusCode: Int, data: Data) throws {
