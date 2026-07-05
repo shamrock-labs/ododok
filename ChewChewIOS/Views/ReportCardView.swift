@@ -942,12 +942,12 @@ private enum Metrics {
     static let scoreAxisLabelWidth: CGFloat = 28
     static let scoreAxisValueWidth: CGFloat = 26
     static let scoreAxisMinFillWidth: CGFloat = 6
-    static let coachAvatar: CGFloat = 64
-    static let chartHairline: CGFloat = 1
-    static let chartMarkerWidth: CGFloat = 12
-    static let chartMarkerRadius: CGFloat = 6
-    static let chartDeltaHeight: CGFloat = 8
+    static let coachAvatar = AppSize.visualMedium
+    static let chartHairline = AppSize.border
+    static let chartMarkerWidth = AppSize.iconXSmall
+    static let chartMarkerRadius = AppSize.indicatorSmall
+    static let chartDeltaHeight = AppSpacing.two
     static let guideLabelWidth: CGFloat = 36
     static let emptyStateVerticalPadding: CGFloat = 48
-    static let infoIcon: CGFloat = 14
+    static let infoIcon = AppSize.iconCompact
 }

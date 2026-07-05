@@ -664,6 +664,6 @@ private struct SafariView: UIViewControllerRepresentable {
 }
 
 private enum Metrics {
-    static let radioOuter: CGFloat = 20
-    static let radioInner: CGFloat = 10
+    static let radioOuter = AppSize.controlTiny
+    static let radioInner = AppSpacing.inner
 }

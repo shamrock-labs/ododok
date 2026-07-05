@@ -116,5 +116,5 @@ struct OnboardingNameView: View {
 }
 
 private enum Metrics {
-    static let heroImage: CGFloat = 140
+    static let heroImage = AppSize.visualXLarge
 }

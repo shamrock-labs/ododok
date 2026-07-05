@@ -580,7 +580,7 @@ enum DayMealSlot: CaseIterable, Hashable {
 }
 
 private enum Metrics {
-    static let calendarButton: CGFloat = 32
-    static let calendarCellHeight: CGFloat = 40
-    static let calendarDot: CGFloat = 4
+    static let calendarButton = AppSize.controlLarge
+    static let calendarCellHeight = AppSize.controlXLarge
+    static let calendarDot = AppSpacing.one
 }

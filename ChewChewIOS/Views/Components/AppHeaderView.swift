@@ -137,9 +137,9 @@ struct HeaderIconButton: View {
 }
 
 private enum Metrics {
-    static let iconButton: CGFloat = 32
-    static let icon: CGFloat = 16
-    static let badge: CGFloat = 7
-    static let pillIcon: CGFloat = 14
-    static let pillHeight: CGFloat = 30
+    static let iconButton = AppSize.controlLarge
+    static let icon = AppSize.iconMedium
+    static let badge = AppSize.indicatorMedium
+    static let pillIcon = AppSize.iconCompact
+    static let pillHeight = AppSize.iconContainerCompact
 }

@@ -47,8 +47,8 @@ enum LoginProviderOption: CaseIterable {
 }
 
 private enum Metrics {
-    static let socialIcon: CGFloat = 22
-    static let brandIcon: CGFloat = 18
+    static let socialIcon = AppSize.iconXLarge
+    static let brandIcon = AppSize.iconSmall
     static let kakaoIcon: CGFloat = 15
     static let buttonHeight: CGFloat = 52
 }

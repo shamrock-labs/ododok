@@ -839,5 +839,5 @@ private extension ReportCardModel.Grade {
 }
 
 private enum Metrics {
-    static let coachAvatar: CGFloat = 64
+    static let coachAvatar = AppSize.visualMedium
 }

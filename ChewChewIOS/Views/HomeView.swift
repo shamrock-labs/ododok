@@ -320,17 +320,17 @@ struct HomeView: View {
 }
 
 private enum Metrics {
-    static let circleButton: CGFloat = 46
-    static let statIcon: CGFloat = 24
+    static let circleButton = AppSize.controlXXLarge
+    static let statIcon = AppSize.iconXXLarge
     static let statIconBg: CGFloat = 42
     static let statIconRadius: CGFloat = 13
     static let progressRing: CGFloat = 220
     static let squirrelAreaHeight: CGFloat = 246
     static let squirrelCardMinHeight: CGFloat = 390
     static let squirrelCardRadius: CGFloat = 26
-    static let imuWaveformHeight: CGFloat = 64
-    static let mealButtonRadius: CGFloat = 20
-    static let mealButtonHighlightBorder: CGFloat = 3
+    static let imuWaveformHeight = AppSize.visualMedium
+    static let mealButtonRadius = AppSize.controlTiny
+    static let mealButtonHighlightBorder = AppSize.indicatorTiny
 }
 
 private extension HomeView {

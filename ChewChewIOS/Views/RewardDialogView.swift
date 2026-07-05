@@ -158,5 +158,5 @@ struct RewardGrant: Equatable {
 
 private enum Metrics {
     static let image: CGFloat = 110
-    static let icon: CGFloat = 26
+    static let icon = AppSize.controlMedium
 }

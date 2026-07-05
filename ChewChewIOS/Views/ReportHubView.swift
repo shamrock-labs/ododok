@@ -1256,17 +1256,17 @@ private struct ReportCalendarDialog: View {
 }
 
 private enum Metrics {
-    static let chartHairline: CGFloat = 1
-    static let dateRing: CGFloat = 40
+    static let chartHairline = AppSize.border
+    static let dateRing = AppSize.controlXLarge
     static let emptyIcon: CGFloat = 42
     static let weeklyChartHeight: CGFloat = 116
     static let weeklyCoachAvatar: CGFloat = 66
     static let legendIcon: CGFloat = 13
-    static let legendDot: CGFloat = 7
+    static let legendDot = AppSize.indicatorMedium
     static let chartBarWidth: CGFloat = 18
     static let chartBarMinHeight: CGFloat = 16
     static let chartBarMaxHeight: CGFloat = 72
-    static let calendarButton: CGFloat = 32
+    static let calendarButton = AppSize.controlLarge
     static let calendarCellHeight: CGFloat = 46
-    static let calendarRing: CGFloat = 36
+    static let calendarRing = AppSize.iconContainerLarge
 }

@@ -15,7 +15,7 @@ struct TabBarView: View {
                             .font(.appFont(active ? .bold : .regular, size: Metrics.icon))
                             .foregroundStyle(active ? Color.textActionStrong : Color.textSubtle)
                         Text(tab.label)
-                            .font(.appFont(.boldMicroTiny))
+                            .font(.appFont(.boldCaption))
                             .foregroundStyle(active ? Color.textAction : Color.textSubtle)
                     }
                     .frame(maxWidth: .infinity)
@@ -38,5 +38,5 @@ struct TabBarView: View {
 }
 
 private enum Metrics {
-    static let icon: CGFloat = 22
+    static let icon = AppSize.iconXLarge
 }

@@ -92,5 +92,5 @@ struct IMUWaveformView: View {
 }
 
 private enum Metrics {
-    static let height: CGFloat = 64
+    static let height = AppSize.visualMedium
 }

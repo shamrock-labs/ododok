@@ -84,16 +84,41 @@ enum AppSpacing {
 enum AppSize {
     static let hairline: CGFloat = 0.5
     static let border: CGFloat = 1
+
+    static let indicatorTiny: CGFloat = 3
+    static let indicatorSmall: CGFloat = 6
+    static let indicatorMedium: CGFloat = 7
+    static let indicatorLarge: CGFloat = 12
+
+    static let iconXSmall: CGFloat = 12
+    static let iconCompact: CGFloat = 14
+    static let iconSmall: CGFloat = 18
+    static let iconMedium: CGFloat = 16
+    static let iconLarge = iconSmall
+    static let iconXLarge: CGFloat = 22
+    static let iconXXLarge: CGFloat = 24
+
+    static let controlTiny: CGFloat = 20
+    static let controlSmall: CGFloat = 22
+    static let controlMedium: CGFloat = 26
+    static let controlLarge: CGFloat = 32
+    static let controlXLarge: CGFloat = 40
+    static let controlXXLarge: CGFloat = 46
+
+    static let visualSmall: CGFloat = 56
+    static let visualMedium: CGFloat = 64
+    static let visualLarge: CGFloat = 96
+    static let visualXLarge: CGFloat = 140
+
     static let dialogMaxWidth: CGFloat = 320
     static let dialogActionHeight: CGFloat = 44
-    static let iconSmall: CGFloat = 18
+    static let iconContainerTiny = controlMedium
     static let iconContainerCompact: CGFloat = 30
     static let iconContainer: CGFloat = 34
     static let iconContainerLarge: CGFloat = 36
-    static let iconContainerTiny: CGFloat = 26
-    static let iconContainerXL: CGFloat = 56
-    static let statusDot: CGFloat = 12
-    static let statusDotTiny: CGFloat = 6
+    static let iconContainerXL = visualSmall
+    static let statusDot = indicatorLarge
+    static let statusDotTiny = indicatorSmall
 }
 
 enum AppMotion {

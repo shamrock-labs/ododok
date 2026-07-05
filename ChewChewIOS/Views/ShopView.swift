@@ -464,5 +464,5 @@ private struct ShopGridView: View {
 private enum Metrics {
     static let heroImageHeight: CGFloat = 150
     static let itemEmojiHeight: CGFloat = 60
-    static let itemIcon: CGFloat = 12
+    static let itemIcon = AppSize.iconXSmall
 }

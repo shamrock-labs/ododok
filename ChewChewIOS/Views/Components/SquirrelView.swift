@@ -101,6 +101,6 @@ struct SquirrelView: View {
 }
 
 private enum Metrics {
-    static let halo: CGFloat = 140
+    static let halo = AppSize.visualXLarge
     static let image: CGFloat = 115
 }

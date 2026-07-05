@@ -320,16 +320,16 @@ private struct StreakDemo: View {
 private enum Metrics {
     static let cardWidth: CGFloat = 252
     static let visualHeight: CGFloat = 188
-    static let pulse: CGFloat = 96
+    static let pulse = AppSize.visualLarge
     static let pulseCore: CGFloat = 116
     static let airPodsGlyph: CGFloat = 58
     static let progressHeight: CGFloat = 6
-    static let progressDot: CGFloat = 7
-    static let pageActive: CGFloat = 22
-    static let pageInactive: CGFloat = 8
-    static let demoImageHeight: CGFloat = 96
+    static let progressDot = AppSize.indicatorMedium
+    static let pageActive = AppSize.iconXLarge
+    static let pageInactive = AppSpacing.two
+    static let demoImageHeight = AppSize.visualLarge
     static let waveHeight: CGFloat = 72
-    static let streakDot: CGFloat = 28
-    static let flameIcon: CGFloat = 18
-    static let checkIcon: CGFloat = 12
+    static let streakDot = AppSpacing.seven
+    static let flameIcon = AppSize.iconSmall
+    static let checkIcon = AppSize.iconXSmall
 }

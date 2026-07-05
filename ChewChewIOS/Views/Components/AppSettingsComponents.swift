@@ -15,7 +15,7 @@ struct AppSettingsSectionHeader: View {
 }
 
 private enum Metrics {
-    static let iconWidth: CGFloat = 26
+    static let iconWidth = AppSize.controlMedium
 }
 
 struct AppSettingsRow: View {
