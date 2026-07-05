@@ -4,12 +4,23 @@ import XCTest
 /// `deleteUserData`가 실제로 한 번 호출되는지 추적하는 테스트용 Spy.
 final class SpyRemoteStore: RemoteStore {
     private(set) var deleteUserDataCallCount = 0
+    private(set) var deleteUserDataAccessToken: String?
+    private(set) var deleteUserDataRefreshToken: String?
     var fetchHomeError: Error?
 
     func upsertProfile(_ profile: ProfileDTO) async throws {}
     func fetchProfile() async throws -> ProfileDTO? { nil }
     func fetchUserStats() async throws -> UserStatsDTO? { nil }
     func deleteUserData() async throws { deleteUserDataCallCount += 1 }
+    func deleteUserData(accessToken: String?) async throws {
+        deleteUserDataAccessToken = accessToken
+        try await deleteUserData()
+    }
+    func deleteUserData(accessToken: String?, refreshToken: String?) async throws {
+        deleteUserDataAccessToken = accessToken
+        deleteUserDataRefreshToken = refreshToken
+        try await deleteUserData()
+    }
     func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO {
         CreateSessionResultDTO(
             chewingSession: session,
@@ -119,6 +130,38 @@ final class EraseAllUserDataTests: XCTestCase {
         await state.eraseAllUserData()
 
         XCTAssertEqual(state.streak, 0, "삭제 후 streak은 0이어야 한다")
+    }
+
+    func testEraseAllUserDataReturnsToLoginGate() async {
+        TokenManager.save(access: "access-token", refresh: "refresh-token")
+        let spy = SpyRemoteStore()
+        let state = AppState(remoteStore: spy)
+
+        XCTAssertTrue(state.isLoggedIn)
+
+        await state.eraseAllUserData()
+
+        XCTAssertFalse(state.isLoggedIn, "계정 삭제 후 ContentView가 로그인 게이트로 돌아가야 스피너 오버레이에 갇히지 않는다")
+    }
+
+    func testEraseAllUserDataClearsTokensImmediatelyAndUsesTokenSnapshotForDelete() async {
+        TokenManager.save(access: "access-token", refresh: "refresh-token")
+        let spy = SpyRemoteStore()
+        let state = AppState(remoteStore: spy)
+
+        await state.eraseAllUserData()
+
+        XCTAssertNil(TokenManager.accessToken)
+        XCTAssertNil(TokenManager.refreshToken)
+
+        let restoredState = AppState(remoteStore: NoopRemoteStore())
+        XCTAssertFalse(restoredState.isLoggedIn, "계정 삭제 직후 재실행되어도 Keychain 토큰으로 로그인 상태가 복원되면 안 된다")
+
+        for _ in 0..<10 where spy.deleteUserDataAccessToken == nil {
+            await Task.yield()
+        }
+        XCTAssertEqual(spy.deleteUserDataAccessToken, "access-token", "서버 삭제 요청은 Keychain이 아니라 삭제 시점 token snapshot으로 인증해야 한다")
+        XCTAssertEqual(spy.deleteUserDataRefreshToken, "refresh-token", "삭제 요청 중 access token 만료 시에도 Keychain 없이 refresh snapshot으로 재시도해야 한다")
     }
 
     func testLogoutClearsLocalAccountCacheWithoutDeletingRemoteData() {

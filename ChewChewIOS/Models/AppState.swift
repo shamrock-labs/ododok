@@ -680,7 +680,7 @@ final class AppState {
     // MARK: - Erase all user data (REQ-05)
 
     /// 설정 '계정 삭제' 확인 시 호출.
-    /// 원격: profiles DELETE → FK CASCADE(user_stats/chewing_session/bout).
+    /// 원격: DELETE /v1/me → 계정 루트 삭제 + FK CASCADE.
     /// 로컬: 모든 게임 상태를 초기화하고 스냅샷도 비움.
     @MainActor
     func eraseAllUserData() async {
@@ -700,8 +700,20 @@ final class AppState {
         displayName = nil
         loginMethod = nil
         didLoadProfile = false
-        // 로컬 스냅샷 + 원격 데이터 삭제 (clearPersistedSnapshot이 remoteStore.deleteUserData 포함)
+        hasCompletedOnboarding = false
+        isLoggedIn = false
+        analytics.setUserId(nil)
+        SentryService.setUser(id: nil)
+        MealNotificationService.cancelMealReminders()
+        Task { await mealPushCoordinator.clearRegistration() }
+
+        // 삭제 요청은 현재 access token 스냅샷으로 보내고, canonical session 저장소는 즉시 비운다.
+        let deletionAccessToken = TokenManager.accessToken
+        let deletionRefreshToken = TokenManager.refreshToken
+        TokenManager.clear()
+
         clearPersistedSnapshot()
+        scheduleRemoteUserDataDeletion(accessToken: deletionAccessToken, refreshToken: deletionRefreshToken)
     }
 
     // MARK: - Reset
@@ -1130,16 +1142,17 @@ final class AppState {
     func clearPersistedSnapshot() {
         UserDefaults.standard.removeObject(forKey: Self.persistenceKey)
         // 서버 홈 캐시도 비움 — reset/erase 후 화면이 옛 도토리/스트릭을 잠깐 보여주지 않도록.
-        // 적립 멱등 키는 서버 reward_events에 있고, deleteUserData가 그 행들도 함께 제거한다.
         serverHome = nil
         homeApplyVersion += 1   // 초기화 직전 시작된 refreshFromServerHome이 완료 후 applyHome을 실행하지 못하게.
+    }
+
+    private func scheduleRemoteUserDataDeletion(accessToken: String?, refreshToken: String?) {
         // 같은 체인으로 — 직전 작업이 끝난 뒤 delete가 나가야 결과가 결정적.
-        // profiles 삭제 → FK ON DELETE CASCADE로 user_stats도 자동 정리.
         let store = remoteStore
         let previous = remoteSyncChain
         remoteSyncChain = Task.detached {
             _ = await previous.value
-            try? await store.deleteUserData()
+            try? await store.deleteUserData(accessToken: accessToken, refreshToken: refreshToken)
         }
     }
 
