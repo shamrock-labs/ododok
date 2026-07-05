@@ -14,6 +14,10 @@ struct AppSettingsSectionHeader: View {
     }
 }
 
+private enum Metrics {
+    static let iconWidth: CGFloat = 26
+}
+
 struct AppSettingsRow: View {
     let icon: String
     let title: String
@@ -25,7 +29,7 @@ struct AppSettingsRow: View {
             Image(systemName: icon)
                 .font(.appFont(.mediumBodyLarge))
                 .foregroundStyle(Color.textMuted)
-                .frame(width: AppSize.settingsIconWidth)
+                .frame(width: Metrics.iconWidth)
 
             Text(title)
                 .font(.appFont(.semiboldBodyLarge))

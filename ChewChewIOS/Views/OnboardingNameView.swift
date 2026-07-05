@@ -17,7 +17,7 @@ struct OnboardingNameView: View {
             Image("DaramHi")
                 .resizable()
                 .scaledToFit()
-                .frame(width: AppSize.onboardingHeroImage, height: AppSize.onboardingHeroImage)
+                .frame(width: Metrics.heroImage, height: Metrics.heroImage)
 
             VStack(spacing: 8) {
                 Text("처음 오셨네요!")
@@ -35,16 +35,14 @@ struct OnboardingNameView: View {
                 .padding(.horizontal, AppSpacing.overlayH)
                 .accessibilityIdentifier("OnboardingNameField")
 
-            Button { submit() } label: {
-                Text("시작하기")
-                    .font(.appFont(.heavyBodyLarge))
-                    .foregroundStyle(Color.textActionInverse)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, AppSpacing.inputV)
-                    .background(
-                        canSubmit ? Color.tintInteractive : Color.textDisabled.opacity(0.62),
-                        in: RoundedRectangle(cornerRadius: AppRadius.element)
-                    )
+            AppTextActionButton(
+                title: "시작하기",
+                font: .heavyBodyLarge,
+                background: AnyShapeStyle(canSubmit ? Color.tintInteractive : Color.textDisabled.opacity(0.62)),
+                radius: AppRadius.element,
+                verticalPadding: AppSpacing.inputV
+            ) {
+                submit()
             }
             .disabled(!canSubmit || isSaving)
             .padding(.horizontal, AppSpacing.overlayH)
@@ -115,4 +113,8 @@ struct OnboardingNameView: View {
             onComplete()
         }
     }
+}
+
+private enum Metrics {
+    static let heroImage: CGFloat = 140
 }

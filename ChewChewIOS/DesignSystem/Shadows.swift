@@ -47,16 +47,10 @@ extension View {
     @ViewBuilder
     func appElevation(_ elevation: AppElevation) -> some View {
         switch elevation {
-        case .flat:
+        case .flat, .low, .medium, .inset:
             self
-        case .low:
-            self.softShadow(.base)
-        case .medium:
-            self.neuoShadow(.sm)
         case .high:
             self.shadow(color: .black.opacity(0.18), radius: 24, y: 8)
-        case .inset:
-            self
         }
     }
 }

@@ -95,7 +95,7 @@ struct HeaderMetricPill: View {
                     .font(.appFont(.regularCaption))
             case .open(let icon):
                 OpenIconView(icon: icon, color: tint, lineWidth: 2.2)
-                    .frame(width: AppSize.headerPillIcon, height: AppSize.headerPillIcon)
+                    .frame(width: Metrics.pillIcon, height: Metrics.pillIcon)
             }
             Text(value)
                 .font(.appFont(.heavyCallout))
@@ -105,7 +105,7 @@ struct HeaderMetricPill: View {
                 .minimumScaleFactor(0.68)
         }
         .padding(.horizontal, AppSpacing.iconGap)
-        .frame(height: AppSize.headerPillHeight)
+        .frame(height: Metrics.pillHeight)
         .background(tint.opacity(0.12), in: Capsule())
     }
 }
@@ -118,9 +118,9 @@ struct HeaderIconButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.appFont(.semibold, size: AppSize.headerIcon))
+                .font(.appFont(.semibold, size: Metrics.icon))
                 .foregroundStyle(Color.textMuted)
-                .frame(width: AppSize.headerIconButton, height: AppSize.headerIconButton)
+                .frame(width: Metrics.iconButton, height: Metrics.iconButton)
                 .background(Color.bgSurface, in: Circle())
         }
         .buttonStyle(.plain)
@@ -128,10 +128,18 @@ struct HeaderIconButton: View {
             if showsBadge {
                 Circle()
                     .fill(Color.statusDanger)
-                    .frame(width: AppSize.headerBadge, height: AppSize.headerBadge)
+                    .frame(width: Metrics.badge, height: Metrics.badge)
                     .overlay(Circle().stroke(Color.cream, lineWidth: 1.4))
                     .offset(x: -3, y: 4)
             }
         }
     }
+}
+
+private enum Metrics {
+    static let iconButton: CGFloat = 32
+    static let icon: CGFloat = 16
+    static let badge: CGFloat = 7
+    static let pillIcon: CGFloat = 14
+    static let pillHeight: CGFloat = 30
 }

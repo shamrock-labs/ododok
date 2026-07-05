@@ -25,7 +25,7 @@ struct SquirrelView: View {
         ZStack {
             Circle()
                 .fill(Color.illustrationHalo.opacity(0.4))
-                .frame(width: AppSize.squirrelHalo, height: AppSize.squirrelHalo)
+                .frame(width: Metrics.halo, height: Metrics.halo)
                 .scaleEffect(bounce ? 1.6 : (isEating && eatingMotion ? 1.05 : 0.95))
                 .opacity(bounce ? 0 : 0.6)
                 .animation(.easeOut(duration: AppMotion.durationPulse), value: bounce)
@@ -34,7 +34,7 @@ struct SquirrelView: View {
             Image(currentImageName)
                 .resizable()
                 .scaledToFit()
-                .frame(width: AppSize.squirrelImage, height: AppSize.squirrelImage)
+                .frame(width: Metrics.image, height: Metrics.image)
                 .scaleEffect(bounce ? 1.08 : 1.0)
                 .rotationEffect(.degrees(
                     bounce ? -2
@@ -80,7 +80,7 @@ struct SquirrelView: View {
                 }
             }
         }
-        .frame(height: AppSize.squirrelHalo)
+        .frame(height: Metrics.halo)
         .onAppear {
             eatingMotion = isEating
             // 첫 프레임 직후 토글 → 미세 sway가 자연스럽게 시작
@@ -98,4 +98,9 @@ struct SquirrelView: View {
             }
         }
     }
+}
+
+private enum Metrics {
+    static let halo: CGFloat = 140
+    static let image: CGFloat = 115
 }

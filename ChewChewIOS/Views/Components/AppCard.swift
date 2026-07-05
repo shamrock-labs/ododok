@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct AppCard<Content: View>: View {
-    var padding: CGFloat = AppSpacing.reportCard
+    var padding: CGFloat = AppSpacing.cardContent
     var radius: CGFloat = AppRadius.lg
     var background: Color = Color.bgCard
     var elevation: AppElevation = .flat

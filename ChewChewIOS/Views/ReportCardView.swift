@@ -195,8 +195,8 @@ struct ReportCardView: View {
     @State private var showScoreGuide = false
 
     var body: some View {
-        AppCard(padding: AppSpacing.reportCardLarge) {
-            VStack(spacing: AppSpacing.homeVertical) {
+        AppCard(padding: AppSpacing.cardContentLarge) {
+            VStack(spacing: AppSpacing.verticalLoose) {
                 header
                 sectionDivider
                 scoreSection
@@ -250,7 +250,7 @@ struct ReportCardView: View {
                 if !rendersStatically {
                     Button { showScoreGuide = true } label: {
                         Image(systemName: "info.circle")
-                            .font(.appFont(.semibold, size: AppSize.headerPillIcon))
+                            .font(.appFont(.semibold, size: Metrics.infoIcon))
                             .foregroundStyle(Color.textTertiary)
                     }
                     .buttonStyle(.plain)
@@ -286,12 +286,12 @@ struct ReportCardView: View {
             Text(label)
                 .font(.appFont(.boldCaption))
                 .foregroundStyle(Color.textMuted)
-                .frame(width: AppSize.scoreAxisLabelWidth, alignment: .leading)
+                .frame(width: Metrics.scoreAxisLabelWidth, alignment: .leading)
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.borderDefault)
                     Capsule().fill(scoreColor.opacity(0.85))
-                        .frame(width: max(AppSize.scoreAxisMinFillWidth, geo.size.width * CGFloat(max(0, min(100, value))) / 100))
+                        .frame(width: max(Metrics.scoreAxisMinFillWidth, geo.size.width * CGFloat(max(0, min(100, value))) / 100))
                 }
             }
             .frame(height: AppSpacing.two)
@@ -299,7 +299,7 @@ struct ReportCardView: View {
                 .font(.appFont(.heavyCaption))
                 .foregroundStyle(Color.textDefault)
                 .monospacedDigit()
-                .frame(width: AppSize.scoreAxisValueWidth, alignment: .trailing)
+                .frame(width: Metrics.scoreAxisValueWidth, alignment: .trailing)
         }
     }
 
@@ -413,7 +413,7 @@ struct ReportCardView: View {
             Image(summary.imageName)
                 .resizable()
                 .scaledToFit()
-                .frame(width: AppSize.coachAvatar, height: AppSize.coachAvatar)
+                .frame(width: Metrics.coachAvatar, height: Metrics.coachAvatar)
                 .background(Color.butter100.opacity(0.7), in: Circle())
             VStack(alignment: .leading, spacing: AppSpacing.microLabelGap) {
                 Text(coachTitle)
@@ -426,7 +426,7 @@ struct ReportCardView: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(AppSpacing.reportCell)
+        .padding(AppSpacing.cell)
         .frame(maxWidth: .infinity)
         .background(Color.statusSuccessMuted.opacity(0.82), in: RoundedRectangle(cornerRadius: AppRadius.container))
         .overlay(
@@ -464,7 +464,7 @@ struct ReportCardView: View {
                     x += width
                 }
             }
-            .frame(height: AppSpacing.reportCell)
+            .frame(height: AppSpacing.cell)
             .clipShape(RoundedRectangle(cornerRadius: AppSpacing.badgeH))
             HStack(spacing: AppSpacing.four) {
                 legendDot(color: .sage500, label: "씹기 \(formatDurationShort(model.chewingSeconds))")
@@ -494,7 +494,7 @@ struct ReportCardView: View {
                 .lineSpacing(3)
             Spacer(minLength: 0)
         }
-        .padding(AppSpacing.reportCell)
+        .padding(AppSpacing.cell)
         .frame(maxWidth: .infinity)
         .background(Color.bgSunken.opacity(0.5), in: RoundedRectangle(cornerRadius: AppRadius.element))
     }
@@ -511,7 +511,7 @@ struct ReportCardView: View {
                     .foregroundStyle(Color.acorn600)
             }
             .padding(.horizontal, AppSpacing.four)
-            .padding(.vertical, AppSpacing.reportCell)
+            .padding(.vertical, AppSpacing.cell)
             .frame(maxWidth: .infinity)
             .background(Color.bgSunken, in: RoundedRectangle(cornerRadius: AppRadius.element))
             .overlay(
@@ -654,17 +654,17 @@ private struct RecommendedDeltaBar: View {
                     .fill(Color.hairline.opacity(0.8))
                 Rectangle()
                     .fill(Color.textTertiary.opacity(0.32))
-                    .frame(width: AppSize.chartHairline)
+                    .frame(width: Metrics.chartHairline)
                     .offset(x: center)
                 Capsule()
                     .fill(color.opacity(0.24))
-                    .frame(width: abs(markerX - center), height: AppSize.chartDeltaHeight)
+                    .frame(width: abs(markerX - center), height: Metrics.chartDeltaHeight)
                     .offset(x: min(center, markerX))
                 Circle()
                     .fill(Color.bgSurface)
-                    .frame(width: AppSize.chartMarkerWidth, height: AppSize.chartMarkerWidth)
+                    .frame(width: Metrics.chartMarkerWidth, height: Metrics.chartMarkerWidth)
                     .overlay(Circle().stroke(color, lineWidth: 2))
-                    .offset(x: min(max(0, markerX - AppSize.chartMarkerRadius), width - AppSize.chartMarkerWidth))
+                    .offset(x: min(max(0, markerX - Metrics.chartMarkerRadius), width - Metrics.chartMarkerWidth))
             }
         }
     }
@@ -731,7 +731,7 @@ private struct ScoreGuideView: View {
             Text(title)
                 .font(.appFont(.heavyLabel))
                 .foregroundStyle(color)
-                .frame(width: AppSize.guideLabelWidth, alignment: .leading)
+                .frame(width: Metrics.guideLabelWidth, alignment: .leading)
             Text(desc)
                 .font(.appFont(.semiboldCallout))
                 .foregroundStyle(Color.textMuted)
@@ -758,7 +758,7 @@ struct DashedDivider: View {
             .stroke(style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
             .foregroundStyle(color)
         }
-        .frame(height: AppSize.chartHairline)
+        .frame(height: Metrics.chartHairline)
     }
 }
 
@@ -922,20 +922,32 @@ struct EmptyReportCardView: View {
     var subtitle: String = "식사 시간이 너무 짧거나 AirPods 신호를 받지 못했어요."
 
     var body: some View {
-        VStack(spacing: AppSpacing.reportCell) {
-            Text(emoji).font(.appFont(.regularEmojiXXLarge))
-            Text(title)
-                .font(.appFont(.heavyHeadlineLarge))
-                .foregroundStyle(Color.textDefault)
-            Text(subtitle)
-                .font(.appFont(.semiboldBody))
-                .foregroundStyle(Color.textMuted)
-                .multilineTextAlignment(.center)
-                .lineSpacing(3)
+        AppEmptyState(
+            spacing: AppSpacing.cell,
+            title: title,
+            message: subtitle,
+            titleFont: .heavyHeadlineLarge,
+            messageFont: .semiboldBody
+        ) {
+            Text(emoji)
+                .font(.appFont(.regularEmojiXXLarge))
         }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, AppSize.emptyStateV)
+        .padding(.vertical, Metrics.emptyStateVerticalPadding)
         .padding(.horizontal, AppSpacing.six)
         .background(Color.bgCard, in: RoundedRectangle(cornerRadius: AppRadius.lg))
     }
+}
+
+private enum Metrics {
+    static let scoreAxisLabelWidth: CGFloat = 28
+    static let scoreAxisValueWidth: CGFloat = 26
+    static let scoreAxisMinFillWidth: CGFloat = 6
+    static let coachAvatar: CGFloat = 64
+    static let chartHairline: CGFloat = 1
+    static let chartMarkerWidth: CGFloat = 12
+    static let chartMarkerRadius: CGFloat = 6
+    static let chartDeltaHeight: CGFloat = 8
+    static let guideLabelWidth: CGFloat = 36
+    static let emptyStateVerticalPadding: CGFloat = 48
+    static let infoIcon: CGFloat = 14
 }

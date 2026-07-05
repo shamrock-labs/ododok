@@ -177,7 +177,7 @@ struct ReportHubView: View {
 
             Rectangle()
                 .fill(Color.hairline)
-                .frame(height: AppSize.chartHairline)
+                .frame(height: Metrics.chartHairline)
                 .padding(.vertical, 2)
 
             // 끼니 목록 — 날짜 헤더는 위와 중복이라 뺀다(그래프 카드와 합쳐진 한 카드).
@@ -192,7 +192,7 @@ struct ReportHubView: View {
                 }
             }
         }
-        .padding(AppSpacing.reportCard)
+        .padding(AppSpacing.cardContent)
         .background(Color.bgCard, in: RoundedRectangle(cornerRadius: AppRadius.lg))
     }
 
@@ -213,7 +213,7 @@ struct ReportHubView: View {
                         .monospacedDigit()
                         .minimumScaleFactor(0.75)
                 }
-                .frame(width: AppSize.reportDateRing, height: AppSize.reportDateRing)
+                .frame(width: Metrics.dateRing, height: Metrics.dateRing)
             }
         }
         .buttonStyle(.plain)
@@ -224,7 +224,7 @@ struct ReportHubView: View {
         HStack(spacing: 12) {
             Text("🍽️")
                 .font(.appFont(.regularDisplaySmall))
-                .frame(width: AppSize.reportEmptyIcon, height: AppSize.reportEmptyIcon)
+                .frame(width: Metrics.emptyIcon, height: Metrics.emptyIcon)
             VStack(alignment: .leading, spacing: 3) {
                 Text(mealCalendarCalendar.isDateInToday(selectedDate) ? "오늘은 아직 식사 전이에요" : "이 날은 식사 기록이 없어요")
                     .font(.appFont(.heavyBody))
@@ -312,7 +312,7 @@ struct ReportHubView: View {
                 detail: "한 끼 기준 평균 저작 횟수와 식사 시간이에요."
             )
         }
-        .padding(AppSpacing.reportCell)
+        .padding(AppSpacing.cell)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.statusSuccessMuted.opacity(0.72), in: RoundedRectangle(cornerRadius: AppRadius.container))
         .overlay(
@@ -415,7 +415,7 @@ struct ReportHubView: View {
                         .frame(maxWidth: .infinity)
                     }
                 }
-                .frame(height: AppSize.weeklyChartHeight)
+                .frame(height: Metrics.weeklyChartHeight)
             } else {
                 Text("이번 주 식사 기록이 쌓이면 지난 흐름과 비교해서 보여줄게요.")
                     .font(.appFont(.semiboldCallout))
@@ -429,12 +429,12 @@ struct ReportHubView: View {
 
     private var weeklyCoachCard: some View {
         let insight = weeklyCoachInsight
-        return AppCard(padding: AppSpacing.reportCell) {
+        return AppCard(padding: AppSpacing.cell) {
             HStack(alignment: .top, spacing: AppSpacing.three) {
             Image(insight.imageName)
                 .resizable()
                 .scaledToFit()
-                .frame(width: AppSize.weeklyCoachAvatar, height: AppSize.weeklyCoachAvatar)
+                .frame(width: Metrics.weeklyCoachAvatar, height: Metrics.weeklyCoachAvatar)
                 .background(Color.statusWarningMuted.opacity(0.72), in: Circle())
 
             VStack(alignment: .leading, spacing: AppSpacing.inner) {
@@ -486,7 +486,7 @@ struct ReportHubView: View {
         VStack(alignment: .leading, spacing: AppSpacing.microLabelGap) {
             HStack(spacing: AppSpacing.one) {
                 OpenIconView(icon: icon, color: color, lineWidth: 2.1)
-                    .frame(width: AppSize.homeStatIconRadius, height: AppSize.homeStatIconRadius)
+                    .frame(width: Metrics.legendIcon, height: Metrics.legendIcon)
                 Text(title)
                     .font(.appFont(.boldMicro))
                     .foregroundStyle(Color.textMuted)
@@ -512,7 +512,7 @@ struct ReportHubView: View {
                 .monospacedDigit()
             RoundedRectangle(cornerRadius: AppSpacing.oneHalf)
                 .fill(color)
-                .frame(width: AppSize.chartBarWidth, height: max(AppSize.chartBarMinHeight, CGFloat(value) / CGFloat(maxValue) * AppSize.chartBarMaxHeight))
+                .frame(width: Metrics.chartBarWidth, height: max(Metrics.chartBarMinHeight, CGFloat(value) / CGFloat(maxValue) * Metrics.chartBarMaxHeight))
         }
     }
 
@@ -1083,7 +1083,7 @@ private struct TrendLegend: View {
 
     private func legendDot(_ color: Color, _ label: String) -> some View {
         HStack(spacing: AppSpacing.microLabelGap) {
-            Circle().fill(color).frame(width: AppSize.legendDot, height: AppSize.legendDot)
+            Circle().fill(color).frame(width: Metrics.legendDot, height: Metrics.legendDot)
             Text(label)
                 .font(.appFont(.boldMicro))
                 .foregroundStyle(Color.textMuted)
@@ -1142,7 +1142,7 @@ private struct ReportCalendarDialog: View {
             Button { shiftMonth(-1) } label: {
                 Image(systemName: "chevron.left")
                     .font(.appFont(.boldCallout))
-                    .frame(width: AppSize.calendarButton, height: AppSize.calendarButton)
+                    .frame(width: Metrics.calendarButton, height: Metrics.calendarButton)
                     .background(Color.bgSurface.opacity(0.7), in: Circle())
             }
             Spacer()
@@ -1153,7 +1153,7 @@ private struct ReportCalendarDialog: View {
             Button { shiftMonth(1) } label: {
                 Image(systemName: "chevron.right")
                     .font(.appFont(.boldCallout))
-                    .frame(width: AppSize.calendarButton, height: AppSize.calendarButton)
+                    .frame(width: Metrics.calendarButton, height: Metrics.calendarButton)
                     .background(Color.bgSurface.opacity(0.7), in: Circle())
             }
             .disabled(isCurrentMonth)
@@ -1180,7 +1180,7 @@ private struct ReportCalendarDialog: View {
                 if let date = cellDate {
                     dayCell(date)
                 } else {
-                    Color.clear.frame(height: AppSize.reportCalendarCellHeight)
+                    Color.clear.frame(height: Metrics.calendarCellHeight)
                 }
             }
         }
@@ -1200,10 +1200,10 @@ private struct ReportCalendarDialog: View {
                         .foregroundStyle(selected ? Color.textActionInverse : (isFuture ? Color.textSubtle.opacity(0.5) : Color.textDefault))
                         .monospacedDigit()
                 }
-                .frame(width: AppSize.reportCalendarRing, height: AppSize.reportCalendarRing)
+                .frame(width: Metrics.calendarRing, height: Metrics.calendarRing)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: AppSize.reportCalendarCellHeight)
+            .frame(height: Metrics.calendarCellHeight)
         }
         .buttonStyle(.plain)
         .disabled(isFuture)
@@ -1253,4 +1253,20 @@ private struct ReportCalendarDialog: View {
     .background(LinearGradient.appBackground)
     .environment(AppState())
     .preferredColorScheme(.dark)
+}
+
+private enum Metrics {
+    static let chartHairline: CGFloat = 1
+    static let dateRing: CGFloat = 40
+    static let emptyIcon: CGFloat = 42
+    static let weeklyChartHeight: CGFloat = 116
+    static let weeklyCoachAvatar: CGFloat = 66
+    static let legendIcon: CGFloat = 13
+    static let legendDot: CGFloat = 7
+    static let chartBarWidth: CGFloat = 18
+    static let chartBarMinHeight: CGFloat = 16
+    static let chartBarMaxHeight: CGFloat = 72
+    static let calendarButton: CGFloat = 32
+    static let calendarCellHeight: CGFloat = 46
+    static let calendarRing: CGFloat = 36
 }

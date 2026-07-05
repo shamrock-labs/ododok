@@ -9,11 +9,11 @@ struct RewardDialogView: View {
     let onDismiss: () -> Void
 
     var body: some View {
-        VStack(spacing: AppSpacing.reportCell) {
+        VStack(spacing: AppSpacing.cell) {
             Image(grant.kind.imageName)
                 .resizable()
                 .scaledToFit()
-                .frame(width: AppSize.rewardImage, height: AppSize.rewardImage)
+                .frame(width: Metrics.image, height: Metrics.image)
 
             Text(grant.kind.title)
                 .font(.appFont(.heavyHeadlineLarge))
@@ -26,7 +26,7 @@ struct RewardDialogView: View {
                         .foregroundStyle(Color.rewardAcorn)
                         .monospacedDigit()
                     OpenIconView(icon: .acorn, color: .rewardAcorn, lineWidth: 2.2)
-                        .frame(width: AppSize.rewardIcon, height: AppSize.rewardIcon)
+                        .frame(width: Metrics.icon, height: Metrics.icon)
                 }
             } else if grant.kind.isFreezeGain {
                 HStack(alignment: .firstTextBaseline, spacing: AppSpacing.one) {
@@ -49,7 +49,7 @@ struct RewardDialogView: View {
         .padding(.horizontal, AppSpacing.dialogContentH)
         .frame(maxWidth: AppSize.dialogMaxWidth)
         .background(Color.bgPopover, in: RoundedRectangle(cornerRadius: AppRadius.page))
-        .appElevation(.medium)
+        .appElevation(.high)
         .contentShape(Rectangle())
         .onTapGesture { onDismiss() }
         .task {
@@ -154,4 +154,9 @@ struct RewardGrant: Equatable {
             onDismiss: {}
         )
     }
+}
+
+private enum Metrics {
+    static let image: CGFloat = 110
+    static let icon: CGFloat = 26
 }

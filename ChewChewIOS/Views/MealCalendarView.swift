@@ -48,7 +48,7 @@ struct MealCalendarGrid: View {
                     onTapSession: onTapSession
                 )
                 .padding(.horizontal, AppSpacing.four)
-                .padding(.bottom, AppSpacing.homeVertical)
+                .padding(.bottom, AppSpacing.verticalLoose)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
@@ -74,7 +74,7 @@ struct MealCalendarGrid: View {
             Button { goToMonth(-1) } label: {
                 Image(systemName: "chevron.left")
                     .font(.appFont(.boldCallout))
-                    .frame(width: AppSize.calendarButton, height: AppSize.calendarButton)
+                    .frame(width: Metrics.calendarButton, height: Metrics.calendarButton)
                     .background(Color.bgSurface.opacity(0.7), in: Circle())
             }
             .disabled(isAtOldestMonth)
@@ -87,7 +87,7 @@ struct MealCalendarGrid: View {
             Button { goToMonth(+1) } label: {
                 Image(systemName: "chevron.right")
                     .font(.appFont(.boldCallout))
-                    .frame(width: AppSize.calendarButton, height: AppSize.calendarButton)
+                    .frame(width: Metrics.calendarButton, height: Metrics.calendarButton)
                     .background(Color.bgSurface.opacity(0.7), in: Circle())
             }
         }
@@ -124,7 +124,7 @@ struct MealCalendarGrid: View {
                 if let date = days[i] {
                     dayCell(date: date)
                 } else {
-                    Color.clear.frame(height: AppSize.calendarCellHeight)
+                    Color.clear.frame(height: Metrics.calendarCellHeight)
                 }
             }
         }
@@ -157,10 +157,10 @@ struct MealCalendarGrid: View {
                 .monospacedDigit()
             Circle()
                 .fill(count > 0 ? (isSelected ? Color.textActionInverse : Color.dataChew) : Color.clear)
-                .frame(width: AppSize.calendarDot, height: AppSize.calendarDot)
+                .frame(width: Metrics.calendarDot, height: Metrics.calendarDot)
         }
         .frame(maxWidth: .infinity)
-        .frame(height: AppSize.calendarCellHeight)
+        .frame(height: Metrics.calendarCellHeight)
         .background(
             cellBackground(isToday: isToday, isSelected: isSelected),
             in: RoundedRectangle(cornerRadius: AppRadius.inner)
@@ -502,7 +502,7 @@ private struct DayInlineSection: View {
                     .font(.appFont(.semiboldCaption))
                     .foregroundStyle(Color.textSubtle)
             }
-            .padding(.horizontal, AppSpacing.reportCell)
+            .padding(.horizontal, AppSpacing.cell)
             .padding(.vertical, AppSpacing.three)
             .background(Color.bgSunken.opacity(0.6), in: RoundedRectangle(cornerRadius: AppSpacing.three))
         }
@@ -577,4 +577,10 @@ enum DayMealSlot: CaseIterable, Hashable {
         default:      self = .lateNight
         }
     }
+}
+
+private enum Metrics {
+    static let calendarButton: CGFloat = 32
+    static let calendarCellHeight: CGFloat = 40
+    static let calendarDot: CGFloat = 4
 }

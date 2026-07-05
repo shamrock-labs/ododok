@@ -345,8 +345,8 @@ struct DailyReportView: View {
                     }
                 }
                 // 식사 리포트(SessionReportDetailView)와 동일한 좌우/상하 마진으로 통일.
-                .padding(.horizontal, AppSpacing.reportOuterH)
-                .padding(.vertical, AppSpacing.reportOuterV)
+                .padding(.horizontal, AppSpacing.pageInsetCompact)
+                .padding(.vertical, AppSpacing.pageInsetVertical)
             }
             .background(Color.pageBackground.ignoresSafeArea())
             .navigationTitle("일간 리포트")
@@ -515,7 +515,7 @@ struct DailyReportView: View {
                 .minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(AppSpacing.reportCell)
+        .padding(AppSpacing.cell)
         .background(Color.bgSunken.opacity(0.6), in: RoundedRectangle(cornerRadius: AppRadius.container))
     }
 
@@ -672,7 +672,7 @@ struct DailyReportView: View {
     // MARK: 9·10. 오늘의 원인 해석 + 내일의 목표
 
     private func interpretationCard(_ model: DailyReportModel) -> some View {
-        AppCard(padding: AppSpacing.reportCard, background: Color.statusSuccessMuted.opacity(0.72)) {
+        AppCard(padding: AppSpacing.cardContent, background: Color.statusSuccessMuted.opacity(0.72)) {
             VStack(alignment: .leading, spacing: AppSpacing.three) {
             interpretationRow(
                 icon: "magnifyingglass",
@@ -718,12 +718,12 @@ struct DailyReportView: View {
     // MARK: 11. 다람이 코치 피드백
 
     private func coachCard(_ model: DailyReportModel) -> some View {
-        AppCard(padding: AppSpacing.reportCell, background: Color.statusSuccessMuted.opacity(0.82)) {
+        AppCard(padding: AppSpacing.cell, background: Color.statusSuccessMuted.opacity(0.82)) {
             HStack(alignment: .top, spacing: AppSpacing.three) {
             Image(model.coachMood.imageName)
                 .resizable()
                 .scaledToFit()
-                .frame(width: AppSize.coachAvatar, height: AppSize.coachAvatar)
+                .frame(width: Metrics.coachAvatar, height: Metrics.coachAvatar)
                 .background(Color.statusWarningMuted.opacity(0.7), in: Circle())
             VStack(alignment: .leading, spacing: AppSpacing.microLabelGap) {
                 Text("다람이 코치")
@@ -765,7 +765,7 @@ struct DailyReportView: View {
                 .foregroundStyle(Color.textSubtle)
                 .monospacedDigit()
         }
-        .padding(.horizontal, AppSpacing.reportCell)
+        .padding(.horizontal, AppSpacing.cell)
         .padding(.vertical, AppSpacing.three)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.bgSunken.opacity(0.6), in: RoundedRectangle(cornerRadius: AppRadius.md))
@@ -836,4 +836,8 @@ private extension ReportCardModel.Grade {
         case .bad: "bad"
         }
     }
+}
+
+private enum Metrics {
+    static let coachAvatar: CGFloat = 64
 }

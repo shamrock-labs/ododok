@@ -57,7 +57,7 @@ struct OnboardingTutorialView: View {
     private func cardView(_ step: OnboardingStep) -> some View {
         VStack(spacing: AppSpacing.dialogH) {
             visual(step)
-                .frame(height: AppSize.onboardingVisualHeight)
+                .frame(height: Metrics.visualHeight)
 
             Text(step.title)
                 .font(.appFont(.heavyTitleLarge))
@@ -92,28 +92,26 @@ struct OnboardingTutorialView: View {
             ForEach(0..<steps.count, id: \.self) { i in
                 Capsule()
                     .fill(i == page ? Color.textActionStrong : Color.borderDefault)
-                    .frame(width: i == page ? AppSize.onboardingPageActive : AppSize.onboardingPageInactive, height: AppSize.onboardingPageInactive)
+                    .frame(width: i == page ? Metrics.pageActive : Metrics.pageInactive, height: Metrics.pageInactive)
                     .animation(.spring(response: AppMotion.springDemoResponse), value: page)
             }
         }
     }
 
     private var primaryButton: some View {
-        Button {
+        AppTextActionButton(
+            title: isLastPage ? "시작하기" : "다음",
+            font: .heavyBodyLarge,
+            background: AnyShapeStyle(Color.textActionStrong),
+            radius: AppRadius.elementLarge,
+            verticalPadding: AppSpacing.inputVLarge
+        ) {
             if isLastPage {
                 onFinish()
             } else {
                 withAnimation { page += 1 }
             }
-        } label: {
-            Text(isLastPage ? "시작하기" : "다음")
-                .font(.appFont(.heavyBodyLarge))
-                .foregroundStyle(Color.textActionInverse)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, AppSpacing.inputVLarge)
-                .background(Color.textActionStrong, in: RoundedRectangle(cornerRadius: AppRadius.elementLarge))
         }
-        .buttonStyle(PressableButtonStyle())
         .accessibilityIdentifier(isLastPage ? "OnboardingStart" : "OnboardingNext")
     }
 }
@@ -129,7 +127,7 @@ private struct AirPodsConnectDemo: View {
             ForEach(0..<3, id: \.self) { i in
                 Circle()
                     .stroke(Color.textActionStrong.opacity(0.5), lineWidth: 1.5)
-                    .frame(width: AppSize.onboardingPulse, height: AppSize.onboardingPulse)
+                    .frame(width: Metrics.pulse, height: Metrics.pulse)
                     .scaleEffect(animate ? 1.9 : 0.72)
                     .opacity(animate ? 0 : 0.55)
                     .animation(
@@ -140,10 +138,10 @@ private struct AirPodsConnectDemo: View {
 
             Circle()
                 .fill(Color.bgSunken)
-                .frame(width: AppSize.onboardingPulseCore, height: AppSize.onboardingPulseCore)
+                .frame(width: Metrics.pulseCore, height: Metrics.pulseCore)
 
             Image(systemName: "airpodspro")
-                .font(.appFont(.regular, size: AppSize.onboardingAirPodsGlyph))
+                .font(.appFont(.regular, size: Metrics.airPodsGlyph))
                 .foregroundStyle(Color.textActionStrong)
         }
         .onAppear { animate = true }
@@ -173,10 +171,10 @@ private struct MeasureDemo: View {
             }
 
             WaveformDemo()
-                .frame(height: AppSize.onboardingWaveHeight)
+                .frame(height: Metrics.waveHeight)
         }
         .padding(AppSpacing.cardH)
-        .frame(width: AppSize.onboardingCardWidth)
+        .frame(width: Metrics.cardWidth)
         .background(Color.bgCard, in: RoundedRectangle(cornerRadius: AppRadius.containerLoose))
         .appElevation(.medium)
     }
@@ -204,7 +202,7 @@ private struct PulsingDot: View {
     var body: some View {
         Circle()
             .fill(Color.accentChew)
-            .frame(width: AppSize.onboardingProgressDot, height: AppSize.onboardingProgressDot)
+            .frame(width: Metrics.progressDot, height: Metrics.progressDot)
             .opacity(on ? 0.3 : 1)
             .animation(.easeInOut(duration: AppMotion.durationProgress).repeatForever(autoreverses: true), value: on)
             .onAppear { on = true }
@@ -221,7 +219,7 @@ private struct ChewDemo: View {
             Image("DaramEating")
                 .resizable()
                 .scaledToFit()
-                .frame(height: AppSize.onboardingDemoImageHeight)
+                .frame(height: Metrics.demoImageHeight)
                 .scaleEffect(chew ? 1.02 : 0.99)
                 .animation(.easeInOut(duration: AppMotion.durationDemoChew).repeatForever(autoreverses: true), value: chew)
                 .onAppear { chew = true }
@@ -242,11 +240,11 @@ private struct ChewDemo: View {
                         Capsule().fill(Color.accentChew).frame(width: geo.size.width * 0.78)
                     }
                 }
-                .frame(height: AppSize.onboardingProgressHeight)
+                .frame(height: Metrics.progressHeight)
             }
         }
         .padding(AppSpacing.cardH)
-        .frame(width: AppSize.onboardingCardWidth)
+        .frame(width: Metrics.cardWidth)
         .background(Color.bgCard, in: RoundedRectangle(cornerRadius: AppRadius.containerLoose))
         .appElevation(.medium)
     }
@@ -285,7 +283,7 @@ private struct StreakDemo: View {
         VStack(spacing: AppSpacing.four) {
             HStack(spacing: AppSpacing.oneHalf) {
                 Image(systemName: "flame.fill")
-                    .font(.appFont(.regular, size: AppSize.onboardingFlameIcon))
+                    .font(.appFont(.regular, size: Metrics.flameIcon))
                     .foregroundStyle(Color.accentChew)
                 Text("7일째")
                     .font(.appFont(.heavyTitle))
@@ -298,9 +296,9 @@ private struct StreakDemo: View {
                         ZStack {
                             Circle()
                                 .fill(i < filled ? Color.textActionStrong : Color.borderDefault)
-                                .frame(width: AppSize.onboardingStreakDot, height: AppSize.onboardingStreakDot)
+                                .frame(width: Metrics.streakDot, height: Metrics.streakDot)
                             Image(systemName: "checkmark")
-                                .font(.appFont(.bold, size: AppSize.onboardingCheckIcon))
+                                .font(.appFont(.bold, size: Metrics.checkIcon))
                                 .foregroundStyle(Color.textActionInverse)
                                 .opacity(i < filled ? 1 : 0)
                         }
@@ -317,4 +315,21 @@ private struct StreakDemo: View {
 
 #Preview {
     OnboardingTutorialView(onFinish: {})
+}
+
+private enum Metrics {
+    static let cardWidth: CGFloat = 252
+    static let visualHeight: CGFloat = 188
+    static let pulse: CGFloat = 96
+    static let pulseCore: CGFloat = 116
+    static let airPodsGlyph: CGFloat = 58
+    static let progressHeight: CGFloat = 6
+    static let progressDot: CGFloat = 7
+    static let pageActive: CGFloat = 22
+    static let pageInactive: CGFloat = 8
+    static let demoImageHeight: CGFloat = 96
+    static let waveHeight: CGFloat = 72
+    static let streakDot: CGFloat = 28
+    static let flameIcon: CGFloat = 18
+    static let checkIcon: CGFloat = 12
 }

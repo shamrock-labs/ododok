@@ -86,7 +86,11 @@ struct IMUWaveformView: View {
         },
         isLive: true
     )
-    .frame(width: AppSize.dialogMaxWidth, height: AppSize.imuWaveformHeight)
+    .frame(width: AppSize.dialogMaxWidth, height: Metrics.height)
     .padding()
     .background(Color.pageBackground)
+}
+
+private enum Metrics {
+    static let height: CGFloat = 64
 }

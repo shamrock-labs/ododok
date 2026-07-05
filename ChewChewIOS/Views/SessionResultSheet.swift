@@ -64,7 +64,7 @@ struct SessionResultSheet: View {
     /// 분석 중 화면 — 스피너 + 안내 문구. 측정 종료 직후 사용자가 잠깐 머무는
     /// 공간이라 정보 밀도는 의도적으로 낮춤.
     private var analyzingView: some View {
-        VStack(spacing: AppSpacing.homeVertical) {
+        VStack(spacing: AppSpacing.verticalLoose) {
             Spacer(minLength: 48)
             ProgressView()
                 .controlSize(.large)

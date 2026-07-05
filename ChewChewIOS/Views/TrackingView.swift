@@ -10,12 +10,12 @@ struct TrackingView: View {
     private var isEating: Bool { state.isEating }
 
     var body: some View {
-        VStack(spacing: AppSpacing.reportCell) {
+        VStack(spacing: AppSpacing.cell) {
             // 라이브 IMU 진단 카드(AirPods 수신 상태 + FG 샘플 카운터)는 UI에서 제외(로직 유지).
             ReportHubView()
         }
         .padding(.horizontal, AppSpacing.page)
-        .padding(.top, AppSpacing.homeVertical)
+        .padding(.top, AppSpacing.verticalLoose)
         .padding(.bottom, AppSpacing.seven)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .overlay(alignment: .bottom) {
@@ -34,7 +34,7 @@ struct TrackingView: View {
     // MARK: AirPods + IMU diagnostics (식사 중에만)
 
     private var airpodsCard: some View {
-        HStack(spacing: AppSpacing.reportCell) {
+        HStack(spacing: AppSpacing.cell) {
             ZStack(alignment: .topTrailing) {
                 Image(systemName: "airpodspro")
                     .font(.appFont(.regularEmojiMedium))
@@ -71,7 +71,7 @@ struct TrackingView: View {
                     .foregroundStyle(state.imuWaveformSource.usesRealMotion ? Color.statusSuccess : Color.textSubtle)
             }
         }
-        .padding(AppSpacing.reportCard)
+        .padding(AppSpacing.cardContent)
         .background(Color.bgCard, in: RoundedRectangle(cornerRadius: AppRadius.container))
         .appElevation(.medium)
     }
@@ -97,7 +97,7 @@ struct TrackingView: View {
         }
         .font(.appFont(.semiboldCallout))
         .foregroundStyle(Color.textMuted)
-        .padding(.horizontal, AppSpacing.reportCell)
+        .padding(.horizontal, AppSpacing.cell)
         .padding(.vertical, AppSpacing.two)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.55), in: Capsule())

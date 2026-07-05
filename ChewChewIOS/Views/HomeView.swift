@@ -24,8 +24,8 @@ struct HomeView: View {
             mealToggleButton
         }
         .padding(.horizontal, AppSpacing.page)
-        .padding(.top, AppSpacing.homeVertical)
-        .padding(.bottom, AppSpacing.homeVertical)
+        .padding(.top, AppSpacing.verticalLoose)
+        .padding(.bottom, AppSpacing.verticalLoose)
         .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { newDate in
             nowTick = newDate
         }
@@ -151,11 +151,10 @@ struct HomeView: View {
             Image(systemName: symbol)
                 .font(.appFont(.mediumHeadline))
                 .foregroundStyle(Color.textMuted)
-                .frame(width: AppSize.homeCircleButton, height: AppSize.homeCircleButton)
+                .frame(width: Metrics.circleButton, height: Metrics.circleButton)
                 .background(Color.bgSurface, in: Circle())
         }
         .buttonStyle(.plain)
-        .neuoShadow(.sm)
     }
 
     // MARK: Streak + Points
@@ -168,7 +167,7 @@ struct HomeView: View {
                 iconBG: Color.statusDangerMuted
             ) {
                 OpenIconView(icon: .flame, color: .statusDanger, lineWidth: 2.2)
-                    .frame(width: AppSize.homeStatIcon, height: AppSize.homeStatIcon)
+                    .frame(width: Metrics.statIcon, height: Metrics.statIcon)
             }
 
             statCard(
@@ -177,7 +176,7 @@ struct HomeView: View {
                 iconBG: Color.statusWarningMuted
             ) {
                 OpenIconView(icon: .acorn, color: .rewardAcorn, lineWidth: 2.1)
-                    .frame(width: AppSize.homeStatIcon, height: AppSize.homeStatIcon)
+                    .frame(width: Metrics.statIcon, height: Metrics.statIcon)
             }
         }
     }
@@ -190,8 +189,8 @@ struct HomeView: View {
     ) -> some View {
         HStack(spacing: AppSpacing.inner) {
             iconBG
-                .frame(width: AppSize.homeStatIconBg, height: AppSize.homeStatIconBg)
-                .clipShape(RoundedRectangle(cornerRadius: AppSize.homeStatIconRadius))
+                .frame(width: Metrics.statIconBg, height: Metrics.statIconBg)
+                .clipShape(RoundedRectangle(cornerRadius: Metrics.statIconRadius))
                 .overlay { icon() }
 
             VStack(alignment: .leading, spacing: 2) {
@@ -223,14 +222,14 @@ struct HomeView: View {
                 if !state.isEating {
                     Circle()
                         .stroke(Color.borderDefault, lineWidth: 5)
-                        .frame(width: AppSize.homeProgressRing, height: AppSize.homeProgressRing)
+                        .frame(width: Metrics.progressRing, height: Metrics.progressRing)
                     Circle()
                         .trim(from: 0, to: state.todayProgress)
                         .stroke(
                             Color.dataChew,
                             style: StrokeStyle(lineWidth: 5, lineCap: .round)
                         )
-                        .frame(width: AppSize.homeProgressRing, height: AppSize.homeProgressRing)
+                        .frame(width: Metrics.progressRing, height: Metrics.progressRing)
                         .rotationEffect(.degrees(-90))
                 }
                 SquirrelView(
@@ -247,7 +246,7 @@ struct HomeView: View {
                 )
                 .scaleEffect(1.5)
             }
-            .frame(height: AppSize.homeSquirrelAreaHeight)
+            .frame(height: Metrics.squirrelAreaHeight)
 
             VStack(spacing: 4) {
                 Text(state.isEating ? "맛있게 먹는 중이에요" : state.status.title)
@@ -269,14 +268,14 @@ struct HomeView: View {
         .padding(.horizontal, AppSpacing.four)
         .padding(.vertical, AppSpacing.four)
         .frame(maxWidth: .infinity)
-        .frame(minHeight: AppSize.homeSquirrelCardMinHeight)
-        .background(Color.bgCard, in: RoundedRectangle(cornerRadius: AppSize.homeSquirrelCardRadius))
+        .frame(minHeight: Metrics.squirrelCardMinHeight)
+        .background(Color.bgCard, in: RoundedRectangle(cornerRadius: Metrics.squirrelCardRadius))
         .appElevation(.low)
     }
 
     private var imuWaveformCard: some View {
         IMUWaveformView(samples: state.imuWaveformSamples, isLive: state.isIMUWaveformLive)
-            .frame(height: AppSize.imuWaveformHeight)
+            .frame(height: Metrics.imuWaveformHeight)
             .padding(AppSpacing.gap)
             .background(Color.controlOnSurface, in: RoundedRectangle(cornerRadius: AppRadius.elementLarge))
     }
@@ -295,7 +294,7 @@ struct HomeView: View {
             }
             .foregroundStyle(Color.controlOnAccent)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, AppSpacing.buttonV)
+            .padding(.vertical, AppSpacing.actionV)
             .background(
                 LinearGradient(
                     colors: state.isEating
@@ -303,17 +302,16 @@ struct HomeView: View {
                         : Color.mealStartGradient,
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 ),
-                in: RoundedRectangle(cornerRadius: AppSize.mealButtonRadius)
+                in: RoundedRectangle(cornerRadius: Metrics.mealButtonRadius)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: AppSize.mealButtonRadius)
-                    .strokeBorder(Color.controlOnAccent.opacity(state.startButtonHighlighted ? 0.9 : 0), lineWidth: AppSize.mealButtonHighlightBorder)
+                RoundedRectangle(cornerRadius: Metrics.mealButtonRadius)
+                    .strokeBorder(Color.controlOnAccent.opacity(state.startButtonHighlighted ? 0.9 : 0), lineWidth: Metrics.mealButtonHighlightBorder)
             )
         }
         .accessibilityIdentifier("MealToggle")
         .accessibilityLabel(state.isEating ? "식사 종료" : "식사 시작")
         .buttonStyle(PressableButtonStyle())
-        .softShadow(.pill)
         .scaleEffect(state.startButtonHighlighted ? 1.04 : 1.0)
         .shadow(color: Color.highlightShadow.opacity(state.startButtonHighlighted ? 0.55 : 0), radius: 14, x: 0, y: 4)
         .animation(.easeInOut(duration: AppMotion.durationStateChange), value: state.isEating)
@@ -321,12 +319,18 @@ struct HomeView: View {
     }
 }
 
-struct PressableButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
-            .animation(.easeOut(duration: AppMotion.durationButtonPress), value: configuration.isPressed)
-    }
+private enum Metrics {
+    static let circleButton: CGFloat = 46
+    static let statIcon: CGFloat = 24
+    static let statIconBg: CGFloat = 42
+    static let statIconRadius: CGFloat = 13
+    static let progressRing: CGFloat = 220
+    static let squirrelAreaHeight: CGFloat = 246
+    static let squirrelCardMinHeight: CGFloat = 390
+    static let squirrelCardRadius: CGFloat = 26
+    static let imuWaveformHeight: CGFloat = 64
+    static let mealButtonRadius: CGFloat = 20
+    static let mealButtonHighlightBorder: CGFloat = 3
 }
 
 private extension HomeView {

@@ -20,7 +20,7 @@ struct ShopView: View {
 
 private struct ShopPlaceholderView: View {
     var body: some View {
-        VStack(spacing: AppSpacing.homeVertical) {
+        VStack(spacing: AppSpacing.verticalLoose) {
             header
             Spacer(minLength: AppSpacing.six)
             comingSoonCard
@@ -40,25 +40,18 @@ private struct ShopPlaceholderView: View {
 
     private var comingSoonCard: some View {
         AppCard(padding: AppSpacing.dialogH, radius: AppRadius.page, elevation: .medium) {
-            VStack(spacing: AppSpacing.homeVertical) {
+            AppEmptyState(
+                spacing: AppSpacing.verticalLoose,
+                title: "상점을 준비하고 있어요",
+                message: "도토리로 다람쥐를 꾸미는 기능을 준비 중이에요.\n그 전엔 저작 트래킹에 집중해요.",
+                titleFont: .heavyTitleLarge,
+                messageFont: .semiboldLabel
+            ) {
                 Image("DaramDotori")
                     .resizable()
                     .scaledToFit()
-                    .frame(height: AppSize.shopHeroImageHeight)
-
-                VStack(spacing: AppSpacing.oneHalf) {
-                    Text("상점을 준비하고 있어요")
-                        .font(.appFont(.heavyTitleLarge))
-                        .foregroundStyle(Color.textDefault)
-                        .multilineTextAlignment(.center)
-                    Text("도토리로 다람쥐를 꾸미는 기능을 준비 중이에요.\n그 전엔 저작 트래킹에 집중해요.")
-                        .font(.appFont(.semiboldLabel))
-                        .foregroundStyle(Color.textMuted)
-                        .multilineTextAlignment(.center)
-                        .lineSpacing(3)
-                }
+                    .frame(height: Metrics.heroImageHeight)
             }
-            .frame(maxWidth: .infinity, alignment: .center)
         }
     }
 
@@ -99,8 +92,8 @@ private struct ShopGridView: View {
     }
 
     private let columns = [
-        GridItem(.flexible(), spacing: AppSpacing.reportCell),
-        GridItem(.flexible(), spacing: AppSpacing.reportCell)
+        GridItem(.flexible(), spacing: AppSpacing.cell),
+        GridItem(.flexible(), spacing: AppSpacing.cell)
     ]
 
     var body: some View {
@@ -144,7 +137,7 @@ private struct ShopGridView: View {
                             Text(cat.label)
                                 .font(.appFont(.boldCaption))
                         }
-                        .padding(.horizontal, AppSpacing.reportCell)
+                        .padding(.horizontal, AppSpacing.cell)
                         .padding(.vertical, AppSpacing.two)
                         .foregroundStyle(category == cat ? Color.textActionInverse : Color.textMuted)
                         .background(
@@ -176,7 +169,7 @@ private struct ShopGridView: View {
     }
 
     private var itemGrid: some View {
-        LazyVGrid(columns: columns, spacing: AppSpacing.reportCell) {
+        LazyVGrid(columns: columns, spacing: AppSpacing.cell) {
             ForEach(filteredItems) { item in
                 itemCard(item)
             }
@@ -192,19 +185,14 @@ private struct ShopGridView: View {
         return VStack(spacing: AppSpacing.inner) {
             HStack {
                 if item.rarity == .rare {
-                    Text("희귀")
-                        .font(.appFont(.heavyTiny))
-                        .foregroundStyle(Color.textActionInverse)
-                        .padding(.horizontal, AppSpacing.oneHalf)
-                        .padding(.vertical, AppSpacing.half)
-                        .background(
-                            LinearGradient(
-                                colors: [Color.butter500, Color.butter600],
-                                startPoint: .leading, endPoint: .trailing),
-                            in: Capsule()
-                        )
+                    AppBadge(
+                        text: "희귀",
+                        foreground: Color.textActionInverse,
+                        background: Color.statusWarning,
+                        font: .heavyTiny
+                    )
                 } else {
-                    Color.clear.frame(height: AppSpacing.reportCell)
+                    Color.clear.frame(height: AppSpacing.cell)
                 }
                 Spacer()
                 if equipped {
@@ -212,18 +200,13 @@ private struct ShopGridView: View {
                         .font(.appFont(.regularLabel))
                         .foregroundStyle(Color.statusSuccess)
                 } else if owned {
-                    Text("보유")
-                        .font(.appFont(.boldTiny))
-                        .foregroundStyle(Color.textAction)
-                        .padding(.horizontal, AppSpacing.oneHalf)
-                        .padding(.vertical, AppSpacing.half)
-                        .background(Color.bgSunken, in: Capsule())
+                    AppBadge(text: "보유")
                 }
             }
 
             Text(item.emoji)
                 .font(.appFont(.regularEmojiHuge))
-                .frame(height: AppSize.shopItemEmojiHeight)
+                .frame(height: Metrics.itemEmojiHeight)
 
             VStack(spacing: AppSpacing.half) {
                 Text(item.name)
@@ -239,7 +222,7 @@ private struct ShopGridView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, AppSpacing.three)
-        .padding(.vertical, AppSpacing.reportCell)
+        .padding(.vertical, AppSpacing.cell)
         .background(
             LinearGradient(
                 colors: equipped
@@ -321,7 +304,7 @@ private struct ShopGridView: View {
     private func pricePill(_ price: Int, enabled: Bool) -> some View {
         HStack(spacing: AppSpacing.one) {
             OpenIconView(icon: .acorn, color: enabled ? .textActionInverse : .ink400, lineWidth: 2.2)
-                .frame(width: AppSize.shopItemIcon, height: AppSize.shopItemIcon)
+                .frame(width: Metrics.itemIcon, height: Metrics.itemIcon)
             Text(price.koLocale)
                 .font(.appFont(.boldCaption))
                 .monospacedDigit()
@@ -360,7 +343,7 @@ private struct ShopGridView: View {
         let count = state.ownedAcornPacks[pack.id] ?? 0
         let canAfford = state.points >= pack.price
 
-        return HStack(spacing: AppSpacing.reportCell) {
+        return HStack(spacing: AppSpacing.cell) {
             Text(pack.emoji)
                 .font(.appFont(.regularEmojiXLarge))
                 .frame(width: AppSize.iconContainerXL, height: AppSize.iconContainerXL)
@@ -372,12 +355,7 @@ private struct ShopGridView: View {
                         .font(.appFont(.boldLabel))
                         .foregroundStyle(Color.textDefault)
                     if count > 0 {
-                        Text("보유 \(count)")
-                            .font(.appFont(.boldTiny))
-                            .foregroundStyle(Color.textAction)
-                            .padding(.horizontal, AppSpacing.oneHalf)
-                            .padding(.vertical, AppSize.border)
-                            .background(Color.bgSunken, in: Capsule())
+                        AppBadge(text: "보유 \(count)", verticalPadding: AppSize.border)
                     }
                 }
                 Text(pack.effect)
@@ -399,13 +377,13 @@ private struct ShopGridView: View {
             } label: {
                 HStack(spacing: AppSpacing.one) {
                     OpenIconView(icon: .acorn, color: canAfford ? .textActionInverse : .ink400, lineWidth: 2.2)
-                        .frame(width: AppSize.shopItemIcon, height: AppSize.shopItemIcon)
+                        .frame(width: Metrics.itemIcon, height: Metrics.itemIcon)
                     Text(pack.price.koLocale)
                         .font(.appFont(.boldCaption))
                         .monospacedDigit()
                 }
                 .foregroundStyle(canAfford ? Color.textActionInverse : Color.textSubtle)
-                .padding(.horizontal, AppSpacing.reportCell)
+                .padding(.horizontal, AppSpacing.cell)
                 .padding(.vertical, AppSpacing.inner)
                 .background(
                     canAfford
@@ -419,7 +397,7 @@ private struct ShopGridView: View {
             .buttonStyle(.plain)
             .disabled(!canAfford)
         }
-        .padding(AppSpacing.reportCell)
+        .padding(AppSpacing.cell)
         .background(Color.bgCard, in: RoundedRectangle(cornerRadius: AppRadius.container))
         .appElevation(.medium)
     }
@@ -481,4 +459,10 @@ private struct ShopGridView: View {
     ShopView()
         .environment(AppState())
         .background(Color.pageBackground)
+}
+
+private enum Metrics {
+    static let heroImageHeight: CGFloat = 150
+    static let itemEmojiHeight: CGFloat = 60
+    static let itemIcon: CGFloat = 12
 }

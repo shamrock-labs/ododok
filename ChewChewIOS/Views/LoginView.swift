@@ -46,6 +46,13 @@ enum LoginProviderOption: CaseIterable {
     }
 }
 
+private enum Metrics {
+    static let socialIcon: CGFloat = 22
+    static let brandIcon: CGFloat = 18
+    static let kakaoIcon: CGFloat = 15
+    static let buttonHeight: CGFloat = 52
+}
+
 /// 소셜 로그인 화면. Apple/Google/Kakao 중 하나로 로그인 → 서버 JWT 발급 → onLoggedIn().
 /// 일반적인 앱의 소셜 로그인 UI(브랜드 컬러 풀폭 버튼)를 따른다. 온보딩 앞 게이트로 표시.
 struct LoginView: View {
@@ -117,13 +124,13 @@ struct LoginView: View {
             ZStack {
                 Text(option.title).font(.appFont(.dialogAction))
                 HStack {
-                    brandIcon(option).frame(width: AppSize.socialIcon, height: AppSize.socialIcon)
+                    brandIcon(option).frame(width: Metrics.socialIcon, height: Metrics.socialIcon)
                     Spacer()
                 }
             }
             .padding(.horizontal, AppSpacing.inputH)
             .frame(maxWidth: .infinity)
-            .frame(height: AppSize.socialButtonHeight)
+            .frame(height: Metrics.buttonHeight)
             .foregroundStyle(option.foreground)
             .background(option.background)
             .clipShape(RoundedRectangle(cornerRadius: AppSpacing.three, style: .continuous))
@@ -140,13 +147,13 @@ struct LoginView: View {
     private func brandIcon(_ option: LoginProviderOption) -> some View {
         switch option {
         case .apple:
-            Image(systemName: "apple.logo").font(.appFont(.regular, size: AppSize.socialBrandIcon))
+            Image(systemName: "apple.logo").font(.appFont(.regular, size: Metrics.brandIcon))
         case .google:
             Text("G")
-                .font(.appFont(.bold, size: AppSize.socialBrandIcon))
+                .font(.appFont(.bold, size: Metrics.brandIcon))
                 .foregroundStyle(Color.googleBlue)
         case .kakao:
-            Image(systemName: "message.fill").font(.appFont(.regular, size: AppSize.kakaoBrandIcon))
+            Image(systemName: "message.fill").font(.appFont(.regular, size: Metrics.kakaoIcon))
         }
     }
 

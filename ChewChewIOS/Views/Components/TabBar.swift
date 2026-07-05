@@ -12,7 +12,7 @@ struct TabBarView: View {
                 } label: {
                     VStack(spacing: AppSpacing.microGap) {
                         Image(systemName: tab.systemImage)
-                            .font(.appFont(active ? .bold : .regular, size: AppSize.tabIcon))
+                            .font(.appFont(active ? .bold : .regular, size: Metrics.icon))
                             .foregroundStyle(active ? Color.textActionStrong : Color.textSubtle)
                         Text(tab.label)
                             .font(.appFont(.boldMicroTiny))
@@ -35,4 +35,8 @@ struct TabBarView: View {
                 .frame(height: AppSize.border)
         }
     }
+}
+
+private enum Metrics {
+    static let icon: CGFloat = 22
 }

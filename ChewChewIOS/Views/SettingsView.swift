@@ -603,11 +603,11 @@ private struct AirPodsPickerDialog: View {
         ZStack {
             Circle()
                 .stroke(isActive ? Color.textActionStrong : Color.textSubtle, lineWidth: 1.5)
-                .frame(width: AppSize.radioOuter, height: AppSize.radioOuter)
+                .frame(width: Metrics.radioOuter, height: Metrics.radioOuter)
             if isActive {
                 Circle()
                     .fill(Color.textActionStrong)
-                    .frame(width: AppSize.radioInner, height: AppSize.radioInner)
+                    .frame(width: Metrics.radioInner, height: Metrics.radioInner)
             }
         }
     }
@@ -661,4 +661,9 @@ private struct SafariView: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ controller: SFSafariViewController, context: Context) {}
+}
+
+private enum Metrics {
+    static let radioOuter: CGFloat = 20
+    static let radioInner: CGFloat = 10
 }

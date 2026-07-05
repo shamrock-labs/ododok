@@ -6,7 +6,7 @@ struct FriendsView: View {
     @State private var toastMessage = ""
 
     var body: some View {
-        VStack(spacing: AppSpacing.homeVertical) {
+        VStack(spacing: AppSpacing.verticalLoose) {
             header
             inviteCard
             rankingCard
@@ -46,24 +46,24 @@ struct FriendsView: View {
 
     private var inviteCard: some View {
         AppCard(padding: AppSpacing.five, elevation: .medium) {
-            VStack(spacing: AppSpacing.reportCell) {
+            VStack(spacing: AppSpacing.cell) {
             // 카카오 초대를 가장 크게(주 액션). 카카오 공식 옐로우 + 어두운 텍스트.
-            Button {
+            AppActionButton(
+                action: {
                 Task { await shareInvite() }
-            } label: {
+                },
+                foreground: Color.textDefault,
+                background: AnyShapeStyle(Color.kakaoYellow),
+                radius: AppRadius.container,
+                verticalPadding: AppSpacing.verticalLoose
+            ) {
                 HStack(spacing: AppSpacing.two) {
                     Image(systemName: "message.fill")
                         .font(.appFont(.boldBodyLarge))
                     Text("카카오톡으로 초대하기")
                         .font(.appFont(.heavyHeadline))
                 }
-                .foregroundStyle(Color.textDefault)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, AppSpacing.homeVertical)
-                .background(Color.kakaoYellow, in: RoundedRectangle(cornerRadius: AppRadius.container))
             }
-            .buttonStyle(PressableButtonStyle())
-            .softShadow(.pill)
 
             // 내 초대 코드는 작게 아래에. 영구 단일 코드라 "새로고침"은 두지 않고, 실패 시에만 다시 시도.
             inviteCodeLine
@@ -97,7 +97,7 @@ struct FriendsView: View {
 
     private var rankingCard: some View {
         AppCard(padding: AppSpacing.dialogH, radius: AppRadius.page, elevation: .medium) {
-            VStack(alignment: .leading, spacing: AppSpacing.reportCell) {
+            VStack(alignment: .leading, spacing: AppSpacing.cell) {
             Text("친구 랭킹")
                 .font(.appFont(.heavyHeadlineLarge))
                 .foregroundStyle(Color.textDefault)
