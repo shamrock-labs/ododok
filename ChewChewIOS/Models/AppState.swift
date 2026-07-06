@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import CoreMotion
+import UserNotifications
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -603,6 +604,32 @@ final class AppState {
     func requestMealStart() {
         guard !isEating else { return }
         pendingMealStartRequest = true
+    }
+
+    /// 알림 탭·액션 → 앱 동작 라우팅의 단일 진입점. NotificationDelegate는 raw `(action, deepLink)`만
+    /// 넘기고 "무엇을 할지" 결정은 여기 한 곳에 둔다(액션의 소유자와 매핑을 같은 곳에).
+    /// v1.2에서 MealSession이 분리되면 이 라우팅도 함께 이동한다.
+    @MainActor
+    func handleNotificationAction(_ action: String, deepLink: String?) {
+        switch action {
+        case MealNotificationService.startActionId:
+            requestMealStart()
+        case MealNotificationService.resumeActionId:
+            resumeMeasurement()
+        case MealNotificationService.stopActionId:
+            stopMeasurementFromNotification()
+        case UNNotificationDefaultActionIdentifier:
+            switch deepLink {
+            case MealNotificationService.deepLinkResume:
+                resumeMeasurement()
+            case MealNotificationService.deepLinkStart:
+                requestMealStart()
+            default:
+                break
+            }
+        default:
+            break
+        }
     }
 
     // MARK: - Shop / Wardrobe actions

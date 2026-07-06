@@ -7,7 +7,12 @@ import UserNotifications
 final class NotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
 
     /// ChewChewIOSApp.body의 .task에서 appState가 준비된 뒤 주입.
-    var appState: AppState?
+    var appState: AppState? {
+        didSet { flushPendingNotificationAction() }
+    }
+
+    /// appState 주입 전(콜드 스타트 직후) 도착한 알림 탭. 유실하지 않고 주입 시 처리한다.
+    private var pendingNotificationAction: (action: String, deepLink: String?)?
 
     func application(
         _ application: UIApplication,
@@ -56,29 +61,21 @@ final class NotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotific
         let action = response.actionIdentifier
         let deepLink = response.notification.request.content.userInfo["deepLink"] as? String
         Task { @MainActor in
-            // appState가 주입되기 전(콜드 스타트 직후) 탭은 무시.
-            guard let state = appState else { return }
-            switch action {
-            case MealNotificationService.startActionId:
-                state.requestMealStart()
-            case MealNotificationService.resumeActionId:
-                state.resumeMeasurement()
-            case MealNotificationService.stopActionId:
-                state.stopMeasurementFromNotification()
-            case UNNotificationDefaultActionIdentifier:
-                // 알림 본문 탭 — deepLink에 따라 분기.
-                switch deepLink {
-                case MealNotificationService.deepLinkResume:
-                    state.resumeMeasurement()
-                case MealNotificationService.deepLinkStart:
-                    // 끼니 리마인더 본문 탭 — 강조만 하지 않고 바로 측정 시작(시작 가드 경유).
-                    state.requestMealStart()
-                default:
-                    break
-                }
-            default:
-                break
+            guard let state = appState else {
+                // 콜드 스타트 직후 — 유실하지 않고 큐잉했다가 주입 시 처리한다.
+                pendingNotificationAction = (action, deepLink)
+                return
             }
+            state.handleNotificationAction(action, deepLink: deepLink)
+        }
+    }
+
+    /// appState 주입 시점에 큐잉된 탭을 흘려보낸다.
+    private func flushPendingNotificationAction() {
+        guard appState != nil, let pending = pendingNotificationAction else { return }
+        pendingNotificationAction = nil
+        Task { @MainActor in
+            appState?.handleNotificationAction(pending.action, deepLink: pending.deepLink)
         }
     }
 }
