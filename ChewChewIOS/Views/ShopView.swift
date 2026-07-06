@@ -66,7 +66,7 @@ private struct ShopGridView: View {
     @State private var toast: AppToastMessage?
 
     enum Category: String, CaseIterable, Identifiable {
-        case all, hat, glasses, acc, pack
+        case all, hat, glasses, acc
         var id: String { rawValue }
 
         var label: String {
@@ -75,7 +75,6 @@ private struct ShopGridView: View {
             case .hat:     "모자"
             case .glasses: "안경"
             case .acc:     "액세서리"
-            case .pack:    "도토리팩"
             }
         }
 
@@ -85,7 +84,6 @@ private struct ShopGridView: View {
             case .hat:     "graduationcap.fill"
             case .glasses: "eyeglasses"
             case .acc:     "sparkles"
-            case .pack:    "shippingbox.fill"
             }
         }
     }
@@ -99,12 +97,7 @@ private struct ShopGridView: View {
         VStack(spacing: AppSpacing.four) {
             header
             categoryStrip
-
-            if category == .pack {
-                packList
-            } else {
-                itemGrid
-            }
+            itemGrid
         }
         .padding(.horizontal, AppSpacing.page)
         .padding(.top, AppSpacing.three)
@@ -163,7 +156,6 @@ private struct ShopGridView: View {
         case .hat:     return ShopItem.all.filter { $0.type == .hat }
         case .glasses: return ShopItem.all.filter { $0.type == .glasses }
         case .acc:     return ShopItem.all.filter { $0.type == .acc }
-        case .pack:    return []
         }
     }
 
@@ -321,85 +313,6 @@ private struct ShopGridView: View {
         )
     }
 
-    // MARK: AcornPack list
-
-    private var packList: some View {
-        VStack(spacing: AppSpacing.three) {
-            ForEach(AcornPack.all) { pack in
-                packCard(pack)
-            }
-            Text("도토리팩 효과는 추후 자동 연동돼요. 지금은 보유 카운트만 누적됩니다.")
-                .font(.appFont(.regularMicro))
-                .foregroundStyle(Color.textSubtle)
-                .multilineTextAlignment(.center)
-                .padding(.top, AppSpacing.oneHalf)
-                .padding(.horizontal, AppSpacing.three)
-        }
-        .padding(.bottom, AppSpacing.six)
-    }
-
-    private func packCard(_ pack: AcornPack) -> some View {
-        let count = state.ownedAcornPacks[pack.id] ?? 0
-        let canAfford = state.points >= pack.price
-
-        return HStack(spacing: AppSpacing.cell) {
-            Text(pack.emoji)
-                .font(.appFont(.regularEmojiXLarge))
-                .frame(width: AppSize.iconContainerXL, height: AppSize.iconContainerXL)
-                .background(Color.statusWarningMuted, in: RoundedRectangle(cornerRadius: AppRadius.element))
-
-            VStack(alignment: .leading, spacing: AppSpacing.one) {
-                HStack(spacing: AppSpacing.oneHalf) {
-                    Text(pack.name)
-                        .font(.appFont(.boldLabel))
-                        .foregroundStyle(Color.textDefault)
-                    if count > 0 {
-                        AppBadge(text: "보유 \(count)", verticalPadding: AppSize.border)
-                    }
-                }
-                Text(pack.effect)
-                    .font(.appFont(.semiboldCallout))
-                    .foregroundStyle(Color.textSubtle)
-            }
-
-            Spacer()
-
-            Button {
-                switch state.buyAcornPack(pack) {
-                case .success:
-                    toast = AppToastMessage("\(pack.name) 획득", kind: .success)
-                case .notEnoughPoints:
-                    toast = AppToastMessage("도토리가 부족해요", kind: .warning)
-                case .alreadyOwned:
-                    break
-                }
-            } label: {
-                HStack(spacing: AppSpacing.one) {
-                    OpenIconView(icon: .acorn, color: canAfford ? .textActionInverse : .ink400, lineWidth: 2.2)
-                        .frame(width: Metrics.itemIcon, height: Metrics.itemIcon)
-                    Text(pack.price.koLocale)
-                        .font(.appFont(.boldCaption))
-                        .monospacedDigit()
-                }
-                .foregroundStyle(canAfford ? Color.textActionInverse : Color.textSubtle)
-                .padding(.horizontal, AppSpacing.cell)
-                .padding(.vertical, AppSpacing.inner)
-                .background(
-                    canAfford
-                        ? AnyShapeStyle(LinearGradient(
-                            colors: [Color.acorn400, Color.acorn600],
-                            startPoint: .topLeading, endPoint: .bottomTrailing))
-                        : AnyShapeStyle(Color.borderDefault),
-                    in: RoundedRectangle(cornerRadius: AppSpacing.three)
-                )
-            }
-            .buttonStyle(.plain)
-            .disabled(!canAfford)
-        }
-        .padding(AppSpacing.cell)
-        .background(Color.bgCard, in: RoundedRectangle(cornerRadius: AppRadius.container))
-        .appElevation(.flat)
-    }
 }
 
 #Preview("Placeholder (기본)") {

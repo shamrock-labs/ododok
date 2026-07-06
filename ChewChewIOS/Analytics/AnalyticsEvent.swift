@@ -88,11 +88,6 @@ extension AnalyticsEvent {
         .init("shop_item_purchased", ["item_id": itemId, "item_type": itemType, "price": price])
     }
 
-    /// 도토리팩 구매(포인트 소비).
-    static func acornPackPurchased(packId: String, price: Int) -> AnalyticsEvent {
-        .init("acorn_pack_purchased", ["pack_id": packId, "price": price])
-    }
-
     /// 기록/리포트 탭 진입. 리포트 허브 퍼널의 시작점.
     static func reportTabViewed(selectedDate: String, daysFromToday: Int, mealCount: Int) -> AnalyticsEvent {
         .init("report_tab_viewed", [

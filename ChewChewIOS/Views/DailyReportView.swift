@@ -349,13 +349,14 @@ struct DailyReportView: View {
                 .padding(.vertical, AppSpacing.pageInsetVertical)
             }
             .background(Color.pageBackground.ignoresSafeArea())
-            .navigationTitle("일간 리포트")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    AppSheetTitleText(title: "일간 리포트")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("닫기") { dismiss() }
-                        .font(.appFont(.boldBody))
-                        .foregroundStyle(Color.textAction)
+                    AppSheetCloseButton(action: { dismiss() })
                 }
             }
             .navigationDestination(for: DailyReportModel.MealSummary.ID.self) { id in

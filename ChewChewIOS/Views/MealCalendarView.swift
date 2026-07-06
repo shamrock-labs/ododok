@@ -418,9 +418,12 @@ struct SessionReportDetailView: View {
             .padding(.vertical, 16)
         }
         .background(Color.pageBackground.ignoresSafeArea())
-        .navigationTitle("식사 리포트")
+        .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .principal) {
+                AppSheetTitleText(title: "식사 리포트")
+            }
             if let payload = sharePayload {
                 ToolbarItem(placement: .topBarTrailing) {
                     ShareLink(item: payload, preview: SharePreview("식사 리포트")) {

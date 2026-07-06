@@ -25,6 +25,8 @@ protocol RemoteStore {
     func fetchHome(deviceId: String) async throws -> HomeStateDTO
     /// 앱-열기 출석 적립 — iOS가 멱등키로 트리거, 서버가 일 1회 판정 + 적립.
     func earnAttendance(deviceId: String, idempotencyKey: String) async throws -> AttendanceResultDTO
+    /// 서버 reward_events 원장 조회 — 도토리 적립 내역 표시용.
+    func fetchRewardHistory() async throws -> [RewardHistoryDTO]
     /// `since` 이후 + 옵셔널 `until` 이전에 시작된 세션을 시간 오름차순으로 조회.
     /// "오늘의 식사 기록"은 since=오늘 0시 / until=nil, 월간 캘린더는 since=월 첫날 /
     /// until=다음 달 첫날로 호출.
@@ -66,6 +68,7 @@ extension RemoteStore {
     func deactivatePushToken(_ token: String) async throws {}
     func upsertMealNotifications(_ settings: MealReminderSettings, timeZone: String) async throws {}
     func fetchMealNotifications() async throws -> MealReminderSettings? { nil }
+    func fetchRewardHistory() async throws -> [RewardHistoryDTO] { [] }
     func fetchFriendInviteCode() async throws -> FriendInviteCodeDTO { .init(code: "") }
     func acceptFriendInvite(code: String) async throws -> FriendAcceptResultDTO { .init(accepted: false, bonusGranted: false) }
     func fetchFriendRanking() async throws -> [FriendRankingDTO] { [] }
@@ -98,6 +101,7 @@ struct NoopRemoteStore: RemoteStore {
     func earnAttendance(deviceId: String, idempotencyKey: String) async throws -> AttendanceResultDTO {
         AttendanceResultDTO(grantedPoints: 0, capped: false, idempotentReplay: false, userStats: .empty(deviceId: deviceId))
     }
+    func fetchRewardHistory() async throws -> [RewardHistoryDTO] { [] }
     func fetchChewingSessions(deviceId: String, since: Date, until: Date?) async throws -> [ChewingSessionDTO] { [] }
     func deleteChewingSession(id: UUID, deviceId: String) async throws {}
     func deleteAllChewingSessions(deviceId: String) async throws {}

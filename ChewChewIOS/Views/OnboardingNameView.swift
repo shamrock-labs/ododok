@@ -71,19 +71,21 @@ struct OnboardingNameView: View {
             .accessibilityIdentifier("OnboardingSwitchAccount")
         }
         .overlay(alignment: .topTrailing) {
-            Button {
-                skip()
-            } label: {
-                Text("건너뛰기")
-                    .font(.appFont(.boldLabel))
-                    .foregroundStyle(Color.textMuted)
-                    .padding(.vertical, AppSpacing.oneHalf)
-                    .padding(.horizontal, AppSpacing.inner)
+            if !canSubmit {
+                Button {
+                    skip()
+                } label: {
+                    Text("건너뛰기")
+                        .font(.appFont(.boldLabel))
+                        .foregroundStyle(Color.textMuted)
+                        .padding(.vertical, AppSpacing.oneHalf)
+                        .padding(.horizontal, AppSpacing.inner)
+                }
+                .disabled(isSaving)
+                .padding(.trailing, AppSpacing.three)
+                .padding(.top, AppSpacing.dialogH)
+                .accessibilityIdentifier("OnboardingNameSkip")
             }
-            .disabled(isSaving)
-            .padding(.trailing, AppSpacing.three)
-            .padding(.top, AppSpacing.dialogH)
-            .accessibilityIdentifier("OnboardingNameSkip")
         }
         .interactiveDismissDisabled()
         .onAppear { isFocused = true }

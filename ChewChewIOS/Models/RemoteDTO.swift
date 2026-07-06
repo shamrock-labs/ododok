@@ -45,7 +45,6 @@ struct UserStatsDTO: Codable, Equatable {
     var points: Int
     var owned: [String]
     var equipped: EquippedDTO
-    var ownedAcornPacks: [String: Int]
     var savedAt: Date
 
     private enum CodingKeys: String, CodingKey {
@@ -55,7 +54,6 @@ struct UserStatsDTO: Codable, Equatable {
         case points
         case owned
         case equipped
-        case ownedAcornPacks
         case savedAt
     }
 
@@ -71,7 +69,6 @@ struct UserStatsDTO: Codable, Equatable {
         points: Int,
         owned: [String],
         equipped: EquippedDTO,
-        ownedAcornPacks: [String: Int],
         savedAt: Date,
         userId: String? = nil
     ) {
@@ -81,7 +78,6 @@ struct UserStatsDTO: Codable, Equatable {
         self.points = points
         self.owned = owned
         self.equipped = equipped
-        self.ownedAcornPacks = ownedAcornPacks
         self.savedAt = savedAt
     }
 
@@ -93,7 +89,6 @@ struct UserStatsDTO: Codable, Equatable {
         points = try container.decode(Int.self, forKey: .points)
         owned = try container.decode([String].self, forKey: .owned)
         equipped = try container.decode(EquippedDTO.self, forKey: .equipped)
-        ownedAcornPacks = try container.decode([String: Int].self, forKey: .ownedAcornPacks)
         savedAt = try container.decode(Date.self, forKey: .savedAt)
     }
 
@@ -104,7 +99,6 @@ struct UserStatsDTO: Codable, Equatable {
         try container.encode(points, forKey: .points)
         try container.encode(owned, forKey: .owned)
         try container.encode(equipped, forKey: .equipped)
-        try container.encode(ownedAcornPacks, forKey: .ownedAcornPacks)
         try container.encode(savedAt, forKey: .savedAt)
     }
 }
@@ -395,6 +389,29 @@ struct AttendanceResultDTO: Codable, Equatable {
     var capped: Bool
     var idempotentReplay: Bool
     var userStats: HomeStateDTO
+}
+
+enum RewardEventType: String, Codable, Equatable {
+    case session = "SESSION"
+    case attendance = "ATTENDANCE"
+    case friendBonus = "FRIEND_BONUS"
+
+    var displayTitle: String {
+        switch self {
+        case .session: "식사 완료"
+        case .attendance: "출석 보상"
+        case .friendBonus: "친구 초대"
+        }
+    }
+}
+
+struct RewardHistoryDTO: Codable, Equatable, Identifiable {
+    var id: UUID
+    var eventType: RewardEventType
+    var eventDay: String
+    var grantedPoints: Int
+    var capped: Bool
+    var sessionId: UUID?
 }
 
 struct FriendInviteCodeDTO: Codable, Equatable {

@@ -30,9 +30,12 @@ struct SessionResultSheet: View {
                 .padding(AppSpacing.sheetContent)
             }
             .background(Color.bgPage.ignoresSafeArea())
-            .navigationTitle(dto == nil ? "분석 중" : "식사 리포트")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    AppSheetTitleText(title: dto == nil ? "분석 중" : "식사 리포트")
+                }
                 if dto != nil, let payload = sharePayload {
                     ToolbarItem(placement: .topBarLeading) {
                         ShareLink(item: payload, preview: SharePreview("식사 리포트")) {
@@ -45,8 +48,7 @@ struct SessionResultSheet: View {
                     // 분석 중에는 닫기 버튼 숨김 — 분석은 보통 수 초 안에 끝나므로
                     // 사용자가 잠깐 기다리도록 유도. 인터랙티브 dismiss도 같이 차단.
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button("닫기") { onClose() }
-                            .foregroundStyle(Color.textMuted)
+                        AppSheetCloseButton(action: onClose)
                     }
                 }
             }

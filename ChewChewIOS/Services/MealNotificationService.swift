@@ -30,7 +30,7 @@ enum MealNotificationService {
     /// 알림 발송 가능 여부(.authorized / .provisional).
     static func isAuthorized() async -> Bool {
         let status = await authorizationStatus()
-        return status == .authorized || status == .provisional
+        return status == .authorized || status == .provisional || status == .ephemeral
     }
 
     /// `.notDetermined`이면 다이얼로그를 띄우고, 이미 결정된 상태면 즉시 현재 권한 반영.
@@ -45,7 +45,7 @@ enum MealNotificationService {
             } catch {
                 return false
             }
-        case .authorized, .provisional:
+        case .authorized, .provisional, .ephemeral:
             return true
         case .denied:
             return false
@@ -65,7 +65,7 @@ enum MealNotificationService {
         cancelMealReminders()
 
         let status = await authorizationStatus()
-        guard status == .authorized || status == .provisional else {
+        guard status == .authorized || status == .provisional || status == .ephemeral else {
             return
         }
 

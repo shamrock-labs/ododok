@@ -1,24 +1,25 @@
 import SwiftUI
+import UIKit
 import UserNotifications
 
 /// HomeView gear → sheet. 끼니별 Toggle + 시각 picker.
-/// 변경 시마다 UserDefaults save + UNUserNotificationCenter 재스케줄.
+/// 변경은 draft에만 보관하고, 완료 버튼을 눌렀을 때만 서버/로컬 알림에 저장한다.
 struct MealReminderSettingsView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(AppState.self) private var appState
     @State private var settings: MealReminderSettings = .default
     @State private var permissionStatus: UNAuthorizationStatus = .notDetermined
     /// 서버에 저장된 마지막 값 — 저장 실패 시 "취소"로 이 값으로 되돌린다(변경 무성유실 방지, ODO-103).
     @State private var lastSaved: MealReminderSettings = .default
+    @State private var isSaving = false
     @State private var saveFailed = false
     @State private var saveErrorReason = ""
-    /// lastSaved로 되돌리는 중엔 onChange의 저장 재시도를 건너뛰기 위한 가드.
-    @State private var isReverting = false
-    /// 저장 디바운스 + latest-wins(PR #76 리뷰). 빠른 편집(DatePicker 스크럽)으로 PUT이 겹쳐
-    /// 오래된 응답이 최신 값을 덮어쓰는 경합을 막는다 — 매 편집마다 세대를 올리고, 응답이 현재
-    /// 세대와 일치할 때만 캐시·lastSaved를 확정한다.
-    @State private var saveTask: Task<Void, Never>?
-    @State private var saveGeneration = 0
+    @State private var showDiscardConfirmation = false
+
+    private var draft: MealReminderDraft {
+        MealReminderDraft(settings: settings, lastSaved: lastSaved)
+    }
 
     var body: some View {
         NavigationStack {
@@ -39,85 +40,90 @@ struct MealReminderSettingsView: View {
                 .padding(.top, AppSpacing.three)
             }
             .background(Color.bgPage.ignoresSafeArea())
-            .navigationTitle("끼니 알림")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    AppSheetTitleText(title: "끼니 알림")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("완료") { dismiss() }
-                        .foregroundStyle(Color.acorn600)
-                        .font(.appFont(.semiboldBody))
+                    AppSheetTextActionButton(title: "완료") { saveAndDismiss() }
+                        .disabled(isSaving)
                 }
             }
         }
         .task {
             settings = MealReminderSettings.load()
             lastSaved = settings
-            permissionStatus = await MealNotificationService.authorizationStatus()
+            await refreshPermissionStatus()
         }
-        .onChange(of: settings) { _, new in
-            guard !isReverting else {
-                isReverting = false
-                return
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await refreshPermissionStatus() }
+        }
+        .interactiveDismissDisabled(draft.hasUnsavedChanges)
+        .background {
+            SheetDismissAttemptReporter(isEnabled: draft.hasUnsavedChanges) {
+                showDiscardConfirmation = true
             }
-            scheduleSave(new)
         }
         .appDialog(
             isPresented: $saveFailed,
             title: "저장에 실패했어요",
             message: "\(saveErrorReason)\n취소하면 변경 전 시간으로 돌아가요.",
-            primary: .init("다시 시도") { saveNow(settings) },
+            primary: .init("다시 시도") { saveAndDismiss() },
             secondary: .init("취소", role: .cancel) { revertEdit() }
+        )
+        .appDialog(
+            isPresented: $showDiscardConfirmation,
+            title: "알림 설정을 완료하지 않았어요",
+            message: "완료 버튼을 누르지 않으면 변경사항이 저장되지 않아요.",
+            primary: .init("저장하지 않기", role: .destructive) { discardAndDismiss() },
+            secondary: .init("계속 편집", role: .cancel) {}
         )
     }
 
     // MARK: - 저장 (서버 정본)
 
-    /// 편집 디바운스 — 빠른 변경을 묶어 마지막 값만 저장하고, 대기 중이던 직전 저장은 취소한다.
-    private func scheduleSave(_ new: MealReminderSettings) {
-        saveTask?.cancel()
-        saveGeneration &+= 1
-        let generation = saveGeneration
-        saveTask = Task {
-            try? await Task.sleep(for: .milliseconds(450))
-            if Task.isCancelled { return }
-            await attemptSave(new, generation: generation)
-        }
-    }
-
-    /// 디바운스 없이 즉시 저장(다시 시도 버튼). 세대를 올려 이전 응답이 못 덮게 한다.
-    private func saveNow(_ new: MealReminderSettings) {
-        saveTask?.cancel()
-        saveGeneration &+= 1
-        let generation = saveGeneration
-        Task { await attemptSave(new, generation: generation) }
-    }
-
-    /// 변경을 서버에 저장 시도. 성공해야 로컬 캐시를 확정한다(무성유실 방지). 실패하면 식사 종료 시
-    /// 업로드 실패와 같은 다이얼로그를 띄운다 — 오프라인/서버 다운 모두 여기로 들어온다(ODO-103).
-    /// `generation`이 현재 세대와 다르면(그 사이 더 최신 편집이 있었음) 응답을 버린다 — latest-wins(PR #76).
-    private func attemptSave(_ new: MealReminderSettings, generation: Int) async {
-        let outcome = await appState.mealPushCoordinator.apply(new)
-        guard generation == saveGeneration else { return }
-        switch outcome {
-        case .saved, .skipped:
-            new.save()
-            lastSaved = new
-        case .saveFailed(let reason):
-            saveErrorReason = reason
-            saveFailed = true
-        case .sessionExpired:
-            break   // 세션 만료 — AppState가 로그인 게이트로 복귀시킨다
+    private func saveAndDismiss() {
+        guard !isSaving else { return }
+        isSaving = true
+        let draft = settings
+        Task { @MainActor in
+            let outcome = await appState.mealPushCoordinator.apply(draft)
+            isSaving = false
+            switch outcome {
+            case .saved, .skipped:
+                draft.save()
+                lastSaved = draft
+                dismiss()
+            case .saveFailed(let reason):
+                saveErrorReason = reason
+                saveFailed = true
+            case .sessionExpired:
+                break
+            }
         }
     }
 
     /// 저장 실패 다이얼로그의 "취소"/배경 탭 — 마지막 저장값으로 화면·로컬을 되돌린다.
     private func revertEdit() {
-        saveTask?.cancel()
-        saveGeneration &+= 1   // 진행 중이던 저장 응답을 무효화(되돌림이 최신)
         guard settings != lastSaved else { return }
-        isReverting = true
         settings = lastSaved
         lastSaved.save()
+    }
+
+    private func discardAndDismiss() {
+        settings = lastSaved
+        dismiss()
+    }
+
+    @MainActor
+    private func refreshPermissionStatus() async {
+        permissionStatus = await MealNotificationService.authorizationStatus()
+        if permissionStatus == .denied {
+            settings.disableAll()
+        }
     }
 
     // MARK: - Subviews
@@ -161,9 +167,10 @@ struct MealReminderSettingsView: View {
                 Toggle("", isOn: toggleBinding(slot))
                     .labelsHidden()
                     .tint(Color.acorn600)
+                    .disabled(permissionStatus == .denied || isSaving)
             }
 
-            if slot.wrappedValue.enabled {
+            if slot.wrappedValue.enabled && permissionStatus != .denied {
                 HStack {
                     Text("알림 시각")
                         .font(.appFont(.semiboldBody))
@@ -177,6 +184,7 @@ struct MealReminderSettingsView: View {
                     .datePickerStyle(.compact)
                     .labelsHidden()
                     .tint(Color.acorn600)
+                    .disabled(permissionStatus == .denied || isSaving)
                 }
             }
         }
@@ -227,5 +235,42 @@ struct MealReminderSettingsView: View {
                 slot.wrappedValue.minute = comps.minute ?? slot.wrappedValue.minute
             }
         )
+    }
+}
+
+private struct SheetDismissAttemptReporter: UIViewControllerRepresentable {
+    let isEnabled: Bool
+    let onAttempt: () -> Void
+
+    func makeUIViewController(context: Context) -> UIViewController {
+        UIViewController()
+    }
+
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
+        context.coordinator.isEnabled = isEnabled
+        context.coordinator.onAttempt = onAttempt
+        DispatchQueue.main.async {
+            uiViewController.parent?.presentationController?.delegate = context.coordinator
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(isEnabled: isEnabled, onAttempt: onAttempt)
+    }
+
+    final class Coordinator: NSObject, UIAdaptivePresentationControllerDelegate {
+        var isEnabled: Bool
+        var onAttempt: () -> Void
+
+        init(isEnabled: Bool, onAttempt: @escaping () -> Void) {
+            self.isEnabled = isEnabled
+            self.onAttempt = onAttempt
+        }
+
+        func presentationControllerDidAttemptToDismiss(_ presentationController: UIPresentationController) {
+            if isEnabled {
+                onAttempt()
+            }
+        }
     }
 }

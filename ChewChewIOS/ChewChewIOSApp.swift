@@ -43,6 +43,11 @@ struct ChewChewIOSApp: App {
         let pi = ProcessInfo.processInfo
         let underTest = pi.environment["XCTestConfigurationFilePath"] != nil
             || pi.arguments.contains("-useNoopRemote")
+        #if DEBUG
+        if pi.arguments.contains("-demoRewardHistory") {
+            return (DemoRewardHistoryRemoteStore(), NoopAuthSessionManager())
+        }
+        #endif
         if underTest { return (NoopRemoteStore(), NoopAuthSessionManager()) }
         // 레거시 InsForge는 명시적 오버라이드일 때만 — 기본은 Spring.
         if pi.arguments.contains("-useInsForge") {
@@ -161,6 +166,7 @@ struct ChewChewIOSApp: App {
     /// - `-skipOnboarding`: XCUITest용 — displayName="테스터" + 온보딩 완료 처리로 onboarding sheet 우회.
     /// - `-useNoopRemote`: XCUITest용 — 실 백엔드 대신 NoopRemoteStore 주입(`makeRemoteStore`에서 처리).
     /// - `-highlightStart`: XCUITest용 — 앱 진입 즉시 startButtonHighlighted=true (강조 UI 검증).
+    /// - `-demoRewardHistory`: DEBUG/XCUITest용 — 서버 없이 도토리 적립 내역 예시를 반환.
     /// 운영 코드에는 영향 없음.
     private func handleLaunchArguments() {
         let args = ProcessInfo.processInfo.arguments
@@ -215,3 +221,39 @@ struct ChewChewIOSApp: App {
         }
     }
 }
+
+#if DEBUG
+private struct DemoRewardHistoryRemoteStore: RemoteStore {
+    func upsertProfile(_ profile: ProfileDTO) async throws {}
+    func fetchProfile() async throws -> ProfileDTO? { .init(deviceId: DeviceIdentity.shared, displayName: "테스터") }
+    func fetchUserStats() async throws -> UserStatsDTO? { nil }
+    func deleteUserData() async throws {}
+    func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO {
+        try await NoopRemoteStore().createChewingSession(session)
+    }
+    func fetchHome(deviceId: String) async throws -> HomeStateDTO {
+        var home = HomeStateDTO.empty(deviceId: deviceId)
+        home.points = 280
+        home.streak = 3
+        return home
+    }
+    func earnAttendance(deviceId: String, idempotencyKey: String) async throws -> AttendanceResultDTO {
+        try await NoopRemoteStore().earnAttendance(deviceId: deviceId, idempotencyKey: idempotencyKey)
+    }
+    func fetchRewardHistory() async throws -> [RewardHistoryDTO] {
+        [
+            RewardHistoryDTO(id: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!, eventType: .attendance, eventDay: "2026-07-06", grantedPoints: 10, capped: false, sessionId: nil),
+            RewardHistoryDTO(id: UUID(uuidString: "22222222-2222-2222-2222-222222222222")!, eventType: .session, eventDay: "2026-07-06", grantedPoints: 30, capped: false, sessionId: UUID(uuidString: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")),
+            RewardHistoryDTO(id: UUID(uuidString: "33333333-3333-3333-3333-333333333333")!, eventType: .friendBonus, eventDay: "2026-07-05", grantedPoints: 100, capped: false, sessionId: nil),
+            RewardHistoryDTO(id: UUID(uuidString: "44444444-4444-4444-4444-444444444444")!, eventType: .session, eventDay: "2026-07-05", grantedPoints: 30, capped: false, sessionId: UUID(uuidString: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"))
+        ]
+    }
+    func fetchChewingSessions(deviceId: String, since: Date, until: Date?) async throws -> [ChewingSessionDTO] { [] }
+    func deleteChewingSession(id: UUID, deviceId: String) async throws {}
+    func deleteAllChewingSessions(deviceId: String) async throws {}
+    func uploadIMUCSV(sessionId: UUID, deviceId: String, csvData: Data) async throws -> String { "" }
+    func fetchFriendInviteCode() async throws -> FriendInviteCodeDTO {
+        .init(code: "TESTCODE01", deepLink: "chewchew://invite?code=TESTCODE01")
+    }
+}
+#endif
