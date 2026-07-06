@@ -12,8 +12,8 @@ struct ContentView: View {
             let args = ProcessInfo.processInfo.arguments
             if let i = args.firstIndex(of: "-startTab"),
                i + 1 < args.count,
-               let t = Tab(rawValue: args[i + 1]) {
-                return t
+               let tab = Tab(rawValue: args[i + 1]) {
+                return tab
             }
             return .home
         }
@@ -42,7 +42,7 @@ struct ContentView: View {
             if state.isLoggedIn {
                 mainTabs
             } else {
-                LoginView(onLoggedIn: { state.completeLogin(onboardingCompleted: $0, method: $1) })
+                LoginView(store: state.auth)
             }
         }
         // 로그인 직후 프로필 로딩/온보딩 진입 전엔 홈을 크림+스피너로 덮어 홈 깜빡임을 차단한다.

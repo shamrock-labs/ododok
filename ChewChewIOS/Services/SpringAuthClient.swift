@@ -31,12 +31,6 @@ final class SpringAuthClient: AuthSessionManaging {
         self.session = session
     }
 
-    struct LoginResult {
-        let userId: String
-        let displayName: String?
-        let onboardingCompleted: Bool
-    }
-
     private struct LoginRequest: Encodable {
         let provider: String
         let idToken: String
