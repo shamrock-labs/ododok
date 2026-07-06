@@ -77,6 +77,7 @@ final class RecordsStore {
     }
 
     func deleteSession(_ session: ChewingSessionDTO) async {
+        loadGeneration += 1
         do {
             try await repository.deleteSession(id: session.id)
             monthSessions.removeAll { $0.id == session.id }
@@ -90,6 +91,7 @@ final class RecordsStore {
     }
 
     func deleteAllSessions() async {
+        loadGeneration += 1
         do {
             try await repository.deleteAllSessions()
             monthSessions = []

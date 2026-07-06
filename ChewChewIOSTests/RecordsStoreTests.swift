@@ -6,7 +6,11 @@ final class RecordsStoreTests: XCTestCase {
     private var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.locale = Locale(identifier: "ko_KR")
-        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        guard let timeZone = TimeZone(secondsFromGMT: 0) else {
+            XCTFail("UTC time zone must be available")
+            return calendar
+        }
+        calendar.timeZone = timeZone
         return calendar
     }
 
@@ -100,6 +104,23 @@ final class RecordsStoreTests: XCTestCase {
         XCTAssertTrue(didDeleteAll)
     }
 
+    func testDeleteAllSessionsInvalidatesPendingLoad() async {
+        let jan = date(year: 2026, month: 1, day: 10)
+        let session = makeDTO(startedAt: jan)
+        let repository = fakeRepository(
+            [monthStart(jan): [session]],
+            delaysByMonth: [monthStart(jan): 200_000_000]
+        )
+        let store = RecordsStore(repository: repository, calendar: calendar, initialMonth: jan)
+
+        async let pendingLoad: Void = store.loadMonth()
+        await Task.yield()
+        await store.deleteAllSessions()
+        await pendingLoad
+
+        XCTAssertTrue(store.monthSessions.isEmpty)
+    }
+
     func testDeleteSessionFailureKeepsList() async {
         let jan = date(year: 2026, month: 1, day: 10)
         let target = makeDTO(startedAt: jan)
@@ -157,11 +178,19 @@ final class RecordsStoreTests: XCTestCase {
     }
 
     private func date(year: Int, month: Int, day: Int) -> Date {
-        calendar.date(from: DateComponents(year: year, month: month, day: day, hour: 12))!
+        guard let date = calendar.date(from: DateComponents(year: year, month: month, day: day, hour: 12)) else {
+            XCTFail("Invalid fixed test date")
+            return Date(timeIntervalSince1970: 0)
+        }
+        return date
     }
 
     private func monthStart(_ date: Date) -> Date {
-        calendar.dateInterval(of: .month, for: date)!.start
+        guard let monthInterval = calendar.dateInterval(of: .month, for: date) else {
+            XCTFail("Invalid month interval")
+            return date
+        }
+        return monthInterval.start
     }
 
     private func makeDTO(startedAt: Date) -> ChewingSessionDTO {
