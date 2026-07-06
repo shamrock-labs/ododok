@@ -1,7 +1,10 @@
 default_platform(:ios)
 
+require_relative "versioning"
+
 WORKSPACE = "ChewChewIOS.xcworkspace"
 SCHEME = "ChewChewIOS"
+VERSION_CONFIG = "Config/Version.xcconfig"
 
 APP_ID = "com.shamrock.ododok"
 WIDGETS_ID = "com.shamrock.ododok.OdodokWidgets"
@@ -60,6 +63,28 @@ def next_build_number(api_key)
   (latest + 1).to_s
 end
 
+def live_marketing_version(api_key)
+  app_store_build_number(
+    api_key: api_key,
+    app_identifier: APP_ID,
+    live: true,
+    initial_build_number: 0
+  )
+  lane_context[SharedValues::LATEST_VERSION]
+rescue => error
+  UI.important("App Store live version 확인 실패 - repo MARKETING_VERSION 사용: #{error.message}")
+  nil
+end
+
+def next_beta_marketing_version(api_key)
+  repo_version = OdodokVersioning.read_marketing_version(VERSION_CONFIG)
+  live_version = live_marketing_version(api_key)
+  marketing_version = OdodokVersioning.next_marketing_version(repo_version, live_version)
+
+  UI.message("Resolved TestFlight marketing version: #{marketing_version} (repo: #{repo_version}, live: #{live_version || "none"})")
+  marketing_version
+end
+
 platform :ios do
   before_all do
     # CI에서 임시 keychain을 만들어 match가 인증서를 안전하게 설치하도록 한다.
@@ -80,8 +105,9 @@ platform :ios do
     # 빌드 번호는 TestFlight에 이미 올라간 최신 번호 + 1로 자동 계산한다.
     # App Store는 새 빌드가 항상 이전보다 커야 하므로 고정값/run number는 충돌할 수 있다.
     build_number = next_build_number(api_key)
+    marketing_version = next_beta_marketing_version(api_key)
 
-    build_appstore_ipa(build_number: build_number)
+    build_appstore_ipa(build_number: build_number, marketing_version: marketing_version)
 
     upload_to_testflight(
       api_key: api_key,
