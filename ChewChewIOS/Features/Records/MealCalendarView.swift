@@ -4,9 +4,9 @@ import SwiftUI
 /// 생성했을 때 발생할 수 있는 미세한 차이를 차단. TrackingView 인라인 캘린더에서도
 /// 같은 instance로 filter해야 dot/리스트 일관성이 깨지지 않아 internal 노출.
 let mealCalendarCalendar: Calendar = {
-    var c = Calendar(identifier: .gregorian)
-    c.locale = Locale(identifier: "ko_KR")
-    return c
+    var calendar = Calendar(identifier: .gregorian)
+    calendar.locale = Locale(identifier: "ko_KR")
+    return calendar
 }()
 
 // MARK: - MealCalendarGrid (인라인 임베드 + 풀스크린 sheet 양쪽에서 재사용)
@@ -17,16 +17,8 @@ let mealCalendarCalendar: Calendar = {
 /// - `onTapDay: 클로저` → 셀을 Button으로 감싸 closure 호출 (인라인 모드, NavigationStack
 ///   바깥에서 사용).
 struct MealCalendarGrid: View {
-    @Environment(AppState.self) private var state
-
-    @Binding var displayedMonth: Date
-    @Binding var monthSessions: [ChewingSessionDTO]
-    var onTapSession: ((ChewingSessionDTO) -> Void)? = nil
-
-    /// 가장 오래된 세션이 있는 달 — 좌측 chevron 비활성 기준. 첫 로딩 시 1회 계산.
-    @State private var oldestSessionMonth: Date?
-    /// 인라인으로 펼친 날짜 — 한 번 더 탭하면 접힌다.
-    @State private var selectedDate: Date?
+    var store: RecordsStore
+    var onTapSession: ((ChewingSessionDTO) -> Void)?
 
     private var calendar: Calendar { mealCalendarCalendar }
 
@@ -41,10 +33,10 @@ struct MealCalendarGrid: View {
                 .padding(.horizontal, AppSpacing.three)
                 .padding(.top, AppSpacing.oneHalf)
                 .padding(.bottom, AppSpacing.three)
-            if let date = selectedDate {
+            if let date = store.selectedDate {
                 DayInlineSection(
                     date: date,
-                    sessions: sessions(on: date),
+                    sessions: store.sessions(on: date),
                     onTapSession: onTapSession
                 )
                 .padding(.horizontal, AppSpacing.four)
@@ -52,21 +44,13 @@ struct MealCalendarGrid: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .animation(.spring(response: AppMotion.springResponse, dampingFraction: AppMotion.springDampingFraction), value: selectedDate)
+        .animation(
+            .spring(response: AppMotion.springResponse, dampingFraction: AppMotion.springDampingFraction),
+            value: store.selectedDate
+        )
         .task {
-            await loadOldestSessionMonthIfNeeded()
-            await reload()
+            await store.loadInitial()
         }
-        .onChange(of: displayedMonth) { _, _ in
-            Task {
-                selectedDate = nil
-                await reload()
-            }
-        }
-    }
-
-    private func sessions(on date: Date) -> [ChewingSessionDTO] {
-        monthSessions.filter { calendar.isDate($0.startedAt, inSameDayAs: date) }
     }
 
     private var monthHeader: some View {
@@ -133,23 +117,19 @@ struct MealCalendarGrid: View {
     private func dayCell(date: Date) -> some View {
         // LazyVGrid 안 NavigationLink/Button 회귀를 피해 onTapGesture + contentShape 패턴.
         // 같은 날 다시 탭하면 접고, 다른 날 탭하면 그 날로 교체한다.
-        let count = sessionsCount(on: date)
+        let count = store.sessionsCount(on: date)
         return dayCellContent(date: date)
             .contentShape(Rectangle())
             .onTapGesture {
                 guard count > 0 else { return }
-                if let current = selectedDate, calendar.isDate(current, inSameDayAs: date) {
-                    selectedDate = nil
-                } else {
-                    selectedDate = date
-                }
+                store.selectDate(date)
             }
     }
 
     private func dayCellContent(date: Date) -> some View {
-        let count = sessionsCount(on: date)
+        let count = store.sessionsCount(on: date)
         let isToday = calendar.isDateInToday(date)
-        let isSelected = selectedDate.map { calendar.isDate($0, inSameDayAs: date) } ?? false
+        let isSelected = store.selectedDate.map { calendar.isDate($0, inSameDayAs: date) } ?? false
         return VStack(spacing: 3) {
             Text("\(calendar.component(.day, from: date))")
                 .font(.appFont(isToday || isSelected ? .heavyCaption : .semiboldCaption))
@@ -169,7 +149,7 @@ struct MealCalendarGrid: View {
 
     private func cellBackground(isToday: Bool, isSelected: Bool) -> Color {
         if isSelected { return Color.textActionStrong }
-        if isToday    { return Color.borderSelected.opacity(0.7) }
+        if isToday { return Color.borderSelected.opacity(0.7) }
         return Color.bgSurface.opacity(0.45)
     }
 
@@ -182,66 +162,35 @@ struct MealCalendarGrid: View {
     }
 
     private var monthTitle: String {
-        return KoDate.string(displayedMonth, "yyyy년 M월")
+        return KoDate.string(store.displayedMonth, "yyyy년 M월")
     }
 
     private var monthDays: [Date?] {
         guard
-            let monthInterval = calendar.dateInterval(of: .month, for: displayedMonth)
+            let monthInterval = calendar.dateInterval(of: .month, for: store.displayedMonth)
         else { return [] }
         let firstWeekday = calendar.component(.weekday, from: monthInterval.start)
         let leadingEmpty = firstWeekday - 1
-        let daysInMonth = calendar.range(of: .day, in: .month, for: displayedMonth)?.count ?? 0
+        let daysInMonth = calendar.range(of: .day, in: .month, for: store.displayedMonth)?.count ?? 0
 
         var cells: [Date?] = Array(repeating: nil, count: leadingEmpty)
-        for d in 0..<daysInMonth {
-            cells.append(calendar.date(byAdding: .day, value: d, to: monthInterval.start))
+        for dayOffset in 0..<daysInMonth {
+            cells.append(calendar.date(byAdding: .day, value: dayOffset, to: monthInterval.start))
         }
         while cells.count < 42 { cells.append(nil) }
         return cells
     }
 
-    private func sessionsCount(on date: Date) -> Int {
-        monthSessions.filter { calendar.isDate($0.startedAt, inSameDayAs: date) }.count
-    }
-
     private func goToMonth(_ delta: Int) {
-        guard let next = calendar.date(byAdding: .month, value: delta, to: displayedMonth) else { return }
-        if delta < 0, let oldest = oldestSessionMonth, next < oldest { return }
-        displayedMonth = next
+        Task {
+            await store.moveMonth(delta: delta)
+        }
     }
 
     /// 현재 표시 달이 가장 오래된 기록 달과 같은지. nil(미로딩)이면 false.
     private var isAtOldestMonth: Bool {
-        guard let oldest = oldestSessionMonth else { return false }
-        return calendar.isDate(displayedMonth, equalTo: oldest, toGranularity: .month)
-    }
-
-    /// 가장 오래된 세션이 있는 달을 1회 fetch해 캐시. 빠른 응답을 위해 month 단위로만 truncate.
-    private func loadOldestSessionMonthIfNeeded() async {
-        guard oldestSessionMonth == nil else { return }
-        let deviceId = DeviceIdentity.shared
-        guard let rows = try? await state.remoteStore.fetchChewingSessions(
-            deviceId: deviceId,
-            since: .distantPast
-        ) else { return }
-        guard let earliest = rows.map(\.startedAt).min() else { return }
-        oldestSessionMonth = calendar.dateInterval(of: .month, for: earliest)?.start
-    }
-
-    @MainActor
-    private func reload() async {
-        guard let monthInterval = calendar.dateInterval(of: .month, for: displayedMonth) else {
-            monthSessions = []
-            return
-        }
-        let deviceId = DeviceIdentity.shared
-        let rows = (try? await state.remoteStore.fetchChewingSessions(
-            deviceId: deviceId,
-            since: monthInterval.start,
-            until: monthInterval.end
-        )) ?? []
-        monthSessions = rows.filter { ReportCardModel.from($0) != nil }
+        guard let oldest = store.oldestSessionMonth else { return false }
+        return calendar.isDate(store.displayedMonth, equalTo: oldest, toGranularity: .month)
     }
 }
 
@@ -250,24 +199,29 @@ struct MealCalendarGrid: View {
 struct MealCalendarView: View {
     @Environment(AppState.self) private var state
 
-    @State private var displayedMonth: Date = .now
-    @State private var monthSessions: [ChewingSessionDTO] = []
     @State private var showDeleteAllConfirm: Bool = false
     @State private var path = NavigationPath()
 
-    private var calendar: Calendar { mealCalendarCalendar }
+    private var records: RecordsStore { state.records }
 
     var body: some View {
         NavigationStack(path: $path) {
             ScrollView {
                 MealCalendarGrid(
-                    displayedMonth: $displayedMonth,
-                    monthSessions: $monthSessions,
+                    store: records,
                     onTapSession: { session in
                         path.append(session.id)
                     }
                 )
                 .padding(AppSpacing.page)
+                if let errorMessage = records.errorMessage {
+                    Text(errorMessage)
+                        .font(.appFont(.semiboldLabel))
+                        .foregroundStyle(Color.blush500)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.horizontal, AppSpacing.page)
+                        .padding(.bottom, AppSpacing.page)
+                }
             }
             .background(Color.bgPage.ignoresSafeArea())
             .navigationTitle("식사 캘린더")
@@ -292,14 +246,13 @@ struct MealCalendarView: View {
                 message: "이 기기의 모든 식사가 사라져요.\n도토리·꾸미기는 그대로예요.",
                 primary: .init("전체 삭제", role: .destructive) {
                     Task {
-                        await state.deleteAllChewingSessions()
-                        monthSessions = []
+                        await records.deleteAllSessions()
                     }
                 },
                 secondary: .init("취소", role: .cancel) { }
             )
             .navigationDestination(for: UUID.self) { sessionId in
-                if let session = monthSessions.first(where: { $0.id == sessionId }) {
+                if let session = records.monthSessions.first(where: { $0.id == sessionId }) {
                     SessionReportDetailView(dto: session)
                 }
             }
@@ -380,8 +333,8 @@ struct DaySessionsView: View {
         .padding(.vertical, 14)
     }
 
-    private func formatTime(_ d: Date) -> String {
-        return KoDate.clockTime(d)
+    private func formatTime(_ date: Date) -> String {
+        return KoDate.clockTime(date)
     }
 
     private func formatDuration(_ seconds: Double) -> String {
@@ -442,7 +395,6 @@ struct SessionReportDetailView: View {
         }
     }
 }
-
 
 // MARK: - Day inline expansion (calendar 밑에 열리는 세션 리스트)
 
@@ -522,17 +474,17 @@ private struct DayInlineSection: View {
         }
     }
 
-    private func formatTime12(_ d: Date) -> String {
-        return KoDate.clockTime(d)
+    private func formatTime12(_ date: Date) -> String {
+        return KoDate.clockTime(date)
     }
 
-    private func formatDuration(_ secs: Double) -> String {
-        let total = Int(secs.rounded())
-        let m = total / 60
-        let s = total % 60
-        if m == 0 { return "\(s)초" }
-        if s == 0 { return "\(m)분" }
-        return "\(m)분 \(s)초"
+    private func formatDuration(_ seconds: Double) -> String {
+        let total = Int(seconds.rounded())
+        let mins = total / 60
+        let secs = total % 60
+        if mins == 0 { return "\(secs)초" }
+        if secs == 0 { return "\(mins)분" }
+        return "\(mins)분 \(secs)초"
     }
 }
 
