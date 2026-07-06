@@ -21,13 +21,13 @@ struct IMUWaveformView: View {
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             ),
-            in: RoundedRectangle(cornerRadius: 14)
+            in: RoundedRectangle(cornerRadius: AppRadius.element)
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.white.opacity(0.8), lineWidth: 1)
+            RoundedRectangle(cornerRadius: AppRadius.element)
+                .stroke(Color.bgSurface.opacity(0.8), lineWidth: AppSize.border)
         }
-        .animation(.linear(duration: 0.07), value: samples)
+        .animation(.linear(duration: AppMotion.durationSignal), value: samples)
     }
 
     private func drawBars(_ context: GraphicsContext, size: CGSize) {
@@ -59,7 +59,7 @@ struct IMUWaveformView: View {
             bars,
             with: .linearGradient(
                 Gradient(colors: isLive
-                    ? [Color.acorn300, Color.acorn500, Color.acorn700]
+                    ? Color.dataChewGradient
                     : [Color.textTertiary.opacity(0.45), Color.textTertiary.opacity(0.3)]),
                 startPoint: CGPoint(x: 0, y: midY),
                 endPoint: CGPoint(x: size.width, y: midY)
@@ -86,7 +86,11 @@ struct IMUWaveformView: View {
         },
         isLive: true
     )
-    .frame(width: 320, height: 64)
+    .frame(width: AppSize.dialogMaxWidth, height: Metrics.height)
     .padding()
     .background(Color.pageBackground)
+}
+
+private enum Metrics {
+    static let height = AppSize.visualMedium
 }

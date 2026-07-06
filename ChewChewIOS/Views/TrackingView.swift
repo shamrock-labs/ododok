@@ -10,18 +10,18 @@ struct TrackingView: View {
     private var isEating: Bool { state.isEating }
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: AppSpacing.gap) {
             // 라이브 IMU 진단 카드(AirPods 수신 상태 + FG 샘플 카운터)는 UI에서 제외(로직 유지).
             ReportHubView()
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 18)
-        .padding(.bottom, 28)
+        .padding(.horizontal, AppSpacing.page)
+        .padding(.top, AppSpacing.gap)
+        .padding(.bottom, AppSpacing.four)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .overlay(alignment: .bottom) {
             if let fb = feedback {
                 feedbackPopup(fb)
-                    .padding(.bottom, 110)
+                    .padding(.bottom, AppSpacing.overlayBottom)
                     .transition(.scale.combined(with: .opacity))
             }
         }
@@ -34,28 +34,28 @@ struct TrackingView: View {
     // MARK: AirPods + IMU diagnostics (식사 중에만)
 
     private var airpodsCard: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: AppSpacing.cell) {
             ZStack(alignment: .topTrailing) {
                 Image(systemName: "airpodspro")
-                    .font(.appFont(.regular, size: 28))
-                    .foregroundStyle(Color.sage600)
-                    .frame(width: 56, height: 56)
-                    .background(Color.sage100, in: RoundedRectangle(cornerRadius: 16))
+                    .font(.appFont(.regularEmojiMedium))
+                    .foregroundStyle(Color.statusSuccess)
+                    .frame(width: AppSize.iconContainerXL, height: AppSize.iconContainerXL)
+                    .background(Color.statusSuccessBorder, in: RoundedRectangle(cornerRadius: AppRadius.elementLarge))
 
                 Circle()
-                    .fill(Color.sage500)
-                    .frame(width: 12, height: 12)
+                    .fill(Color.statusSuccess)
+                    .frame(width: AppSize.statusDot, height: AppSize.statusDot)
                     .overlay(Circle().stroke(.white, lineWidth: 2))
                     .offset(x: 4, y: -4)
             }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text("AirPods 센서")
-                    .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.textSecondary)
+                    .font(.appFont(.semiboldCallout))
+                    .foregroundStyle(Color.textMuted)
                 Text(state.imuWaveformStatusText)
-                    .font(.appFont(.bold, size: 15))
-                    .foregroundStyle(Color.textPrimary)
+                    .font(.appFont(.boldBody))
+                    .foregroundStyle(Color.textDefault)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
             }
@@ -64,23 +64,23 @@ struct TrackingView: View {
 
             VStack(alignment: .trailing, spacing: 2) {
                 Text("모드")
-                    .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.textSecondary)
+                    .font(.appFont(.semiboldCallout))
+                    .foregroundStyle(Color.textMuted)
                 Text(state.imuWaveformSource.usesRealMotion ? "LIVE" : "MVP")
-                    .font(.appFont(.bold, size: 13))
-                    .foregroundStyle(state.imuWaveformSource.usesRealMotion ? Color.sage600 : Color.textTertiary)
+                    .font(.appFont(.boldCallout))
+                    .foregroundStyle(state.imuWaveformSource.usesRealMotion ? Color.statusSuccess : Color.textSubtle)
             }
         }
-        .padding(16)
-        .background(Color.surface, in: RoundedRectangle(cornerRadius: 18))
-        .neuoShadow(.sm)
+        .padding(AppSpacing.cardContent)
+        .background(Color.bgCard, in: RoundedRectangle(cornerRadius: AppRadius.container))
+        .appElevation(.flat)
     }
 
     private var imuDebugPanel: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: AppSpacing.oneHalf) {
             Circle()
-                .fill(state.isInForeground ? Color.sage500 : Color.blush400)
-                .frame(width: 6, height: 6)
+                .fill(state.isInForeground ? Color.statusSuccess : Color.statusDanger)
+                .frame(width: AppSize.statusDotTiny, height: AppSize.statusDotTiny)
             Text(state.isInForeground ? "FG" : "BG")
                 .fontWeight(.semibold)
             dotSeparator
@@ -95,17 +95,17 @@ struct TrackingView: View {
             }
             Spacer(minLength: 0)
         }
-        .font(.appFont(.semibold, size: 13))
-        .foregroundStyle(Color.textSecondary)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .font(.appFont(.semiboldCallout))
+        .foregroundStyle(Color.textMuted)
+        .padding(.horizontal, AppSpacing.cell)
+        .padding(.vertical, AppSpacing.two)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.55), in: Capsule())
         .accessibilityLabel(imuDebugAccessibilityLabel)
     }
 
     private var dotSeparator: some View {
-        Text("·").foregroundStyle(Color.textTertiary.opacity(0.6))
+        Text("·").foregroundStyle(Color.textSubtle.opacity(0.6))
     }
 
     private var imuDebugAccessibilityLabel: String {
@@ -119,23 +119,23 @@ struct TrackingView: View {
     // MARK: Feedback popup
 
     private func feedbackPopup(_ fb: FeedbackLine) -> some View {
-        HStack(spacing: 10) {
-            Text(fb.emoji).font(.appFont(.regular, size: 20))
+        HStack(spacing: AppSpacing.inner) {
+            Text(fb.emoji).font(.appFont(.regularTitle))
             Text(fb.text)
-                .font(.appFont(.bold, size: 14))
-                .foregroundStyle(.white)
+                .font(.appFont(.boldLabel))
+                .foregroundStyle(Color.textActionInverse)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
-        .background(bg(for: fb.kind), in: RoundedRectangle(cornerRadius: 18))
+        .padding(.horizontal, AppSpacing.five)
+        .padding(.vertical, AppSpacing.three)
+        .background(bg(for: fb.kind), in: RoundedRectangle(cornerRadius: AppRadius.container))
         .softShadow(.lg)
     }
 
     private func bg(for kind: FeedbackLine.Kind) -> Color {
         switch kind {
-        case .good:  Color.sage500
-        case .warn:  Color.blush400
-        case .cheer: Color.butter500
+        case .good:  Color.statusSuccess
+        case .warn:  Color.statusDanger
+        case .cheer: Color.statusWarning
         }
     }
 

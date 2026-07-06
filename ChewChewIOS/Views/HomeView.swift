@@ -17,15 +17,15 @@ struct HomeView: View {
     @State private var nowTick = Date()
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: AppSpacing.cardH) {
             topBar
             squirrelCard
                 .frame(maxHeight: .infinity)
             mealToggleButton
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 18)
-        .padding(.bottom, 18)
+        .padding(.horizontal, AppSpacing.page)
+        .padding(.top, AppSpacing.verticalLoose)
+        .padding(.bottom, AppSpacing.verticalLoose)
         .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { newDate in
             nowTick = newDate
         }
@@ -118,8 +118,8 @@ struct HomeView: View {
     private var topBar: some View {
         AppHeaderView(eyebrow: todayLabel, title: "오도독", subtitle: homeHeaderSubtitle) {
             HStack(spacing: 7) {
-                HeaderMetricPill(icon: .flame, value: "\(state.currentStreak)", tint: .butter600)
-                HeaderMetricPill(icon: .acorn, value: state.points.koLocale, tint: .acorn700)
+                HeaderMetricPill(icon: .flame, value: "\(state.currentStreak)", tint: .statusWarning)
+                HeaderMetricPill(icon: .acorn, value: state.points.koLocale, tint: .rewardAcorn)
                 HeaderIconButton(systemName: "bell", showsBadge: true) {
                     showMealReminderSettings = true
                 }
@@ -149,13 +149,12 @@ struct HomeView: View {
     private func circleButton(_ symbol: String, action: @escaping () -> Void = {}) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
-                .font(.appFont(.medium, size: 18))
-                .foregroundStyle(Color.textSecondary)
-                .frame(width: 46, height: 46)
-                .background(Color.surface, in: Circle())
+                .font(.appFont(.mediumHeadline))
+                .foregroundStyle(Color.textMuted)
+                .frame(width: Metrics.circleButton, height: Metrics.circleButton)
+                .background(Color.bgSurface, in: Circle())
         }
         .buttonStyle(.plain)
-        .neuoShadow(.sm)
     }
 
     // MARK: Streak + Points
@@ -165,19 +164,19 @@ struct HomeView: View {
             statCard(
                 label: state.freezeInventory > 0 ? "연속 출석 · 🛡️\(state.freezeInventory)" : "연속 출석",
                 value: "\(state.currentStreak)일째",
-                iconBG: Color.blush100
+                iconBG: Color.statusDangerMuted
             ) {
-                OpenIconView(icon: .flame, color: .blush500, lineWidth: 2.2)
-                    .frame(width: 24, height: 24)
+                OpenIconView(icon: .flame, color: .statusDanger, lineWidth: 2.2)
+                    .frame(width: Metrics.statIcon, height: Metrics.statIcon)
             }
 
             statCard(
                 label: "보유 도토리",
                 value: state.points.koLocale,
-                iconBG: Color.butter100
+                iconBG: Color.statusWarningMuted
             ) {
-                OpenIconView(icon: .acorn, color: .acorn700, lineWidth: 2.1)
-                    .frame(width: 24, height: 24)
+                OpenIconView(icon: .acorn, color: .rewardAcorn, lineWidth: 2.1)
+                    .frame(width: Metrics.statIcon, height: Metrics.statIcon)
             }
         }
     }
@@ -188,20 +187,20 @@ struct HomeView: View {
         iconBG: Color,
         @ViewBuilder icon: () -> I
     ) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: AppSpacing.inner) {
             iconBG
-                .frame(width: 42, height: 42)
-                .clipShape(RoundedRectangle(cornerRadius: 13))
+                .frame(width: Metrics.statIconBg, height: Metrics.statIconBg)
+                .clipShape(RoundedRectangle(cornerRadius: Metrics.statIconRadius))
                 .overlay { icon() }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
-                    .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.textSecondary)
+                    .font(.appFont(.semiboldCallout))
+                    .foregroundStyle(Color.textMuted)
                     .lineLimit(1)
                 Text(value)
-                    .font(.appFont(.bold, size: 17))
-                    .foregroundStyle(Color.textPrimary)
+                    .font(.appFont(.boldHeadline))
+                    .foregroundStyle(Color.textDefault)
                     .lineLimit(1)
                     .minimumScaleFactor(0.6)
             }
@@ -209,8 +208,8 @@ struct HomeView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .background(Color.surface, in: RoundedRectangle(cornerRadius: 18))
-        .neuoShadow(.sm)
+        .background(Color.bgCard, in: RoundedRectangle(cornerRadius: AppRadius.container))
+        .appElevation(.flat)
     }
 
     // MARK: Squirrel card + IMU waveform
@@ -222,15 +221,15 @@ struct HomeView: View {
             ZStack {
                 if !state.isEating {
                     Circle()
-                        .stroke(Color.hairline, lineWidth: 5)
-                        .frame(width: 220, height: 220)
+                        .stroke(Color.borderDefault, lineWidth: 5)
+                        .frame(width: Metrics.progressRing, height: Metrics.progressRing)
                     Circle()
                         .trim(from: 0, to: state.todayProgress)
                         .stroke(
-                            Color.acorn500,
+                            Color.dataChew,
                             style: StrokeStyle(lineWidth: 5, lineCap: .round)
                         )
-                        .frame(width: 220, height: 220)
+                        .frame(width: Metrics.progressRing, height: Metrics.progressRing)
                         .rotationEffect(.degrees(-90))
                 }
                 SquirrelView(
@@ -247,16 +246,16 @@ struct HomeView: View {
                 )
                 .scaleEffect(1.5)
             }
-            .frame(height: 246)
+            .frame(height: Metrics.squirrelAreaHeight)
 
             VStack(spacing: 4) {
                 Text(state.isEating ? "맛있게 먹는 중이에요" : state.status.title)
-                    .font(.appFont(.bold, size: 19))
-                    .foregroundStyle(Color.textPrimary)
+                    .font(.appFont(.boldTitleCompact))
+                    .foregroundStyle(Color.textDefault)
                 if !state.isEating {
                     Text("오늘 \(state.todayRealChewCount.koLocale) / \(Constants.dailyGoal.koLocale)회")
-                        .font(.appFont(.semibold, size: 13))
-                        .foregroundStyle(Color.textSecondary)
+                        .font(.appFont(.semiboldCallout))
+                        .foregroundStyle(Color.textMuted)
                         .monospacedDigit()
                 }
             }
@@ -266,19 +265,19 @@ struct HomeView: View {
 
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 16)
+        .padding(.horizontal, AppSpacing.four)
+        .padding(.vertical, AppSpacing.four)
         .frame(maxWidth: .infinity)
-        .frame(minHeight: 390)
-        .background(Color.surface, in: RoundedRectangle(cornerRadius: 26))
-        .softShadow(.base)
+        .frame(minHeight: Metrics.squirrelCardMinHeight)
+        .background(Color.bgCard, in: RoundedRectangle(cornerRadius: Metrics.squirrelCardRadius))
+        .appElevation(.flat)
     }
 
     private var imuWaveformCard: some View {
         IMUWaveformView(samples: state.imuWaveformSamples, isLive: state.isIMUWaveformLive)
-            .frame(height: 64)
-            .padding(12)
-            .background(Color.white.opacity(0.72), in: RoundedRectangle(cornerRadius: 16))
+            .frame(height: Metrics.imuWaveformHeight)
+            .padding(AppSpacing.gap)
+            .background(Color.controlOnSurface, in: RoundedRectangle(cornerRadius: AppRadius.elementLarge))
     }
 
     // MARK: Meal toggle button
@@ -287,46 +286,51 @@ struct HomeView: View {
         Button {
             handleMealToggle()
         } label: {
-            HStack(spacing: 12) {
+            HStack(spacing: AppSpacing.gap) {
                 Image(systemName: state.isEating ? "stop.fill" : "fork.knife")
-                    .font(.appFont(.bold, size: 22))
+                    .font(.appFont(.boldTitleLarge))
                 Text(state.isEating ? "식사 종료" : "식사 시작")
-                    .font(.appFont(.bold, size: 20))
+                    .font(.appFont(.boldTitle))
             }
-            .foregroundStyle(.white)
+            .foregroundStyle(Color.controlOnAccent)
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 17)
+            .padding(.vertical, AppSpacing.actionV)
             .background(
                 LinearGradient(
                     colors: state.isEating
-                        ? [Color.blush400, Color.blush500]
-                        : [Color.acorn400, Color.acorn600],
+                        ? Color.mealStopGradient
+                        : Color.mealStartGradient,
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 ),
-                in: RoundedRectangle(cornerRadius: 20)
+                in: RoundedRectangle(cornerRadius: Metrics.mealButtonRadius)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: 20)
-                    .strokeBorder(Color.white.opacity(state.startButtonHighlighted ? 0.9 : 0), lineWidth: 3)
+                RoundedRectangle(cornerRadius: Metrics.mealButtonRadius)
+                    .strokeBorder(Color.controlOnAccent.opacity(state.startButtonHighlighted ? 0.9 : 0), lineWidth: Metrics.mealButtonHighlightBorder)
             )
         }
         .accessibilityIdentifier("MealToggle")
         .accessibilityLabel(state.isEating ? "식사 종료" : "식사 시작")
         .buttonStyle(PressableButtonStyle())
-        .softShadow(.pill)
         .scaleEffect(state.startButtonHighlighted ? 1.04 : 1.0)
-        .shadow(color: Color.acorn400.opacity(state.startButtonHighlighted ? 0.55 : 0), radius: 14, x: 0, y: 4)
-        .animation(.easeInOut(duration: 0.22), value: state.isEating)
-        .animation(.spring(response: 0.35, dampingFraction: 0.6), value: state.startButtonHighlighted)
+        .shadow(color: Color.highlightShadow.opacity(state.startButtonHighlighted ? 0.55 : 0), radius: 14, x: 0, y: 4)
+        .animation(.easeInOut(duration: AppMotion.durationStateChange), value: state.isEating)
+        .animation(.spring(response: AppMotion.springPlayfulResponse, dampingFraction: AppMotion.springPlayfulDamping), value: state.startButtonHighlighted)
     }
 }
 
-struct PressableButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
-    }
+private enum Metrics {
+    static let circleButton = AppSize.controlXXLarge
+    static let statIcon = AppSize.iconXXLarge
+    static let statIconBg: CGFloat = 42
+    static let statIconRadius: CGFloat = 13
+    static let progressRing: CGFloat = 220
+    static let squirrelAreaHeight: CGFloat = 246
+    static let squirrelCardMinHeight: CGFloat = 390
+    static let squirrelCardRadius: CGFloat = 26
+    static let imuWaveformHeight = AppSize.visualMedium
+    static let mealButtonRadius = AppSize.controlTiny
+    static let mealButtonHighlightBorder = AppSize.indicatorTiny
 }
 
 private extension HomeView {

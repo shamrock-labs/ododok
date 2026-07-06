@@ -10,29 +10,33 @@ struct TabBarView: View {
                 Button {
                     selection = tab
                 } label: {
-                    VStack(spacing: 3) {
+                    VStack(spacing: AppSpacing.one) {
                         Image(systemName: tab.systemImage)
-                            .font(.system(size: 22, weight: active ? .bold : .regular))
-                            .foregroundStyle(active ? Color.acorn600 : Color.textTertiary)
+                            .font(.appFont(active ? .bold : .regular, size: Metrics.icon))
+                            .foregroundStyle(active ? Color.textActionStrong : Color.textSubtle)
                         Text(tab.label)
-                            .font(.appFont(.bold, size: 10))
-                            .foregroundStyle(active ? Color.acorn700 : Color.textTertiary)
+                            .font(.appFont(.boldCaption))
+                            .foregroundStyle(active ? Color.textAction : Color.textSubtle)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 6)
+                    .padding(.vertical, AppSpacing.two)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
         }
-        .padding(.top, 8)
-        .padding(.bottom, 8)
-        .padding(.horizontal, 16)
+        .padding(.top, AppSpacing.gapTight)
+        .padding(.bottom, AppSpacing.gapTight)
+        .padding(.horizontal, AppSpacing.four)
         .background(.ultraThinMaterial)
         .overlay(alignment: .top) {
             Rectangle()
-                .fill(Color.acorn100.opacity(0.6))
-                .frame(height: 1)
+                .fill(Color.borderSelected.opacity(0.6))
+                .frame(height: AppSize.border)
         }
     }
+}
+
+private enum Metrics {
+    static let icon = AppSize.iconXLarge
 }

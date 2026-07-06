@@ -22,54 +22,53 @@ struct AppDialog: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
+        VStack(spacing: AppSpacing.none) {
             header
             divider
             buttonRow
         }
-        .frame(maxWidth: 320)
-        .background(Color.surface, in: RoundedRectangle(cornerRadius: 14))
-        .shadow(color: .black.opacity(0.18), radius: 24, y: 8)
+        .frame(maxWidth: AppSize.dialogMaxWidth)
+        .background(Color.bgPopover, in: RoundedRectangle(cornerRadius: AppRadius.element))
+        .appElevation(.floating)
     }
 
     private var header: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: AppSpacing.oneHalf) {
             Text(title)
-                .font(.appFont(.bold, size: 17))
-                .foregroundStyle(Color.textPrimary)
+                .font(.appFont(.dialogTitle))
+                .foregroundStyle(Color.textDefault)
                 .multilineTextAlignment(.center)
                 .lineSpacing(2)
             if let message {
                 Text(message)
-                    .font(.appFont(.semibold, size: 15))
-                    .foregroundStyle(Color.textSecondary)
+                    .font(.appFont(.dialogMessage))
+                    .foregroundStyle(Color.textMuted)
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
             }
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 20)
+        .padding(.horizontal, AppSpacing.dialogH)
+        .padding(.vertical, AppSpacing.dialogV)
     }
 
     private var divider: some View {
-        Color.hairline.frame(height: 0.5)
+        Color.borderDefault.frame(height: AppSize.hairline)
     }
 
     @ViewBuilder
     private var buttonRow: some View {
         Group {
             if let secondary {
-                HStack(spacing: 0) {
+                HStack(spacing: AppSpacing.none) {
                     button(secondary, emphasis: .secondary)
-                    Color.hairline.frame(width: 0.5)
+                    Color.borderDefault.frame(width: AppSize.hairline)
                     button(primary, emphasis: .primary)
                 }
             } else {
                 button(primary, emphasis: .primary)
             }
         }
-        .frame(height: 44)
-        .padding(.bottom, 8)
+        .frame(height: AppSize.dialogActionHeight)
     }
 
     private enum Emphasis { case primary, secondary }
@@ -80,7 +79,7 @@ struct AppDialog: View {
             onDismiss()
         } label: {
             Text(action.label)
-                .font(.appFont(emphasis == .primary ? .bold : .medium, size: 16))
+                .font(.appFont(emphasis == .primary ? .dialogActionStrong : .dialogAction))
                 .foregroundStyle(color(for: action.role))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
@@ -90,9 +89,9 @@ struct AppDialog: View {
 
     private func color(for role: ButtonRole?) -> Color {
         switch role {
-        case .destructive: Color.blush500
-        case .cancel:      Color.textSecondary
-        default:           Color.acorn700
+        case .destructive: Color.textDanger
+        case .cancel:      Color.textMuted
+        default:           Color.textAction
         }
     }
 }
@@ -109,7 +108,7 @@ private struct AppDialogOverlay: ViewModifier {
         ZStack {
             content
             if isPresented {
-                Color.black.opacity(0.32)
+                Color.bgOverlayScrim
                     .ignoresSafeArea()
                     .transition(.opacity)
                     .onTapGesture {
@@ -124,11 +123,11 @@ private struct AppDialogOverlay: ViewModifier {
                     secondary: secondary,
                     onDismiss: { isPresented = false }
                 )
-                .padding(.horizontal, 40)
+                .padding(.horizontal, AppSpacing.overlayH)
                 .transition(.scale(scale: 0.96).combined(with: .opacity))
             }
         }
-        .animation(.spring(response: 0.28, dampingFraction: 0.88), value: isPresented)
+        .animation(.spring(response: AppMotion.springFastResponse, dampingFraction: AppMotion.springDampingFraction), value: isPresented)
     }
 }
 
@@ -153,7 +152,7 @@ extension View {
 #Preview("Destructive") {
     ZStack {
         Color.pageBackground.ignoresSafeArea()
-        Color.black.opacity(0.32).ignoresSafeArea()
+        Color.bgOverlayScrim.ignoresSafeArea()
         AppDialog(
             title: "계정을 삭제할까요?",
             message: "오도독 계정과 씹기 기록, 도토리, 스트릭이 모두 삭제돼요. 이 작업은 되돌릴 수 없어요.",
@@ -161,14 +160,14 @@ extension View {
             secondary: .init("취소", role: .cancel) {},
             onDismiss: {}
         )
-        .padding(.horizontal, 40)
+        .padding(.horizontal, AppSpacing.overlayH)
     }
 }
 
 #Preview("Single button") {
     ZStack {
         Color.pageBackground.ignoresSafeArea()
-        Color.black.opacity(0.32).ignoresSafeArea()
+        Color.bgOverlayScrim.ignoresSafeArea()
         AppDialog(
             title: "AirPods를 연결해 주세요",
             message: "씹기 분석을 위해 AirPods Pro · AirPods 3/4세대 · AirPods Max 중 하나를 연결하고 착용한 뒤 다시 시도해 주세요.",
@@ -176,6 +175,6 @@ extension View {
             secondary: nil,
             onDismiss: {}
         )
-        .padding(.horizontal, 40)
+        .padding(.horizontal, AppSpacing.overlayH)
     }
 }

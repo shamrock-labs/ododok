@@ -46,6 +46,13 @@ enum LoginProviderOption: CaseIterable {
     }
 }
 
+private enum Metrics {
+    static let socialIcon = AppSize.iconXLarge
+    static let brandIcon = AppSize.iconSmall
+    static let kakaoIcon: CGFloat = 15
+    static let buttonHeight: CGFloat = 52
+}
+
 /// 소셜 로그인 화면. Apple/Google/Kakao 중 하나로 로그인 → 서버 JWT 발급 → onLoggedIn().
 /// 일반적인 앱의 소셜 로그인 UI(브랜드 컬러 풀폭 버튼)를 따른다. 온보딩 앞 게이트로 표시.
 struct LoginView: View {
@@ -64,11 +71,11 @@ struct LoginView: View {
             Spacer()
             VStack(spacing: 14) {
                 Text("오도독")
-                    .font(.system(size: 40, weight: .heavy))
-                    .foregroundStyle(Color.tintInteractive)
+                    .font(.appFont(.loginWordmark))
+                    .foregroundStyle(Color.textActionStrong)
                 Text("잘 씹는 습관을 만드는 가장 쉬운 방법")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(.appFont(.semiboldLabel))
+                    .foregroundStyle(Color.textMuted)
             }
             Spacer()
 
@@ -80,20 +87,20 @@ struct LoginView: View {
 
             if let errorMessage {
                 Text(errorMessage)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
+                    .font(.appFont(.semiboldLabel))
+                    .foregroundStyle(Color.textDanger)
                     .multilineTextAlignment(.center)
-                    .padding(.top, 12)
+                    .padding(.top, AppSpacing.gap)
             }
 
             Text("로그인하면 서비스 이용약관 및 개인정보처리방침에 동의하게 돼요.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+                .font(.appFont(.semiboldLabel))
+                .foregroundStyle(Color.textMuted)
                 .multilineTextAlignment(.center)
-                .padding(.top, 20)
+                .padding(.top, AppSpacing.sectionGap)
         }
-        .padding(.horizontal, 24)
-        .padding(.bottom, 28)
+        .padding(.horizontal, AppSpacing.six)
+        .padding(.bottom, AppSpacing.seven)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.pageBackground.ignoresSafeArea())
         .disabled(isLoading)
@@ -115,21 +122,21 @@ struct LoginView: View {
             Task { await signIn(with: option.makeProvider()) }
         } label: {
             ZStack {
-                Text(option.title).font(.system(size: 16, weight: .semibold))
+                Text(option.title).font(.appFont(.dialogAction))
                 HStack {
-                    brandIcon(option).frame(width: 22, height: 22)
+                    brandIcon(option).frame(width: Metrics.socialIcon, height: Metrics.socialIcon)
                     Spacer()
                 }
             }
-            .padding(.horizontal, 18)
+            .padding(.horizontal, AppSpacing.inputH)
             .frame(maxWidth: .infinity)
-            .frame(height: 52)
+            .frame(height: Metrics.buttonHeight)
             .foregroundStyle(option.foreground)
             .background(option.background)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.three, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .strokeBorder(option.border ?? .clear, lineWidth: 1)
+                RoundedRectangle(cornerRadius: AppSpacing.three, style: .continuous)
+                    .strokeBorder(option.border ?? .clear, lineWidth: AppSize.border)
             )
         }
         .buttonStyle(.plain)
@@ -140,13 +147,13 @@ struct LoginView: View {
     private func brandIcon(_ option: LoginProviderOption) -> some View {
         switch option {
         case .apple:
-            Image(systemName: "apple.logo").font(.system(size: 18))
+            Image(systemName: "apple.logo").font(.appFont(.regular, size: Metrics.brandIcon))
         case .google:
             Text("G")
-                .font(.system(size: 18, weight: .bold))
+                .font(.appFont(.bold, size: Metrics.brandIcon))
                 .foregroundStyle(Color.googleBlue)
         case .kakao:
-            Image(systemName: "message.fill").font(.system(size: 15))
+            Image(systemName: "message.fill").font(.appFont(.regular, size: Metrics.kakaoIcon))
         }
     }
 

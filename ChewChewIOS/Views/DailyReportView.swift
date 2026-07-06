@@ -345,8 +345,8 @@ struct DailyReportView: View {
                     }
                 }
                 // 식사 리포트(SessionReportDetailView)와 동일한 좌우/상하 마진으로 통일.
-                .padding(.horizontal, 10)
-                .padding(.vertical, 16)
+                .padding(.horizontal, AppSpacing.pageInsetCompact)
+                .padding(.vertical, AppSpacing.pageInsetVertical)
             }
             .background(Color.pageBackground.ignoresSafeArea())
             .navigationTitle("일간 리포트")
@@ -354,8 +354,8 @@ struct DailyReportView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("닫기") { dismiss() }
-                        .font(.appFont(.bold, size: 15))
-                        .foregroundStyle(Color.acorn700)
+                        .font(.appFont(.boldBody))
+                        .foregroundStyle(Color.textAction)
                 }
             }
             .navigationDestination(for: DailyReportModel.MealSummary.ID.self) { id in
@@ -385,279 +385,279 @@ struct DailyReportView: View {
     // MARK: 1·2. 한 줄 결론 + 하루 상태/점수
 
     private func conclusionCard(_ model: DailyReportModel) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(headerDateLabel)
-                .font(.appFont(.semibold, size: 13))
-                .foregroundStyle(Color.textSecondary)
+        AppCard(
+            padding: AppSpacing.sectionGap,
+            radius: AppRadius.lg,
+            background: model.accent.opacity(0.08)
+        ) {
+            VStack(alignment: .leading, spacing: AppSpacing.gap) {
+                Text(headerDateLabel)
+                    .font(.appFont(.semiboldCallout))
+                    .foregroundStyle(Color.textMuted)
 
-            // 한마디 헤더·등급 배지는 제거 — 아래 한 줄 문구가 그 역할을 한다. 문장 단위로 줄바꿈.
-            Text(model.headline.replacingOccurrences(of: ". ", with: ".\n"))
-                .font(.appFont(.heavy, size: 20))
-                .foregroundStyle(Color.textPrimary)
-                .lineSpacing(4)
-                .fixedSize(horizontal: false, vertical: true)
+                // 한마디 헤더·등급 배지는 제거 — 아래 한 줄 문구가 그 역할을 한다. 문장 단위로 줄바꿈.
+                Text(model.headline.replacingOccurrences(of: ". ", with: ".\n"))
+                    .font(.appFont(.heavyTitle))
+                    .foregroundStyle(Color.textDefault)
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
 
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text("오늘 점수")
-                    .font(.appFont(.bold, size: 13))
-                    .foregroundStyle(Color.textSecondary)
-                Spacer(minLength: 0)
-                Text("\(model.dayScore)")
-                    .font(.appFont(.heavy, size: 28))
-                    .foregroundStyle(model.accent)
-                    .monospacedDigit()
-                Text("/ 100")
-                    .font(.appFont(.bold, size: 12))
-                    .foregroundStyle(Color.textTertiary)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text("오늘 점수")
+                        .font(.appFont(.boldCallout))
+                        .foregroundStyle(Color.textMuted)
+                    Spacer(minLength: 0)
+                    Text("\(model.dayScore)")
+                        .font(.appFont(.heavyDisplay))
+                        .foregroundStyle(model.accent)
+                        .monospacedDigit()
+                    Text("/ 100")
+                        .font(.appFont(.boldCaption))
+                        .foregroundStyle(Color.textSubtle)
+                }
             }
         }
-        .padding(20)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(model.accent.opacity(0.08), in: RoundedRectangle(cornerRadius: 24))
     }
 
     // MARK: 3·4. 하루 요약 — 기록 완성도 + 4대 지표(총 저작·식사시간·평균 속도·씹기 비율)
 
     private func summarySection(_ model: DailyReportModel) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .firstTextBaseline) {
-                Text("오늘 요약")
-                    .font(.appFont(.heavy, size: 15))
-                    .foregroundStyle(Color.textPrimary)
-                Spacer(minLength: 0)
-                Text("\(model.recordedMainSlots)/3끼")
-                    .font(.appFont(.heavy, size: 12))
-                    .foregroundStyle(model.recordedMainSlots == 3 ? Color.accentGood : Color.textSecondary)
-                    .monospacedDigit()
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 4)
-                    .background(
-                        model.recordedMainSlots == 3 ? Color.accentGood.opacity(0.14) : Color.surfaceSunken,
-                        in: Capsule()
+        AppCard {
+            VStack(alignment: .leading, spacing: AppSpacing.cardH) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text("오늘 요약")
+                        .font(.appFont(.sectionTitle))
+                        .foregroundStyle(Color.textDefault)
+                    Spacer(minLength: 0)
+                    Text("\(model.recordedMainSlots)/3끼")
+                        .font(.appFont(.heavyCaption))
+                        .foregroundStyle(model.recordedMainSlots == 3 ? Color.statusSuccess : Color.textMuted)
+                        .monospacedDigit()
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4)
+                        .background(
+                            model.recordedMainSlots == 3 ? Color.statusSuccess.opacity(0.14) : Color.bgSunken,
+                            in: Capsule()
+                        )
+                }
+                HStack(spacing: 8) {
+                    ForEach(model.mainSlotStates, id: \.slot) { state in
+                        slotChip(slot: state.slot, recorded: state.recorded)
+                    }
+                }
+                // 지표 4종은 색으로 구분하지 않는다(색=상태 전용). 라벨로만 식별, 수치는 중립색.
+                LazyVGrid(
+                    columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
+                    spacing: 12
+                ) {
+                    metricCell(
+                        label: "총 저작",
+                        value: "\(model.totalChews.koLocale)회",
+                        sub: "\(model.mealCount)끼 합산"
                     )
-            }
-            HStack(spacing: 8) {
-                ForEach(model.mainSlotStates, id: \.slot) { state in
-                    slotChip(slot: state.slot, recorded: state.recorded)
+                    metricCell(
+                        label: "총 식사시간",
+                        value: durationLabel(model.totalDurationSec),
+                        sub: "한 끼 평균 \(perMealMinutes(model))분"
+                    )
+                    metricCell(
+                        label: "평균 속도",
+                        value: "약 \(Int(model.avgChewsPerMinute.rounded()))회/분",
+                        sub: "권장 28회/분"
+                    )
+                    metricCell(
+                        label: "씹기 비율",
+                        value: "\(Int((model.avgChewingFraction * 100).rounded()))%",
+                        sub: "권장 60%"
+                    )
                 }
             }
-            // 지표 4종은 색으로 구분하지 않는다(색=상태 전용). 라벨로만 식별, 수치는 중립색.
-            LazyVGrid(
-                columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
-                spacing: 12
-            ) {
-                metricCell(
-                    label: "총 저작",
-                    value: "\(model.totalChews.koLocale)회",
-                    sub: "\(model.mealCount)끼 합산"
-                )
-                metricCell(
-                    label: "총 식사시간",
-                    value: durationLabel(model.totalDurationSec),
-                    sub: "한 끼 평균 \(perMealMinutes(model))분"
-                )
-                metricCell(
-                    label: "평균 속도",
-                    value: "약 \(Int(model.avgChewsPerMinute.rounded()))회/분",
-                    sub: "권장 28회/분"
-                )
-                metricCell(
-                    label: "씹기 비율",
-                    value: "\(Int((model.avgChewingFraction * 100).rounded()))%",
-                    sub: "권장 60%"
-                )
-            }
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.surface, in: RoundedRectangle(cornerRadius: 24))
     }
 
     // 끼니 슬롯은 색으로 구분하지 않는다(색=상태 전용). 아이콘 형태 + 라벨로만 식별하고,
     // 기록/미기록은 색조가 아니라 진하기(중립색의 농도)로 표현한다.
     private func slotChip(slot: DayMealSlot, recorded: Bool) -> some View {
-        VStack(spacing: 6) {
+        VStack(spacing: AppSpacing.oneHalf) {
             OpenIconView(
                 icon: slot.openIcon,
-                color: recorded ? Color.textSecondary : Color.textTertiary.opacity(0.5),
+                color: recorded ? Color.textMuted : Color.textSubtle.opacity(0.5),
                 lineWidth: 2.1
             )
-            .frame(width: 18, height: 18)
+            .frame(width: AppSpacing.inputH, height: AppSpacing.inputH)
             Text(slot.label)
-                .font(.appFont(.bold, size: 12))
-                .foregroundStyle(recorded ? Color.textPrimary : Color.textTertiary)
+                .font(.appFont(.boldCaption))
+                .foregroundStyle(recorded ? Color.textDefault : Color.textSubtle)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
+        .padding(.vertical, AppSpacing.three)
         .background(
-            recorded ? Color.surfaceSunken : Color.hairline.opacity(0.5),
-            in: RoundedRectangle(cornerRadius: 14)
+            recorded ? Color.bgSunken : Color.borderDefault.opacity(0.5),
+            in: RoundedRectangle(cornerRadius: AppRadius.element)
         )
     }
 
     private func metricCell(label: String, value: String, sub: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: AppSpacing.oneHalf) {
             Text(label)
-                .font(.appFont(.semibold, size: 13))
-                .foregroundStyle(Color.textSecondary)
+                .font(.appFont(.semiboldCallout))
+                .foregroundStyle(Color.textMuted)
             Text(value)
-                .font(.appFont(.heavy, size: 20))
-                .foregroundStyle(Color.textPrimary)
+                .font(.appFont(.heavyTitle))
+                .foregroundStyle(Color.textDefault)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.62)
             Text(sub)
-                .font(.appFont(.semibold, size: 12))
-                .foregroundStyle(Color.textSecondary.opacity(0.8))
+                .font(.appFont(.semiboldCaption))
+                .foregroundStyle(Color.textMuted.opacity(0.8))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(14)
-        .background(Color.surfaceSunken.opacity(0.6), in: RoundedRectangle(cornerRadius: 18))
+        .padding(AppSpacing.cell)
+        .background(Color.bgSunken.opacity(0.6), in: RoundedRectangle(cornerRadius: AppRadius.container))
     }
 
     // MARK: 5·6·7. 끼니 — 베스트/아쉬움 + 아침·점심·저녁 끼니별 비교
 
     private func mealsSection(_ model: DailyReportModel) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("끼니")
-                .font(.appFont(.heavy, size: 15))
-                .foregroundStyle(Color.textPrimary)
-            // 베스트/아쉬움 행을 탭하면 그 끼니의 세션 리포트로 이동.
-            if let best = model.bestMeal {
-                NavigationLink(value: best.id) {
-                    highlightRow(
-                        tag: "베스트",
-                        tagColor: .sage600,
-                        meal: best,
-                        note: "가장 안정적으로 씹은 끼니예요."
-                    )
+        AppCard {
+            VStack(alignment: .leading, spacing: AppSpacing.three) {
+                Text("끼니")
+                    .font(.appFont(.heavyBody))
+                    .foregroundStyle(Color.textDefault)
+                // 베스트/아쉬움 행을 탭하면 그 끼니의 세션 리포트로 이동.
+                if let best = model.bestMeal {
+                    NavigationLink(value: best.id) {
+                        highlightRow(
+                            tag: "베스트",
+                            tagColor: .sage600,
+                            meal: best,
+                            note: "가장 안정적으로 씹은 끼니예요."
+                        )
+                    }
+                    .simultaneousGesture(TapGesture().onEnded {
+                        trackMealReportOpened(best.representative)
+                    })
+                    .buttonStyle(.plain)
                 }
-                .simultaneousGesture(TapGesture().onEnded {
-                    trackMealReportOpened(best.representative)
-                })
-                .buttonStyle(.plain)
-            }
-            if let worst = model.worstMeal {
-                NavigationLink(value: worst.id) {
-                    highlightRow(
-                        tag: "아쉬움",
-                        tagColor: .blush500,
-                        meal: worst,
-                        note: "다음엔 이 끼니부터 천천히 시작해봐요."
-                    )
+                if let worst = model.worstMeal {
+                    NavigationLink(value: worst.id) {
+                        highlightRow(
+                            tag: "아쉬움",
+                            tagColor: .blush500,
+                            meal: worst,
+                            note: "다음엔 이 끼니부터 천천히 시작해봐요."
+                        )
+                    }
+                    .simultaneousGesture(TapGesture().onEnded {
+                        trackMealReportOpened(worst.representative)
+                    })
+                    .buttonStyle(.plain)
                 }
-                .simultaneousGesture(TapGesture().onEnded {
-                    trackMealReportOpened(worst.representative)
-                })
-                .buttonStyle(.plain)
             }
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.surface, in: RoundedRectangle(cornerRadius: 24))
     }
 
     private func mealRow(_ meal: DailyReportModel.MealSummary, maxChews: Int) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: AppSpacing.two) {
+            HStack(spacing: AppSpacing.inner) {
                 // 끼니 식별은 아이콘만(색 중립). 막대는 acorn 단일 톤으로 값만 비교.
-                OpenIconView(icon: meal.slot.openIcon, color: Color.textSecondary, lineWidth: 2.1)
-                    .frame(width: 16, height: 16)
-                    .frame(width: 30, height: 30)
-                    .background(Color.surfaceSunken, in: RoundedRectangle(cornerRadius: 10))
+                OpenIconView(icon: meal.slot.openIcon, color: Color.textMuted, lineWidth: 2.1)
+                    .frame(width: AppSpacing.four, height: AppSpacing.four)
+                    .frame(width: AppSize.iconContainerCompact, height: AppSize.iconContainerCompact)
+                    .background(Color.bgSunken, in: RoundedRectangle(cornerRadius: AppRadius.inner))
                 Text(meal.label)
-                    .font(.appFont(.heavy, size: 15))
-                    .foregroundStyle(Color.textPrimary)
+                    .font(.appFont(.heavyBody))
+                    .foregroundStyle(Color.textDefault)
                 if meal.sessionCount > 1 {
                     Text("\(meal.sessionCount)회")
-                        .font(.appFont(.bold, size: 11))
-                        .foregroundStyle(Color.textTertiary)
+                        .font(.appFont(.boldMicro))
+                        .foregroundStyle(Color.textSubtle)
                 }
                 Spacer(minLength: 0)
                 Text("\(meal.score)점")
-                    .font(.appFont(.heavy, size: 13))
-                    .foregroundStyle(Color.textPrimary)
+                    .font(.appFont(.heavyCallout))
+                    .foregroundStyle(Color.textDefault)
                     .monospacedDigit()
             }
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    Capsule().fill(Color.hairline)
+                    Capsule().fill(Color.borderDefault)
                     Capsule()
                         .fill(Color.acorn500)
                         .frame(width: max(8, geo.size.width * CGFloat(meal.chews) / CGFloat(maxChews)))
                 }
             }
-            .frame(height: 8)
+            .frame(height: AppSpacing.two)
             Text("\(meal.chews.koLocale)회 · \(durationLabel(meal.durationSec)) · 약 \(Int(meal.chewsPerMinute.rounded()))회/분")
-                .font(.appFont(.semibold, size: 12))
-                .foregroundStyle(Color.textSecondary)
+                .font(.appFont(.semiboldCaption))
+                .foregroundStyle(Color.textMuted)
                 .monospacedDigit()
         }
-        .padding(12)
-        .background(Color.surfaceSunken.opacity(0.6), in: RoundedRectangle(cornerRadius: 16))
+        .padding(AppSpacing.three)
+        .background(Color.bgSunken.opacity(0.6), in: RoundedRectangle(cornerRadius: AppRadius.md))
     }
 
     private func highlightRow(tag: String, tagColor: Color, meal: DailyReportModel.MealSummary, note: String) -> some View {
-        HStack(alignment: .top, spacing: 12) {
+        HStack(alignment: .top, spacing: AppSpacing.three) {
             // 끼니 아이콘은 중립 — 좋음/아쉬움 구분은 태그(상태색)가 전담한다.
-            OpenIconView(icon: meal.slot.openIcon, color: Color.textSecondary, lineWidth: 2.1)
-                .frame(width: 18, height: 18)
-                .frame(width: 36, height: 36)
-                .background(Color.surface, in: RoundedRectangle(cornerRadius: 12))
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
+            OpenIconView(icon: meal.slot.openIcon, color: Color.textMuted, lineWidth: 2.1)
+                .frame(width: AppSpacing.inputH, height: AppSpacing.inputH)
+                .frame(width: AppSpacing.nine, height: AppSpacing.nine)
+                .background(Color.bgSurface, in: RoundedRectangle(cornerRadius: AppSpacing.three))
+            VStack(alignment: .leading, spacing: AppSpacing.microGap) {
+                HStack(spacing: AppSpacing.oneHalf) {
                     Text(tag)
-                        .font(.appFont(.heavy, size: 11))
+                        .font(.appFont(.heavyMicro))
                         .foregroundStyle(tagColor)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 3)
+                        .padding(.horizontal, AppSpacing.badgeH)
+                        .padding(.vertical, AppSpacing.badgeV)
                         .background(tagColor.opacity(0.14), in: Capsule())
                     Text("\(meal.label) · \(meal.score)점")
-                        .font(.appFont(.heavy, size: 14))
-                        .foregroundStyle(Color.textPrimary)
+                        .font(.appFont(.heavyLabel))
+                        .foregroundStyle(Color.textDefault)
                         .monospacedDigit()
                 }
                 Text(note)
-                    .font(.appFont(.semibold, size: 12))
-                    .foregroundStyle(Color.textSecondary)
+                    .font(.appFont(.semiboldCaption))
+                    .foregroundStyle(Color.textMuted)
                     .lineSpacing(2)
             }
             Spacer(minLength: 0)
             Image(systemName: "chevron.right")
-                .font(.appFont(.bold, size: 11))
-                .foregroundStyle(Color.textTertiary)
+                .font(.appFont(.boldMicro))
+                .foregroundStyle(Color.textSubtle)
         }
-        .padding(12)
-        .background(tagColor.opacity(0.06), in: RoundedRectangle(cornerRadius: 16))
+        .padding(AppSpacing.three)
+        .background(tagColor.opacity(0.06), in: RoundedRectangle(cornerRadius: AppRadius.md))
     }
 
     // MARK: 8. 어제 대비 변화
 
     private func yesterdayCard(_ model: DailyReportModel) -> some View {
         let glyph = yesterdayGlyph(model.yesterday)
-        return HStack(alignment: .top, spacing: 12) {
-            Image(systemName: glyph.icon)
-                .font(.appFont(.bold, size: 13))
-                .foregroundStyle(glyph.tint)
-                .frame(width: 34, height: 34)
-                .background(glyph.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: 11))
-            VStack(alignment: .leading, spacing: 3) {
-                Text("어제 대비 변화")
-                    .font(.appFont(.heavy, size: 15))
-                    .foregroundStyle(Color.textPrimary)
-                Text(model.yesterday.text)
-                    .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.textSecondary)
-                    .lineSpacing(2)
-                    .fixedSize(horizontal: false, vertical: true)
+        return AppCard {
+            HStack(alignment: .top, spacing: AppSpacing.three) {
+                Image(systemName: glyph.icon)
+                    .font(.appFont(.boldCallout))
+                    .foregroundStyle(glyph.tint)
+                    .frame(width: AppSize.iconContainer, height: AppSize.iconContainer)
+                    .background(glyph.tint.opacity(0.12), in: RoundedRectangle(cornerRadius: AppRadius.iconContainer))
+                VStack(alignment: .leading, spacing: AppSpacing.microGap) {
+                    Text("어제 대비 변화")
+                        .font(.appFont(.heavyBody))
+                        .foregroundStyle(Color.textDefault)
+                    Text(model.yesterday.text)
+                        .font(.appFont(.semiboldCallout))
+                        .foregroundStyle(Color.textMuted)
+                        .lineSpacing(2)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
             }
-            Spacer(minLength: 0)
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.surface, in: RoundedRectangle(cornerRadius: 24))
     }
 
     /// 어제 대비 방향을 상태색 + 화살표로 표현(색만으로 의미 전달 금지 → 아이콘 병행).
@@ -672,7 +672,8 @@ struct DailyReportView: View {
     // MARK: 9·10. 오늘의 원인 해석 + 내일의 목표
 
     private func interpretationCard(_ model: DailyReportModel) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
+        AppCard(padding: AppSpacing.cardContent, background: Color.statusSuccessMuted.opacity(0.72)) {
+            VStack(alignment: .leading, spacing: AppSpacing.three) {
             interpretationRow(
                 icon: "magnifyingglass",
                 title: "오늘의 해석",
@@ -686,29 +687,27 @@ struct DailyReportView: View {
                 body: model.tomorrowGoal,
                 tint: .sage600
             )
+            }
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.sage50.opacity(0.72), in: RoundedRectangle(cornerRadius: 24))
         .overlay(
-            RoundedRectangle(cornerRadius: 24).stroke(Color.sage100, lineWidth: 1)
+            RoundedRectangle(cornerRadius: AppRadius.lg).stroke(Color.statusSuccessBorder, lineWidth: AppSize.border)
         )
     }
 
     private func interpretationRow(icon: String, title: String, body: String, tint: Color) -> some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: AppSpacing.inner) {
             Image(systemName: icon)
-                .font(.appFont(.bold, size: 13))
+                .font(.appFont(.boldCallout))
                 .foregroundStyle(tint)
-                .frame(width: 26, height: 26)
-                .background(Color.white.opacity(0.75), in: Circle())
-            VStack(alignment: .leading, spacing: 3) {
+                .frame(width: AppSize.iconContainerTiny, height: AppSize.iconContainerTiny)
+                .background(Color.bgSurface.opacity(0.75), in: Circle())
+            VStack(alignment: .leading, spacing: AppSpacing.microGap) {
                 Text(title)
-                    .font(.appFont(.heavy, size: 14))
-                    .foregroundStyle(Color.textPrimary)
+                    .font(.appFont(.heavyLabel))
+                    .foregroundStyle(Color.textDefault)
                 Text(body)
-                    .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.textSecondary)
+                    .font(.appFont(.semiboldCallout))
+                    .foregroundStyle(Color.textMuted)
                     .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -719,58 +718,57 @@ struct DailyReportView: View {
     // MARK: 11. 다람이 코치 피드백
 
     private func coachCard(_ model: DailyReportModel) -> some View {
-        HStack(alignment: .top, spacing: 12) {
+        AppCard(padding: AppSpacing.cell, background: Color.statusSuccessMuted.opacity(0.82)) {
+            HStack(alignment: .top, spacing: AppSpacing.three) {
             Image(model.coachMood.imageName)
                 .resizable()
                 .scaledToFit()
-                .frame(width: 64, height: 64)
-                .background(Color.butter100.opacity(0.7), in: Circle())
-            VStack(alignment: .leading, spacing: 5) {
+                .frame(width: Metrics.coachAvatar, height: Metrics.coachAvatar)
+                .background(Color.statusWarningMuted.opacity(0.7), in: Circle())
+            VStack(alignment: .leading, spacing: AppSpacing.microLabelGap) {
                 Text("다람이 코치")
-                    .font(.appFont(.heavy, size: 15))
-                    .foregroundStyle(Color.textPrimary)
+                    .font(.appFont(.heavyBody))
+                    .foregroundStyle(Color.textDefault)
                 Text(model.coachMessage)
-                    .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.textSecondary)
+                    .font(.appFont(.semiboldCallout))
+                    .foregroundStyle(Color.textMuted)
                     .lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
+            }
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.sage50.opacity(0.82), in: RoundedRectangle(cornerRadius: 24))
         .overlay(
-            RoundedRectangle(cornerRadius: 24).stroke(Color.sage100, lineWidth: 1)
+            RoundedRectangle(cornerRadius: AppRadius.lg).stroke(Color.statusSuccessBorder, lineWidth: AppSize.border)
         )
     }
 
     // MARK: 12. 데이터 신뢰 상태
 
     private func trustFooter(_ model: DailyReportModel) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: AppSpacing.two) {
             Image(systemName: "checkmark.seal.fill")
-                .font(.appFont(.bold, size: 12))
+                .font(.appFont(.boldCaption))
                 .foregroundStyle(model.trust.color)
             Text("데이터 신뢰")
-                .font(.appFont(.bold, size: 12))
-                .foregroundStyle(Color.textSecondary)
+                .font(.appFont(.boldCaption))
+                .foregroundStyle(Color.textMuted)
             Text(model.trust.badge)
-                .font(.appFont(.heavy, size: 11))
+                .font(.appFont(.heavyMicro))
                 .foregroundStyle(model.trust.color)
-                .padding(.horizontal, 7)
-                .padding(.vertical, 3)
+                .padding(.horizontal, AppSpacing.badgeH)
+                .padding(.vertical, AppSpacing.badgeV)
                 .background(model.trust.color.opacity(0.14), in: Capsule())
             Spacer(minLength: 0)
             Text("분석 \(model.sessionCount)끼")
-                .font(.appFont(.semibold, size: 12))
-                .foregroundStyle(Color.textTertiary)
+                .font(.appFont(.semiboldCaption))
+                .foregroundStyle(Color.textSubtle)
                 .monospacedDigit()
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
+        .padding(.horizontal, AppSpacing.cell)
+        .padding(.vertical, AppSpacing.three)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.surfaceSunken.opacity(0.6), in: RoundedRectangle(cornerRadius: 16))
+        .background(Color.bgSunken.opacity(0.6), in: RoundedRectangle(cornerRadius: AppRadius.md))
     }
 
     // MARK: - 보조
@@ -838,4 +836,8 @@ private extension ReportCardModel.Grade {
         case .bad: "bad"
         }
     }
+}
+
+private enum Metrics {
+    static let coachAvatar = AppSize.visualMedium
 }

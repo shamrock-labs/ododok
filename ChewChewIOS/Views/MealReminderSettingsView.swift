@@ -23,7 +23,7 @@ struct MealReminderSettingsView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 16) {
+                VStack(spacing: AppSpacing.four) {
                     if permissionStatus == .denied {
                         deniedBanner
                     }
@@ -33,19 +33,19 @@ struct MealReminderSettingsView: View {
                     mealCard(title: "추가 1", icon: .utensils, tint: .acorn600, slot: $settings.extra1)
                     mealCard(title: "추가 2", icon: .moonStar, tint: .acorn700, slot: $settings.extra2)
                     footerHint
-                    Spacer(minLength: 24)
+                    Spacer(minLength: AppSpacing.six)
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
+                .padding(.horizontal, AppSpacing.page)
+                .padding(.top, AppSpacing.three)
             }
-            .background(Color.pageBackground.ignoresSafeArea())
+            .background(Color.bgPage.ignoresSafeArea())
             .navigationTitle("끼니 알림")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("완료") { dismiss() }
                         .foregroundStyle(Color.acorn600)
-                        .font(.appFont(.semibold, size: 15))
+                        .font(.appFont(.semiboldBody))
                 }
             }
         }
@@ -123,39 +123,39 @@ struct MealReminderSettingsView: View {
     // MARK: - Subviews
 
     private var deniedBanner: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: AppSpacing.one) {
             Text("알림 권한이 꺼져 있어요")
-                .font(.appFont(.bold, size: 14))
-                .foregroundStyle(Color.textPrimary)
+                .font(.appFont(.boldLabel))
+                .foregroundStyle(Color.textDefault)
             Text("iOS 설정 → Ododok → 알림 켜기.")
-                .font(.appFont(.semibold, size: 14))
-                .foregroundStyle(Color.textSecondary)
+                .font(.appFont(.semiboldLabel))
+                .foregroundStyle(Color.textMuted)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
-        .padding(14)
-        .background(Color.blush100, in: RoundedRectangle(cornerRadius: 14))
+        .padding(AppSpacing.cell)
+        .background(Color.statusDangerMuted, in: RoundedRectangle(cornerRadius: AppRadius.element))
     }
 
     private var footerHint: some View {
         Text("설정한 시각에 다람이가 식사 알림을 보내줘요.\n끄면 해당 끼니는 알림이 안 와요.")
-            .font(.appFont(.semibold, size: 14))
-            .foregroundStyle(Color.textSecondary)
+            .font(.appFont(.semiboldLabel))
+            .foregroundStyle(Color.textMuted)
             .multilineTextAlignment(.center)
             .padding(.top, 8)
     }
 
     private func mealCard(title: String, icon: OpenIcon, tint: Color, slot: Binding<MealSlot>) -> some View {
-        VStack(spacing: 12) {
+        VStack(spacing: AppSpacing.three) {
             HStack {
-                HStack(spacing: 9) {
+                HStack(spacing: AppSpacing.iconGap) {
                     OpenIconView(icon: icon, color: tint, lineWidth: 2.1)
-                        .frame(width: 20, height: 20)
-                        .frame(width: 34, height: 34)
-                        .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: 11))
+                        .frame(width: AppSpacing.five, height: AppSpacing.five)
+                        .frame(width: AppSize.iconContainer, height: AppSize.iconContainer)
+                        .background(tint.opacity(0.14), in: RoundedRectangle(cornerRadius: AppRadius.iconContainer))
                     Text(title)
-                        .font(.appFont(.bold, size: 17))
-                        .foregroundStyle(Color.textPrimary)
+                        .font(.appFont(.boldHeadline))
+                        .foregroundStyle(Color.textDefault)
                 }
                 Spacer()
                 Toggle("", isOn: toggleBinding(slot))
@@ -166,8 +166,8 @@ struct MealReminderSettingsView: View {
             if slot.wrappedValue.enabled {
                 HStack {
                     Text("알림 시각")
-                        .font(.appFont(.semibold, size: 15))
-                        .foregroundStyle(Color.textSecondary)
+                        .font(.appFont(.semiboldBody))
+                        .foregroundStyle(Color.textMuted)
                     Spacer()
                     DatePicker(
                         "",
@@ -180,9 +180,9 @@ struct MealReminderSettingsView: View {
                 }
             }
         }
-        .padding(16)
-        .background(Color.surface, in: RoundedRectangle(cornerRadius: 18))
-        .neuoShadow(.sm)
+        .padding(AppSpacing.cardContent)
+        .background(Color.bgCard, in: RoundedRectangle(cornerRadius: AppRadius.container))
+        .appElevation(.flat)
     }
 
     // MARK: - Bindings

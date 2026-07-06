@@ -33,26 +33,26 @@ struct MealCalendarGrid: View {
     var body: some View {
         VStack(spacing: 0) {
             monthHeader
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
+                .padding(.horizontal, AppSpacing.four)
+                .padding(.vertical, AppSpacing.inner)
             weekdayLabels
-                .padding(.horizontal, 12)
+                .padding(.horizontal, AppSpacing.three)
             calendarGrid
-                .padding(.horizontal, 12)
-                .padding(.top, 6)
-                .padding(.bottom, 12)
+                .padding(.horizontal, AppSpacing.three)
+                .padding(.top, AppSpacing.oneHalf)
+                .padding(.bottom, AppSpacing.three)
             if let date = selectedDate {
                 DayInlineSection(
                     date: date,
                     sessions: sessions(on: date),
                     onTapSession: onTapSession
                 )
-                .padding(.horizontal, 16)
-                .padding(.bottom, 18)
+                .padding(.horizontal, AppSpacing.four)
+                .padding(.bottom, AppSpacing.verticalLoose)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
-        .animation(.spring(response: 0.32, dampingFraction: 0.85), value: selectedDate)
+        .animation(.spring(response: AppMotion.springResponse, dampingFraction: AppMotion.springDampingFraction), value: selectedDate)
         .task {
             await loadOldestSessionMonthIfNeeded()
             await reload()
@@ -73,33 +73,33 @@ struct MealCalendarGrid: View {
         HStack {
             Button { goToMonth(-1) } label: {
                 Image(systemName: "chevron.left")
-                    .font(.appFont(.bold, size: 13))
-                    .frame(width: 32, height: 32)
-                    .background(Color.white.opacity(0.7), in: Circle())
+                    .font(.appFont(.boldCallout))
+                    .frame(width: Metrics.calendarButton, height: Metrics.calendarButton)
+                    .background(Color.bgSurface.opacity(0.7), in: Circle())
             }
             .disabled(isAtOldestMonth)
             .opacity(isAtOldestMonth ? 0.35 : 1.0)
             Spacer()
             Text(monthTitle)
-                .font(.appFont(.heavy, size: 15))
-                .foregroundStyle(Color.textPrimary)
+                .font(.appFont(.heavyBody))
+                .foregroundStyle(Color.textDefault)
             Spacer()
             Button { goToMonth(+1) } label: {
                 Image(systemName: "chevron.right")
-                    .font(.appFont(.bold, size: 13))
-                    .frame(width: 32, height: 32)
-                    .background(Color.white.opacity(0.7), in: Circle())
+                    .font(.appFont(.boldCallout))
+                    .frame(width: Metrics.calendarButton, height: Metrics.calendarButton)
+                    .background(Color.bgSurface.opacity(0.7), in: Circle())
             }
         }
-        .foregroundStyle(Color.acorn700)
+        .foregroundStyle(Color.textAction)
     }
 
     private var weekdayLabels: some View {
         let symbols = ["일", "월", "화", "수", "목", "금", "토"]
-        return HStack(spacing: 4) {
+        return HStack(spacing: AppSpacing.one) {
             ForEach(symbols, id: \.self) { sym in
                 Text(sym)
-                    .font(.appFont(.bold, size: 11))
+                    .font(.appFont(.boldMicro))
                     .foregroundStyle(weekdayLabelColor(sym))
                     .frame(maxWidth: .infinity)
             }
@@ -117,14 +117,14 @@ struct MealCalendarGrid: View {
     private var calendarGrid: some View {
         let days = monthDays
         return LazyVGrid(
-            columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7),
-            spacing: 4
+            columns: Array(repeating: GridItem(.flexible(), spacing: AppSpacing.one), count: 7),
+            spacing: AppSpacing.one
         ) {
             ForEach(0..<days.count, id: \.self) { i in
                 if let date = days[i] {
                     dayCell(date: date)
                 } else {
-                    Color.clear.frame(height: 40)
+                    Color.clear.frame(height: Metrics.calendarCellHeight)
                 }
             }
         }
@@ -152,25 +152,25 @@ struct MealCalendarGrid: View {
         let isSelected = selectedDate.map { calendar.isDate($0, inSameDayAs: date) } ?? false
         return VStack(spacing: 3) {
             Text("\(calendar.component(.day, from: date))")
-                .font(.system(size: 12, weight: isToday || isSelected ? .heavy : .semibold))
-                .foregroundStyle(isSelected ? Color.white : weekdayColor(date: date))
+                .font(.appFont(isToday || isSelected ? .heavyCaption : .semiboldCaption))
+                .foregroundStyle(isSelected ? Color.textActionInverse : weekdayColor(date: date))
                 .monospacedDigit()
             Circle()
-                .fill(count > 0 ? (isSelected ? Color.white : Color.acorn500) : Color.clear)
-                .frame(width: 4, height: 4)
+                .fill(count > 0 ? (isSelected ? Color.textActionInverse : Color.dataChew) : Color.clear)
+                .frame(width: Metrics.calendarDot, height: Metrics.calendarDot)
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 40)
+        .frame(height: Metrics.calendarCellHeight)
         .background(
             cellBackground(isToday: isToday, isSelected: isSelected),
-            in: RoundedRectangle(cornerRadius: 10)
+            in: RoundedRectangle(cornerRadius: AppRadius.inner)
         )
     }
 
     private func cellBackground(isToday: Bool, isSelected: Bool) -> Color {
-        if isSelected { return Color.acorn600 }
-        if isToday    { return Color.acorn100.opacity(0.7) }
-        return Color.white.opacity(0.45)
+        if isSelected { return Color.textActionStrong }
+        if isToday    { return Color.borderSelected.opacity(0.7) }
+        return Color.bgSurface.opacity(0.45)
     }
 
     private func weekdayColor(date: Date) -> Color {
@@ -267,9 +267,9 @@ struct MealCalendarView: View {
                         path.append(session.id)
                     }
                 )
-                .padding(20)
+                .padding(AppSpacing.page)
             }
-            .background(Color.pageBackground.ignoresSafeArea())
+            .background(Color.bgPage.ignoresSafeArea())
             .navigationTitle("식사 캘린더")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -282,7 +282,7 @@ struct MealCalendarView: View {
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
-                            .foregroundStyle(Color.acorn700)
+                            .foregroundStyle(Color.textAction)
                     }
                 }
             }
@@ -328,7 +328,7 @@ struct DaySessionsView: View {
                 VStack {
                     Spacer()
                     Text("이 날은 식사 기록이 없어요.")
-                        .font(.appFont(.semibold, size: 15))
+                        .font(.appFont(.semiboldBody))
                         .foregroundStyle(Color.textSecondary)
                     Spacer()
                 }
@@ -367,12 +367,12 @@ struct DaySessionsView: View {
     private func sessionRow(_ session: ChewingSessionDTO) -> some View {
         HStack(spacing: 12) {
             Text(formatTime(session.startedAt))
-                .font(.appFont(.heavy, size: 17))
+                .font(.appFont(.heavyHeadline))
                 .foregroundStyle(Color.textPrimary)
                 .monospacedDigit()
             Spacer(minLength: 0)
             Text(formatDuration(session.durationSec))
-                .font(.appFont(.semibold, size: 14))
+                .font(.appFont(.semiboldLabel))
                 .foregroundStyle(Color.textSecondary)
                 .monospacedDigit()
         }
@@ -452,7 +452,7 @@ private struct DayInlineSection: View {
     var body: some View {
         if sessions.isEmpty {
             Text("이 날은 식사 기록이 없어요.")
-                .font(.appFont(.semibold, size: 14))
+                .font(.appFont(.semiboldLabel))
                 .foregroundStyle(Color.textSecondary)
                 .frame(maxWidth: .infinity, alignment: .center)
                 .padding(.vertical, 14)
@@ -470,9 +470,9 @@ private struct DayInlineSection: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 OpenIconView(icon: slot.openIcon, color: slot.iconColor, lineWidth: 2.1)
-                    .frame(width: 20, height: 20)
+                    .frame(width: AppSpacing.five, height: AppSpacing.five)
                 Text(slot.label)
-                    .font(.appFont(.heavy, size: 16))
+                    .font(.appFont(.heavyBodyLarge))
                     .foregroundStyle(Color.textPrimary)
                 Spacer(minLength: 0)
             }
@@ -488,23 +488,23 @@ private struct DayInlineSection: View {
         Button {
             onTapSession?(session)
         } label: {
-            HStack(spacing: 12) {
+            HStack(spacing: AppSpacing.three) {
                 Text(formatTime12(session.startedAt))
-                    .font(.appFont(.semibold, size: 15))
-                    .foregroundStyle(Color.textPrimary)
+                    .font(.appFont(.semiboldBody))
+                    .foregroundStyle(Color.textDefault)
                     .monospacedDigit()
                 Spacer(minLength: 0)
                 Text(formatDuration(session.durationSec))
-                    .font(.appFont(.semibold, size: 14))
-                    .foregroundStyle(Color.textSecondary)
+                    .font(.appFont(.semiboldLabel))
+                    .foregroundStyle(Color.textMuted)
                     .monospacedDigit()
                 Image(systemName: "chevron.right")
-                    .font(.appFont(.semibold, size: 12))
-                    .foregroundStyle(Color.textTertiary)
+                    .font(.appFont(.semiboldCaption))
+                    .foregroundStyle(Color.textSubtle)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .background(Color.acorn50.opacity(0.6), in: RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal, AppSpacing.cell)
+            .padding(.vertical, AppSpacing.three)
+            .background(Color.bgSunken.opacity(0.6), in: RoundedRectangle(cornerRadius: AppSpacing.three))
         }
         .buttonStyle(.plain)
     }
@@ -577,4 +577,10 @@ enum DayMealSlot: CaseIterable, Hashable {
         default:      self = .lateNight
         }
     }
+}
+
+private enum Metrics {
+    static let calendarButton = AppSize.controlLarge
+    static let calendarCellHeight = AppSize.controlXLarge
+    static let calendarDot = AppSpacing.one
 }

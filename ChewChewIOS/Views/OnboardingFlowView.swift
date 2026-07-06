@@ -17,6 +17,6 @@ struct OnboardingFlowView: View {
                 }
             }
         }
-        .animation(.easeInOut(duration: 0.25), value: state.displayName)
+        .animation(.easeInOut(duration: AppMotion.durationPageChange), value: state.displayName)
     }
 }

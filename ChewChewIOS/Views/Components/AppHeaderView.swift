@@ -19,24 +19,24 @@ struct AppHeaderView<Accessory: View>: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
+        HStack(alignment: .center, spacing: AppSpacing.gap) {
+            VStack(alignment: .leading, spacing: AppSpacing.one) {
                 if let eyebrow {
                     Text(eyebrow)
-                        .font(.appFont(.bold, size: 12))
-                        .foregroundStyle(Color.acorn600)
+                        .font(.appFont(.boldCallout))
+                        .foregroundStyle(Color.textActionStrong)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)
                 }
                 Text(title)
-                    .font(.appFont(.heavy, size: 24))
-                    .foregroundStyle(Color.textPrimary)
+                    .font(.appFont(.heavyDisplaySmall))
+                    .foregroundStyle(Color.textDefault)
                     .lineLimit(1)
                     .minimumScaleFactor(0.82)
                 if let subtitle {
                     Text(subtitle)
-                        .font(.appFont(.semibold, size: 13))
-                        .foregroundStyle(Color.textSecondary)
+                        .font(.appFont(.semiboldCallout))
+                        .foregroundStyle(Color.textMuted)
                         .lineLimit(2)
                         .minimumScaleFactor(0.82)
                 }
@@ -46,14 +46,14 @@ struct AppHeaderView<Accessory: View>: View {
             accessory
                 .fixedSize(horizontal: true, vertical: false)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(Color.white.opacity(0.84), in: RoundedRectangle(cornerRadius: 22))
+        .padding(.horizontal, AppSpacing.cardH)
+        .padding(.vertical, AppSpacing.cardV)
+        .background(Color.bgSurface.opacity(0.84), in: RoundedRectangle(cornerRadius: AppSpacing.dialogH))
         .overlay(
-            RoundedRectangle(cornerRadius: 22)
-                .stroke(Color.white.opacity(0.85), lineWidth: 1)
+            RoundedRectangle(cornerRadius: AppSpacing.dialogH)
+                .stroke(Color.bgSurface.opacity(0.85), lineWidth: AppSize.border)
         )
-        .neuoShadow(.sm)
+        .appElevation(.flat)
     }
 }
 
@@ -88,24 +88,24 @@ struct HeaderMetricPill: View {
     }
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: AppSpacing.one) {
             switch icon {
             case .text(let symbol):
                 Text(symbol)
-                    .font(.appFont(.regular, size: 12))
+                    .font(.appFont(.regularCaption))
             case .open(let icon):
                 OpenIconView(icon: icon, color: tint, lineWidth: 2.2)
-                    .frame(width: 14, height: 14)
+                    .frame(width: Metrics.pillIcon, height: Metrics.pillIcon)
             }
             Text(value)
-                .font(.appFont(.heavy, size: 13))
+                .font(.appFont(.heavyCallout))
                 .foregroundStyle(tint)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.68)
         }
-        .padding(.horizontal, 9)
-        .frame(height: 30)
+        .padding(.horizontal, AppSpacing.iconGap)
+        .frame(height: Metrics.pillHeight)
         .background(tint.opacity(0.12), in: Capsule())
     }
 }
@@ -118,20 +118,28 @@ struct HeaderIconButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(Color.textSecondary)
-                .frame(width: 32, height: 32)
-                .background(Color.surface, in: Circle())
+                .font(.appFont(.semibold, size: Metrics.icon))
+                .foregroundStyle(Color.textMuted)
+                .frame(width: Metrics.iconButton, height: Metrics.iconButton)
+                .background(Color.bgSurface, in: Circle())
         }
         .buttonStyle(.plain)
         .overlay(alignment: .topTrailing) {
             if showsBadge {
                 Circle()
-                    .fill(Color.blush500)
-                    .frame(width: 7, height: 7)
+                    .fill(Color.statusDanger)
+                    .frame(width: Metrics.badge, height: Metrics.badge)
                     .overlay(Circle().stroke(Color.cream, lineWidth: 1.4))
                     .offset(x: -3, y: 4)
             }
         }
     }
+}
+
+private enum Metrics {
+    static let iconButton = AppSize.controlLarge
+    static let icon = AppSize.iconMedium
+    static let badge = AppSize.indicatorMedium
+    static let pillIcon = AppSize.iconCompact
+    static let pillHeight = AppSize.iconContainerCompact
 }

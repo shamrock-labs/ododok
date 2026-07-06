@@ -19,7 +19,7 @@ struct ReportHubView: View {
     private let weeklyWindowDays = 21
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: AppSpacing.gap) {
             timelineCard
             weeklyComparisonCard
             // 다람이 코치 카드는 UI에서 임시 제외(로직 유지, 추후 수정 예정).
@@ -103,22 +103,22 @@ struct ReportHubView: View {
 
     private var timelineCard: some View {
         let scale = ChartScale(days: timelineDays)
-        let ringRowHeight: CGFloat = 66   // 날짜행 강제 높이(축 스페이서와 동일값으로 세로 정렬 못박음)
+        let ringRowHeight: CGFloat = 58   // 날짜행 강제 높이(축 스페이서와 동일값으로 세로 정렬 못박음)
         let yAxisWidth: CGFloat = 34
-        let bandSpacing: CGFloat = 12     // 날짜행↔차트 간격(축 스페이서와 동일값)
+        let bandSpacing: CGFloat = 8      // 날짜행↔차트 간격(축 스페이서와 동일값)
 
-        return VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
+        return VStack(alignment: .leading, spacing: AppSpacing.three) {
+            HStack(spacing: AppSpacing.inner) {
                 Text(monthRangeLabel)
-                    .font(.appFont(.heavy, size: 15))
-                    .foregroundStyle(Color.textPrimary)
+                    .font(.appFont(.heavyHeadline))
+                    .foregroundStyle(Color.textDefault)
                 Spacer(minLength: 0)
                 Button { openCalendar() } label: {
                     Image(systemName: "calendar")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(Color.acorn700)
-                        .frame(width: 30, height: 30)
-                        .background(Color.acorn50, in: RoundedRectangle(cornerRadius: 10))
+                        .font(.appFont(.semiboldHeadline))
+                        .foregroundStyle(Color.textAction)
+                        .frame(width: AppSize.iconContainerCompact, height: AppSize.iconContainerCompact)
+                        .background(Color.bgSunken, in: RoundedRectangle(cornerRadius: AppRadius.inner))
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("달력 열기")
@@ -151,7 +151,7 @@ struct ReportHubView: View {
                             )
                             .frame(width: dayWidth * CGFloat(timelineDays.count), height: scale.height)
                         }
-                        .padding(.vertical, 4)
+                        .padding(.vertical, 2)
                         .padding(.trailing, 4)
                         .contentShape(Rectangle())
                     }
@@ -169,31 +169,50 @@ struct ReportHubView: View {
 
             // 날짜만 — 평균/시간/끼니 요약·횟수 뱃지는 제거.
             Text(selectedDay.shortDateLabel)
-                .font(.appFont(.heavy, size: 17))
+                .font(.appFont(.heavyHeadline))
                 .foregroundStyle(Color.textPrimary)
                 .monospacedDigit()
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 2)
+                .padding(.top, AppSpacing.half)
 
-            Rectangle()
-                .fill(Color.hairline)
-                .frame(height: 1)
-                .padding(.vertical, 2)
+            if !selectedSessions.isEmpty {
+                Rectangle()
+                    .fill(Color.hairline)
+                    .frame(height: Metrics.chartHairline)
+                    .padding(.vertical, AppSpacing.half)
 
-            // 끼니 목록 — 날짜 헤더는 위와 중복이라 뺀다(그래프 카드와 합쳐진 한 카드).
-            if selectedSessions.isEmpty {
-                emptySessionState
-            } else {
+                // 끼니 목록 — 날짜 헤더는 위와 중복이라 뺀다(그래프 카드와 합쳐진 한 카드).
                 VStack(spacing: 6) {
                     ForEach(selectedSessions) { session in
                         sessionRow(session)
                     }
                     dailyReportRow
                 }
+            } else {
+                emptySessionState
             }
         }
-        .padding(16)
-        .background(Color.surface, in: RoundedRectangle(cornerRadius: 24))
+        .padding(.horizontal, AppSpacing.cardContent)
+        .padding(.vertical, AppSpacing.three)
+        .background(Color.bgCard, in: RoundedRectangle(cornerRadius: AppRadius.lg))
+    }
+
+    private var emptySessionState: some View {
+        HStack(spacing: AppSpacing.three) {
+            Text("🍽️")
+                .font(.appFont(.regularDisplaySmall))
+                .frame(width: Metrics.emptyIcon, height: Metrics.emptyIcon)
+            VStack(alignment: .leading, spacing: AppSpacing.microGap) {
+                Text(mealCalendarCalendar.isDateInToday(selectedDate) ? "오늘은 아직 식사 전이에요" : "이 날은 식사 기록이 없어요")
+                    .font(.appFont(.heavyBody))
+                    .foregroundStyle(Color.textPrimary)
+                Text("식사를 기록하면 아침·점심·저녁 리포트가 여기에 쌓여요.")
+                    .font(.appFont(.semiboldCallout))
+                    .foregroundStyle(Color.textSecondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.top, AppSpacing.half)
     }
 
     private func dateRingCell(_ day: ReportDay) -> some View {
@@ -201,41 +220,23 @@ struct ReportHubView: View {
         return Button {
             selectDate(day.date, source: "date_ring")
         } label: {
-            VStack(spacing: 5) {
+            VStack(spacing: AppSpacing.oneHalf) {
                 Text(day.weekdayLabel)
-                    .font(.appFont(.bold, size: 11))
-                    .foregroundStyle(selected ? Color.acorn700 : Color.textTertiary)
+                    .font(.appFont(.boldCaption))
+                    .foregroundStyle(selected ? Color.acorn700 : Color.textMuted)
                 ZStack {
                     MealCompletionRing(meals: day.mealCount, selected: selected)
                     Text(day.dayLabel)
-                        .font(.appFont(.heavy, size: day.dayLabel.contains("/") ? 11 : 14))
+                        .font(.appFont(day.dayLabel.contains("/") ? .heavyCaption : .heavyLabel))
                         .foregroundStyle(selected ? Color.white : Color.textPrimary)
                         .monospacedDigit()
                         .minimumScaleFactor(0.75)
                 }
-                .frame(width: 40, height: 40)
+                .frame(width: Metrics.dateRing, height: Metrics.dateRing)
             }
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(day.shortDateLabel), \(day.mealCount)끼 기록")
-    }
-
-    private var emptySessionState: some View {
-        HStack(spacing: 12) {
-            Text("🍽️")
-                .font(.appFont(.regular, size: 24))
-                .frame(width: 42, height: 42)
-            VStack(alignment: .leading, spacing: 3) {
-                Text(mealCalendarCalendar.isDateInToday(selectedDate) ? "오늘은 아직 식사 전이에요" : "이 날은 식사 기록이 없어요")
-                    .font(.appFont(.heavy, size: 15))
-                    .foregroundStyle(Color.textPrimary)
-                Text("식사를 기록하면 아침·점심·저녁 리포트가 여기에 쌓여요.")
-                    .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.textSecondary)
-            }
-            Spacer(minLength: 0)
-        }
-        .padding(.vertical, 4)
     }
 
     private func sessionRow(_ session: ChewingSessionDTO) -> some View {
@@ -244,29 +245,29 @@ struct ReportHubView: View {
             trackMealReportOpened(session, source: "report_hub")
             detailSession = session
         } label: {
-            HStack(spacing: 12) {
+            HStack(spacing: AppSpacing.three) {
                 OpenIconView(icon: slot.openIcon, color: slotIconColor(slot), lineWidth: 2.1)
-                    .frame(width: 18, height: 18)
-                    .frame(width: 34, height: 34)
-                    .background(slotTint(slot), in: RoundedRectangle(cornerRadius: 11))
+                    .frame(width: AppSize.iconSmall, height: AppSize.iconSmall)
+                    .frame(width: AppSize.iconContainer, height: AppSize.iconContainer)
+                    .background(slotTint(slot), in: RoundedRectangle(cornerRadius: AppRadius.iconContainer))
                 VStack(alignment: .leading, spacing: 2) {
                     Text(slot.label)
-                        .font(.appFont(.heavy, size: 15))
+                        .font(.appFont(.heavyBody))
                         .foregroundStyle(Color.textPrimary)
                     Text("\(timeLabel(session.startedAt)) · \((session.estimatedTotalChews ?? 0).koLocale)회")
-                        .font(.appFont(.semibold, size: 12))
+                        .font(.appFont(.semiboldCallout))
                         .foregroundStyle(Color.textSecondary)
                 }
                 Spacer(minLength: 0)
                 Text(durationLabel(session.durationSec))
-                    .font(.appFont(.bold, size: 13))
+                    .font(.appFont(.boldCallout))
                     .foregroundStyle(Color.textSecondary)
                     .monospacedDigit()
                 Image(systemName: "chevron.right")
-                    .font(.appFont(.bold, size: 11))
+                    .font(.appFont(.boldMicro))
                     .foregroundStyle(Color.textTertiary)
             }
-            .padding(.vertical, 8)
+            .padding(.vertical, AppSpacing.two)
         }
         .buttonStyle(.plain)
     }
@@ -275,11 +276,11 @@ struct ReportHubView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline) {
                 Text("하루 리포트 요약")
-                    .font(.appFont(.heavy, size: 15))
+                    .font(.appFont(.heavyBody))
                     .foregroundStyle(Color.textPrimary)
                 Spacer(minLength: 0)
                 Text(selectedDay.mealCount == 0 ? "기록 전" : "\(selectedDay.mealCount)/3끼")
-                    .font(.appFont(.heavy, size: 11))
+                    .font(.appFont(.heavyMicro))
                     .foregroundStyle(selectedDay.mealCount == 0 ? Color.textTertiary : Color.acorn700)
                     .monospacedDigit()
                     .padding(.horizontal, 8)
@@ -312,38 +313,38 @@ struct ReportHubView: View {
                 detail: "한 끼 기준 평균 저작 횟수와 식사 시간이에요."
             )
         }
-        .padding(14)
+        .padding(AppSpacing.cell)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.sage50.opacity(0.72), in: RoundedRectangle(cornerRadius: 18))
+        .background(Color.statusSuccessMuted.opacity(0.72), in: RoundedRectangle(cornerRadius: AppRadius.container))
         .overlay(
-            RoundedRectangle(cornerRadius: 18)
-                .stroke(Color.sage100, lineWidth: 1)
+            RoundedRectangle(cornerRadius: AppRadius.container)
+                .stroke(Color.statusSuccessBorder, lineWidth: AppSize.border)
         )
-        .padding(.top, 4)
+        .padding(.top, AppSpacing.one)
     }
 
     private func dailyInsightRow(icon: String, title: String, value: String, detail: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .top, spacing: AppSpacing.inner) {
             Image(systemName: icon)
-                .font(.appFont(.bold, size: 12))
-                .foregroundStyle(Color.sage600)
-                .frame(width: 24, height: 24)
-                .background(Color.white.opacity(0.75), in: Circle())
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                .font(.appFont(.boldCaption))
+                .foregroundStyle(Color.statusSuccess)
+                .frame(width: AppSpacing.six, height: AppSpacing.six)
+                .background(Color.bgSurface.opacity(0.75), in: Circle())
+            VStack(alignment: .leading, spacing: AppSpacing.half) {
+                HStack(alignment: .firstTextBaseline, spacing: AppSpacing.oneHalf) {
                     Text(title)
-                        .font(.appFont(.bold, size: 12))
-                        .foregroundStyle(Color.textPrimary)
+                        .font(.appFont(.boldCaption))
+                        .foregroundStyle(Color.textDefault)
                     Text(value)
-                        .font(.appFont(.heavy, size: 12))
-                        .foregroundStyle(Color.sage600)
+                        .font(.appFont(.heavyCaption))
+                        .foregroundStyle(Color.statusSuccess)
                         .lineLimit(1)
                         .minimumScaleFactor(0.72)
                         .monospacedDigit()
                 }
                 Text(detail)
-                    .font(.appFont(.semibold, size: 12))
-                    .foregroundStyle(Color.textSecondary)
+                    .font(.appFont(.semiboldCaption))
+                    .foregroundStyle(Color.textMuted)
                     .lineSpacing(2)
             }
             Spacer(minLength: 0)
@@ -365,19 +366,19 @@ struct ReportHubView: View {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("일간 리포트")
-                        .font(.appFont(.heavy, size: 15))
+                        .font(.appFont(.heavyBody))
                         .foregroundStyle(Color.acorn700)
                     Text("하루 전체 요약 보기")
-                        .font(.appFont(.semibold, size: 12))
+                        .font(.appFont(.semiboldCallout))
                         .foregroundStyle(Color.textSecondary)
                 }
                 Spacer()
                 Image(systemName: "chevron.right")
-                    .font(.appFont(.bold, size: 12))
+                    .font(.appFont(.boldCaption))
                     .foregroundStyle(Color.acorn700)
             }
-            .padding(12)
-            .background(Color.acorn50, in: RoundedRectangle(cornerRadius: 16))
+            .padding(AppSpacing.three)
+            .background(Color.bgSunken, in: RoundedRectangle(cornerRadius: AppRadius.md))
         }
         .buttonStyle(.plain)
     }
@@ -388,17 +389,18 @@ struct ReportHubView: View {
         let maxChews = max(1, weeks.map(\.chews).max() ?? 1)
         let maxMinutes = max(1, weeks.map(\.minutes).max() ?? 1)
 
-        return VStack(alignment: .leading, spacing: 12) {
+        return AppCard(padding: AppSpacing.three) {
+            VStack(alignment: .leading, spacing: AppSpacing.two) {
             HStack {
                 Text("주간 리포트")
-                    .font(.appFont(.heavy, size: 16))
-                    .foregroundStyle(Color.textPrimary)
+                    .font(.appFont(.heavyBodyLarge))
+                    .foregroundStyle(Color.textDefault)
                 Spacer()
                 if hasData { TrendLegend() }
             }
 
             if hasData {
-                HStack(alignment: .bottom, spacing: 18) {
+                HStack(alignment: .bottom, spacing: AppSpacing.four) {
                     ForEach(weeks) { week in
                         VStack(spacing: 7) {
                             HStack(alignment: .bottom, spacing: 7) {
@@ -408,53 +410,54 @@ struct ReportHubView: View {
                             // 현재 주만 라벨 weight/색으로 표시 — 막대는 비교를 위해 모두 같은 농도로 둔다
                             // (이전엔 opacity 0.58 + ink400 + 약한 weight 삼중 인코딩으로 과거 주가 안 보였다).
                             Text(week.label)
-                                .font(.appFont(week.isCurrent ? .heavy : .semibold, size: 12))
+                                .font(.appFont(week.isCurrent ? .heavyLabel : .semiboldLabel))
                                 .foregroundStyle(week.isCurrent ? Color.textPrimary : Color.textSecondary)
                         }
                         .frame(maxWidth: .infinity)
                     }
                 }
-                .frame(height: 116)
+                .frame(height: Metrics.weeklyChartHeight)
             } else {
                 Text("이번 주 식사 기록이 쌓이면 지난 흐름과 비교해서 보여줄게요.")
-                    .font(.appFont(.semibold, size: 13))
-                    .foregroundStyle(Color.textSecondary)
+                    .font(.appFont(.semiboldCallout))
+                    .foregroundStyle(Color.textMuted)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.vertical, 20)
+                    .padding(.vertical, AppSpacing.five)
+            }
             }
         }
-        .padding(16)
-        .background(Color.surface, in: RoundedRectangle(cornerRadius: 24))    }
+    }
 
     private var weeklyCoachCard: some View {
         let insight = weeklyCoachInsight
-        return HStack(alignment: .top, spacing: 12) {
+        return AppCard(padding: AppSpacing.cell) {
+            HStack(alignment: .top, spacing: AppSpacing.three) {
             Image(insight.imageName)
                 .resizable()
                 .scaledToFit()
-                .frame(width: 66, height: 66)
-                .background(Color.butter100.opacity(0.72), in: Circle())
+                .frame(width: Metrics.weeklyCoachAvatar, height: Metrics.weeklyCoachAvatar)
+                .background(Color.statusWarningMuted.opacity(0.72), in: Circle())
 
-            VStack(alignment: .leading, spacing: 10) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+            VStack(alignment: .leading, spacing: AppSpacing.inner) {
+                VStack(alignment: .leading, spacing: AppSpacing.one) {
+                    HStack(alignment: .firstTextBaseline, spacing: AppSpacing.oneHalf) {
                         Text("다람이 코치")
-                            .font(.appFont(.heavy, size: 15))
-                            .foregroundStyle(Color.textPrimary)
+                            .font(.appFont(.heavyBody))
+                            .foregroundStyle(Color.textDefault)
                         Text(insight.badge)
-                            .font(.appFont(.heavy, size: 11))
+                            .font(.appFont(.heavyMicro))
                             .foregroundStyle(insight.accent)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
+                            .padding(.horizontal, AppSpacing.badgeH)
+                            .padding(.vertical, AppSpacing.badgeV)
                             .background(insight.accent.opacity(0.14), in: Capsule())
                     }
                     Text(insight.message)
-                        .font(.appFont(.semibold, size: 13))
-                        .foregroundStyle(Color.textSecondary)
+                        .font(.appFont(.semiboldCallout))
+                        .foregroundStyle(Color.textMuted)
                         .lineSpacing(2)
                 }
 
-                HStack(spacing: 8) {
+                HStack(spacing: AppSpacing.two) {
                     coachMetricPill(
                         title: "저작",
                         value: insight.chewDeltaText,
@@ -476,43 +479,41 @@ struct ReportHubView: View {
                 }
             }
             Spacer(minLength: 0)
+            }
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color.surface, in: RoundedRectangle(cornerRadius: 24))
     }
 
     private func coachMetricPill(title: String, value: String, icon: OpenIcon, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 5) {
-            HStack(spacing: 4) {
+        VStack(alignment: .leading, spacing: AppSpacing.microLabelGap) {
+            HStack(spacing: AppSpacing.one) {
                 OpenIconView(icon: icon, color: color, lineWidth: 2.1)
-                    .frame(width: 13, height: 13)
+                    .frame(width: Metrics.legendIcon, height: Metrics.legendIcon)
                 Text(title)
-                    .font(.appFont(.bold, size: 11))
-                    .foregroundStyle(Color.textSecondary)
+                    .font(.appFont(.boldMicro))
+                    .foregroundStyle(Color.textMuted)
             }
             Text(value)
-                .font(.appFont(.heavy, size: 11))
+                .font(.appFont(.heavyMicro))
                 .foregroundStyle(color)
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 9)
-        .padding(.vertical, 8)
-        .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+        .padding(.horizontal, AppSpacing.iconGap)
+        .padding(.vertical, AppSpacing.two)
+        .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: AppSpacing.three))
     }
 
     private func metricBar(value: Int, maxValue: Int, color: Color, label: String) -> some View {
-        VStack(spacing: 4) {
+        VStack(spacing: AppSpacing.one) {
             Text(label)
-                .font(.appFont(.heavy, size: 11))
+                .font(.appFont(.heavyCallout))
                 .foregroundStyle(color)
                 .monospacedDigit()
-            RoundedRectangle(cornerRadius: 6)
+            RoundedRectangle(cornerRadius: AppSpacing.oneHalf)
                 .fill(color)
-                .frame(width: 18, height: max(16, CGFloat(value) / CGFloat(maxValue) * 72))
+                .frame(width: Metrics.chartBarWidth, height: max(Metrics.chartBarMinHeight, CGFloat(value) / CGFloat(maxValue) * Metrics.chartBarMaxHeight))
         }
     }
 
@@ -928,7 +929,7 @@ private struct ChartScale {
     let bottomPad: CGFloat
     let height: CGFloat
 
-    init(days: [ReportDay], topPad: CGFloat = 18, bottomPad: CGFloat = 16, height: CGFloat = 164) {
+    init(days: [ReportDay], topPad: CGFloat = 16, bottomPad: CGFloat = 14, height: CGFloat = 132) {
         self.maxValue = max(days.map(\.avgChewCount).max() ?? 1, 1)
         self.topPad = topPad
         self.bottomPad = bottomPad
@@ -996,7 +997,7 @@ private struct ContinuousTrendChart: View {
                 guideLine.addLine(to: CGPoint(x: size.width, y: my))
                 context.stroke(guideLine, with: .color(Color.accentChew.opacity(0.6)), style: StrokeStyle(lineWidth: 1, dash: [4, 5]))
                 context.draw(
-                    Text("평소 \(mean)회").font(.appFont(.bold, size: 11)).foregroundColor(Color.tintPrimary),
+                    Text("평소 \(mean)회").font(.appFont(.boldMicro)).foregroundColor(Color.tintPrimary),
                     at: CGPoint(x: 4, y: my - 4), anchor: .bottomLeading
                 )
             }
@@ -1050,7 +1051,7 @@ private struct YAxisColumn: View {
     var body: some View {
         VStack(spacing: 0) {
             // 날짜행 + 밴드 간격 + 상단 padding(4)만큼 비워 차트 밴드 상단에 정렬.
-            Color.clear.frame(height: ringRowHeight + bandSpacing + 4)
+            Color.clear.frame(height: ringRowHeight + bandSpacing + 2)
             Canvas { context, size in
                 for tick in scale.tickValues {
                     let yy = scale.y(tick)
@@ -1060,15 +1061,15 @@ private struct YAxisColumn: View {
                     context.stroke(t, with: .color(Color.textTertiary.opacity(0.5)), lineWidth: 1)
                     if tick > 0 {
                         context.draw(
-                            Text("\(tick)").font(.appFont(.bold, size: 10)).foregroundColor(Color.textTertiary),
+                            Text("\(tick)").font(.appFont(.boldMicro)).foregroundColor(Color.textMuted),
                             at: CGPoint(x: size.width - 7, y: yy), anchor: .trailing
                         )
                     }
                 }
             }
             .frame(height: scale.height)
-            Spacer(minLength: 0)
         }
+        .frame(height: ringRowHeight + bandSpacing + 2 + scale.height)
         .accessibilityHidden(true)
     }
 }
@@ -1082,11 +1083,11 @@ private struct TrendLegend: View {
     }
 
     private func legendDot(_ color: Color, _ label: String) -> some View {
-        HStack(spacing: 5) {
-            Circle().fill(color).frame(width: 7, height: 7)
+        HStack(spacing: AppSpacing.microLabelGap) {
+            Circle().fill(color).frame(width: Metrics.legendDot, height: Metrics.legendDot)
             Text(label)
-                .font(.appFont(.bold, size: 11))
-                .foregroundStyle(Color.textSecondary)
+                .font(.appFont(.boldCallout))
+                .foregroundStyle(Color.textMuted)
         }
     }
 }
@@ -1114,20 +1115,20 @@ private struct ReportCalendarDialog: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 12) {
+            VStack(spacing: AppSpacing.three) {
                 monthHeader
                 weekdayLabels
                 grid
                 Spacer(minLength: 0)
             }
-            .padding(20)
+            .padding(AppSpacing.page)
             .background(LinearGradient.appBackground.ignoresSafeArea())
             .navigationTitle("날짜 선택")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("닫기") { dismiss() }
-                        .foregroundStyle(Color.acorn700)
+                        .foregroundStyle(Color.textAction)
                 }
             }
         }
@@ -1141,46 +1142,46 @@ private struct ReportCalendarDialog: View {
         HStack {
             Button { shiftMonth(-1) } label: {
                 Image(systemName: "chevron.left")
-                    .font(.appFont(.bold, size: 13))
-                    .frame(width: 32, height: 32)
-                    .background(Color.white.opacity(0.7), in: Circle())
+                    .font(.appFont(.boldCallout))
+                    .frame(width: Metrics.calendarButton, height: Metrics.calendarButton)
+                    .background(Color.bgSurface.opacity(0.7), in: Circle())
             }
             Spacer()
             Text(monthTitle)
-                .font(.appFont(.heavy, size: 15))
-                .foregroundStyle(Color.textPrimary)
+                .font(.appFont(.heavyBody))
+                .foregroundStyle(Color.textDefault)
             Spacer()
             Button { shiftMonth(1) } label: {
                 Image(systemName: "chevron.right")
-                    .font(.appFont(.bold, size: 13))
-                    .frame(width: 32, height: 32)
-                    .background(Color.white.opacity(0.7), in: Circle())
+                    .font(.appFont(.boldCallout))
+                    .frame(width: Metrics.calendarButton, height: Metrics.calendarButton)
+                    .background(Color.bgSurface.opacity(0.7), in: Circle())
             }
             .disabled(isCurrentMonth)
             .opacity(isCurrentMonth ? 0.35 : 1)
         }
-        .foregroundStyle(Color.acorn700)
+        .foregroundStyle(Color.textAction)
     }
 
     private var weekdayLabels: some View {
         let symbols = ["일", "월", "화", "수", "목", "금", "토"]
-        return HStack(spacing: 4) {
+        return HStack(spacing: AppSpacing.one) {
             ForEach(symbols, id: \.self) { sym in
                 Text(sym)
-                    .font(.appFont(.bold, size: 11))
-                    .foregroundStyle(Color.textTertiary)
+                    .font(.appFont(.boldCaption))
+                    .foregroundStyle(Color.textMuted)
                     .frame(maxWidth: .infinity)
             }
         }
     }
 
     private var grid: some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 7), spacing: 8) {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: AppSpacing.one), count: 7), spacing: AppSpacing.two) {
             ForEach(Array(monthDays.enumerated()), id: \.offset) { _, cellDate in
                 if let date = cellDate {
                     dayCell(date)
                 } else {
-                    Color.clear.frame(height: 46)
+                    Color.clear.frame(height: Metrics.calendarCellHeight)
                 }
             }
         }
@@ -1196,14 +1197,14 @@ private struct ReportCalendarDialog: View {
                 ZStack {
                     MealCompletionRing(meals: mealCount(date), selected: selected)
                     Text("\(cal.component(.day, from: date))")
-                        .font(.appFont(.heavy, size: 13))
-                        .foregroundStyle(selected ? Color.white : (isFuture ? Color.textTertiary.opacity(0.5) : Color.textPrimary))
+                        .font(.appFont(.heavyCallout))
+                        .foregroundStyle(selected ? Color.textActionInverse : (isFuture ? Color.textSubtle.opacity(0.5) : Color.textDefault))
                         .monospacedDigit()
                 }
-                .frame(width: 36, height: 36)
+                .frame(width: Metrics.calendarRing, height: Metrics.calendarRing)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 46)
+            .frame(height: Metrics.calendarCellHeight)
         }
         .buttonStyle(.plain)
         .disabled(isFuture)
@@ -1239,7 +1240,7 @@ private struct ReportCalendarDialog: View {
 #Preview("Light") {
     ScrollView {
         ReportHubView()
-            .padding(20)
+            .padding(AppSpacing.page)
     }
     .background(LinearGradient.appBackground)
     .environment(AppState())
@@ -1248,9 +1249,25 @@ private struct ReportCalendarDialog: View {
 #Preview("Dark") {
     ScrollView {
         ReportHubView()
-            .padding(20)
+            .padding(AppSpacing.page)
     }
     .background(LinearGradient.appBackground)
     .environment(AppState())
     .preferredColorScheme(.dark)
+}
+
+private enum Metrics {
+    static let chartHairline = AppSize.border
+    static let dateRing = AppSize.controlXLarge
+    static let emptyIcon: CGFloat = 42
+    static let weeklyChartHeight: CGFloat = 104
+    static let weeklyCoachAvatar: CGFloat = 66
+    static let legendIcon: CGFloat = 13
+    static let legendDot = AppSize.indicatorMedium
+    static let chartBarWidth: CGFloat = 18
+    static let chartBarMinHeight: CGFloat = 16
+    static let chartBarMaxHeight: CGFloat = 64
+    static let calendarButton = AppSize.controlLarge
+    static let calendarCellHeight: CGFloat = 46
+    static let calendarRing = AppSize.iconContainerLarge
 }
