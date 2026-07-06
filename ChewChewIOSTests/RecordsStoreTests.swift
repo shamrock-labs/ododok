@@ -17,7 +17,7 @@ final class RecordsStoreTests: XCTestCase {
     func testLoadMonthSuccessStoresCurrentMonthSessions() async {
         let jan = date(year: 2026, month: 1, day: 10)
         let repository = fakeRepository([
-            monthStart(jan): [makeDTO(startedAt: jan), makeDTO(startedAt: date(year: 2026, month: 1, day: 11))]
+            monthStart(jan): [makeRecord(startedAt: jan), makeRecord(startedAt: date(year: 2026, month: 1, day: 11))]
         ])
         let store = RecordsStore(repository: repository, calendar: calendar, initialMonth: jan)
 
@@ -53,8 +53,8 @@ final class RecordsStoreTests: XCTestCase {
         let jan = date(year: 2026, month: 1, day: 10)
         let feb = date(year: 2026, month: 2, day: 3)
         let repository = fakeRepository([
-            monthStart(jan): [makeDTO(startedAt: jan)],
-            monthStart(feb): [makeDTO(startedAt: feb)]
+            monthStart(jan): [makeRecord(startedAt: jan)],
+            monthStart(feb): [makeRecord(startedAt: feb)]
         ])
         let store = RecordsStore(repository: repository, calendar: calendar, initialMonth: jan)
 
@@ -67,19 +67,21 @@ final class RecordsStoreTests: XCTestCase {
 
     func testMoveMonthBeforeOldestMonthIsBlocked() async {
         let feb = date(year: 2026, month: 2, day: 3)
-        let repository = fakeRepository([monthStart(feb): [makeDTO(startedAt: feb)]])
+        let repository = fakeRepository([monthStart(feb): [makeRecord(startedAt: feb)]])
         let store = RecordsStore(repository: repository, calendar: calendar, initialMonth: feb)
 
         await store.loadInitial()
         await store.moveMonth(delta: -1)
 
+        let didFetchOldest = await repository.didFetchOldestSessionStartedAt()
         XCTAssertEqual(store.displayedMonth, monthStart(feb))
+        XCTAssertTrue(didFetchOldest)
     }
 
     func testDeleteSessionSuccessRemovesOnlyAfterRepositorySucceeds() async {
         let jan = date(year: 2026, month: 1, day: 10)
-        let target = makeDTO(startedAt: jan)
-        let other = makeDTO(startedAt: date(year: 2026, month: 1, day: 11))
+        let target = makeRecord(startedAt: jan)
+        let other = makeRecord(startedAt: date(year: 2026, month: 1, day: 11))
         let repository = fakeRepository([monthStart(jan): [target, other]])
         let store = RecordsStore(repository: repository, calendar: calendar, initialMonth: jan)
 
@@ -93,7 +95,7 @@ final class RecordsStoreTests: XCTestCase {
 
     func testDeleteAllSessionsSuccessClearsList() async {
         let jan = date(year: 2026, month: 1, day: 10)
-        let repository = fakeRepository([monthStart(jan): [makeDTO(startedAt: jan)]])
+        let repository = fakeRepository([monthStart(jan): [makeRecord(startedAt: jan)]])
         let store = RecordsStore(repository: repository, calendar: calendar, initialMonth: jan)
 
         await store.loadMonth()
@@ -106,7 +108,7 @@ final class RecordsStoreTests: XCTestCase {
 
     func testDeleteAllSessionsInvalidatesPendingLoad() async {
         let jan = date(year: 2026, month: 1, day: 10)
-        let session = makeDTO(startedAt: jan)
+        let session = makeRecord(startedAt: jan)
         let repository = fakeRepository(
             [monthStart(jan): [session]],
             delaysByMonth: [monthStart(jan): 200_000_000]
@@ -123,7 +125,7 @@ final class RecordsStoreTests: XCTestCase {
 
     func testDeleteSessionFailureKeepsList() async {
         let jan = date(year: 2026, month: 1, day: 10)
-        let target = makeDTO(startedAt: jan)
+        let target = makeRecord(startedAt: jan)
         let repository = fakeRepository([monthStart(jan): [target]], deleteError: TestError.delete)
         let store = RecordsStore(repository: repository, calendar: calendar, initialMonth: jan)
 
@@ -137,8 +139,8 @@ final class RecordsStoreTests: XCTestCase {
     func testLatestWinsKeepsLastRequestedMonth() async {
         let jan = date(year: 2026, month: 1, day: 10)
         let feb = date(year: 2026, month: 2, day: 3)
-        let janSession = makeDTO(startedAt: jan)
-        let febSession = makeDTO(startedAt: feb)
+        let janSession = makeRecord(startedAt: jan)
+        let febSession = makeRecord(startedAt: feb)
         let repository = fakeRepository(
             [
                 monthStart(jan): [janSession],
@@ -161,7 +163,7 @@ final class RecordsStoreTests: XCTestCase {
     }
 
     private func fakeRepository(
-        _ sessionsByMonth: [Date: [ChewingSessionDTO]],
+        _ sessionsByMonth: [Date: [MealSessionRecord]],
         fetchError: Error? = nil,
         deleteError: Error? = nil,
         deleteAllError: Error? = nil,
@@ -193,8 +195,8 @@ final class RecordsStoreTests: XCTestCase {
         return monthInterval.start
     }
 
-    private func makeDTO(startedAt: Date) -> ChewingSessionDTO {
-        ChewingSessionDTO(
+    private func makeRecord(startedAt: Date) -> MealSessionRecord {
+        let dto = ChewingSessionDTO(
             id: UUID(),
             deviceId: "test-device",
             startedAt: startedAt,
@@ -211,6 +213,36 @@ final class RecordsStoreTests: XCTestCase {
             estimatedTotalChews: 300,
             modelVersion: "test"
         )
+        guard let record = MealSessionRecordMapper.map(dto) else {
+            XCTFail("Test record must be reportable")
+            return MealSessionRecord(
+                id: dto.id,
+                startedAt: dto.startedAt,
+                durationSec: dto.durationSec,
+                reportCard: fallbackReportCard(endedAt: dto.endedAt)
+            )
+        }
+        return record
+    }
+
+    private func fallbackReportCard(endedAt: Date) -> ReportCardModel {
+        ReportCardModel(
+            score: 80,
+            grade: .good,
+            chewCount: 300,
+            totalDurationSec: 600,
+            chewsPerMinute: 30,
+            chewingFraction: 0.7,
+            chewingSeconds: 432,
+            restSeconds: 168,
+            speedScore: 80,
+            rhythmScore: 80,
+            continuityScore: 80,
+            lengthScore: 80,
+            caption: nil,
+            mood: .happy,
+            endedAt: endedAt
+        )
     }
 }
 
@@ -221,17 +253,18 @@ private enum TestError: Error {
 
 private actor FakeMealSessionRepository: MealSessionRepository {
     private let calendar: Calendar
-    private let sessionsByMonth: [Date: [ChewingSessionDTO]]
+    private let sessionsByMonth: [Date: [MealSessionRecord]]
     private let fetchError: Error?
     private let deleteError: Error?
     private let deleteAllError: Error?
     private let delaysByMonth: [Date: UInt64]
     private var deletedIDs: [UUID] = []
     private var deleteAllCalled = false
+    private var fetchOldestCalled = false
 
     init(
         calendar: Calendar,
-        sessionsByMonth: [Date: [ChewingSessionDTO]],
+        sessionsByMonth: [Date: [MealSessionRecord]],
         fetchError: Error?,
         deleteError: Error?,
         deleteAllError: Error?,
@@ -245,17 +278,20 @@ private actor FakeMealSessionRepository: MealSessionRepository {
         self.delaysByMonth = delaysByMonth
     }
 
-    func fetchSessions(since: Date, until: Date?) async throws -> [ChewingSessionDTO] {
+    func fetchSessions(since: Date, until: Date?) async throws -> [MealSessionRecord] {
         if let fetchError { throw fetchError }
-        if since == .distantPast {
-            return sessionsByMonth.values.flatMap { $0 }
-        }
 
         let month = calendar.dateInterval(of: .month, for: since)?.start ?? since
         if let delay = delaysByMonth[month] {
             try? await Task.sleep(nanoseconds: delay)
         }
         return sessionsByMonth[month] ?? []
+    }
+
+    func fetchOldestSessionStartedAt() async throws -> Date? {
+        if let fetchError { throw fetchError }
+        fetchOldestCalled = true
+        return sessionsByMonth.values.flatMap { $0 }.map(\.startedAt).min()
     }
 
     func deleteSession(id: UUID) async throws {
@@ -274,5 +310,9 @@ private actor FakeMealSessionRepository: MealSessionRepository {
 
     func didDeleteAllSessions() -> Bool {
         deleteAllCalled
+    }
+
+    func didFetchOldestSessionStartedAt() -> Bool {
+        fetchOldestCalled
     }
 }

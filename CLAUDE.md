@@ -13,8 +13,8 @@ SwiftUI 기반 오도독 iOS 앱. AirPods IMU 신호를 신호처리(DSP)로 분
 
 - SwiftUI 앱. 화면은 SwiftUI View, 상태는 `@Observable` `AppState`(`ChewChewIOS/Models/`)로 모은다.
 - 새 코드 배치 전 `README.md`의 "앱 구조 규칙"을 확인한다. View에 외부 효과를 넣거나, AppState에 도메인 절차를 바로 쌓지 않는다.
-- `AppState`는 화면 상태 facade로 유지한다. 네트워크·오디오·알림·파일·분석 등 외부 효과와 도메인 절차는 별도 `Services/`·coordinator·순수 함수로 분리한다. 상세 기준은 `README.md`의 "AppState 경계 규칙"을 따른다.
-- 백엔드 접근은 **포트&어댑터**다. 포트는 `RemoteStore` 프로토콜(`ChewChewIOS/Services/RemoteStore.swift`), 어댑터는 `InsForgeRemoteStore`·`SpringRemoteStore`·`NoopRemoteStore`다. 화면·상태는 프로토콜에만 의존하고 구현은 주입으로 갈아끼운다.
+- `AppState`는 화면 상태 facade로 유지한다. 네트워크·오디오·알림·파일·분석 등 외부 효과와 도메인 절차는 별도 `Infra/`(공유)·`Features/<도메인>/`(전용) 어댑터·coordinator·순수 함수로 분리한다. 상세 기준은 `README.md`의 "AppState 경계 규칙"을 따른다.
+- 백엔드 접근은 **포트&어댑터**다. 포트는 `RemoteStore` 프로토콜(`ChewChewIOS/Infra/RemoteStore.swift`), 어댑터는 `InsForgeRemoteStore`·`SpringRemoteStore`·`NoopRemoteStore`다. 화면·상태는 프로토콜에만 의존하고 구현은 주입으로 갈아끼운다.
 - 어댑터 선택은 `ChewChewIOS/ChewChewIOSApp.swift`의 `makeRemoteStore()` 한 곳에서만 한다. 기본은 Spring(`AppEnvironment.backendURL`), 테스트(XCTest/`-useNoopRemote`)는 Noop, `-useInsForge`는 레거시 InsForge.
 - 환경(바라보는 백엔드)은 **config 주입**으로 결정한다: `AppEnvironment.backendURL` ← Info.plist `ODODOK_BACKEND_URL` ← xcconfig(`Config/Env.Dev.xcconfig` Debug / `Config/Env.Prod.xcconfig` Release). 환경 분기를 코드에 하드코딩하지 않는다.
 - 번들 ID는 환경별로 쪼개지 않는다(앱 하나에 번들 ID 하나로 고정, `com.shamrock.ododok`). 환경 분리는 백엔드 URL로만 한다.
@@ -74,5 +74,5 @@ SwiftUI 기반 오도독 iOS 앱. AirPods IMU 신호를 신호처리(DSP)로 분
 
 - `/issue <ODO-NN> [type]` — Linear 이슈 하나를 시작한다(조회 → In Progress → 브랜치 생성 → 짧은 계획).
 - `/commit [--split]` — 변경을 커밋 컨벤션으로 커밋한다(push·PR 안 함). `--split`은 의미 단위 분할.
-- `/review [부모브랜치]` — 현재 브랜치 diff를 컨벤션 기준으로 적대적 리뷰한다.
+- `/review [부모브랜치]` — 현재 브랜치 diff를 컨벤션 기준으로 적대적 리뷰한다. 상세 iOS 리뷰 루브릭(도메인·상태·동시성)은 `docs/ios-review-guide.md`를 따른다 — 다른 AI로 리뷰할 때도 이 파일을 기준으로 붙여 쓴다.
 - `/ship` — 테스트(시뮬레이터 빌드) → 리뷰 → 커밋 → push → PR까지 보낸다(머지 안 함).

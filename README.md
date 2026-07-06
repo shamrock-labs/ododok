@@ -39,7 +39,8 @@ ChewChewIOS/
 │   ├── AppState.swift         # @Observable 앱 상태 facade
 │   ├── ShopItem.swift         # 의상/도토리팩 정적 데이터
 │   └── MoodStatus.swift       # 4표정 분기 + 피드백 라인
-├── Services/                  # 백엔드/오디오/알림/세션 등 외부 효과 어댑터
+├── Features/                  # 도메인별 Store·View·포트·어댑터 (Auth/Records/Friends/Reminder/MealSession)
+├── Infra/                     # 여러 Feature가 공유하는 인프라 (RemoteStore·TokenManager·DeviceIdentity·config)
 ├── SignalProcessing/          # IMU 신호처리와 씹기 감지 알고리즘
 ├── Analytics/                 # Amplitude/Firebase/Sentry 계측 포트와 어댑터
 ├── DesignSystem/
@@ -65,7 +66,7 @@ ChewChewIOS/
 
 - `Views/`: SwiftUI 화면과 작은 UI 컴포넌트만 둔다. 네트워크 호출, 파일 저장, 오디오 제어, 알고리즘 판단을 직접 하지 않는다.
 - `Models/`: 화면 상태, DTO가 아닌 앱 내부 모델, 값 타입을 둔다. 외부 시스템 호출은 넣지 않는다.
-- `Services/`: 백엔드 클라이언트, 오디오, 알림, Keychain, Sentry처럼 외부 효과가 있는 어댑터를 둔다. 화면은 가능하면 프로토콜에 의존한다.
+- `Infra/`: 여러 Feature가 공유하는 외부 효과 어댑터·포트(RemoteStore, SpringRemoteStore, TokenManager, DeviceIdentity, config, NotificationDelegate). Feature 전용 어댑터·Provider는 해당 `Features/<Feature>/`에 둔다.
 - `SignalProcessing/`: IMU 신호처리처럼 입력 데이터로 판단 결과를 만드는 알고리즘을 둔다. UI 상태나 서버 저장을 직접 알지 않는다.
 - `Analytics/`: 이벤트 이름, 속성 스키마, provider fan-out을 둔다. 화면과 `AppState`는 이벤트 호출만 한다.
 - `DesignSystem/`: 색, 폰트, 간격, 그림자, 공통 modifier를 둔다. 특정 화면의 비즈니스 조건을 넣지 않는다.
@@ -74,13 +75,13 @@ AI나 사람이 새 기능을 추가할 때는 아래 순서를 따른다.
 
 1. 화면만 바뀌면 `Views/` 안에서 끝낸다.
 2. 상태가 필요하면 `AppState`에 최소 상태만 추가한다.
-3. 외부 효과가 있으면 `Services/`에 타입을 만들고 `AppState`는 호출만 한다.
+3. 외부 효과가 있으면 공유는 `Infra/`, Feature 전용은 해당 `Features/<Feature>/`에 타입을 만들고 `AppState`는 호출만 한다.
 4. 판단 로직이 테스트 가능하면 순수 함수나 `SignalProcessing/` 타입으로 분리한다.
 5. 같은 코드가 두 화면 이상에서 필요해질 때만 공통 컴포넌트나 helper로 올린다.
 
 ### 목표 배치: 도메인(Feature)별
 
-레이어별(`Views/`·`Models/`·`Services/`)은 한 기능이 세 폴더에 흩어져 국소적 이해를 떨어뜨린다. 목표는 도메인별 배치다 — 한 기능의 Store·View·포트(Repository 프로토콜)를 `Features/<Feature>/` 한 폴더에 모은다.
+레이어별(`Views/`·`Models/`·`Infra/`)은 한 기능이 세 폴더에 흩어져 국소적 이해를 떨어뜨린다. 목표는 도메인별 배치다 — 한 기능의 Store·View·포트(Repository 프로토콜)를 `Features/<Feature>/` 한 폴더에 모은다.
 
 - Store 기반 새 기능은 `Features/<Feature>/`에서 태어난다. `Models/`·`Views/`에 흩지 않는다.
 - 공유 코드(`RemoteStore` 프로토콜, `DesignSystem/`·`Analytics/`·`SignalProcessing/`·`Utils/`)와 어댑터 구현은 기능 폴더에 넣지 않고 레이어 폴더에 둔다.
@@ -94,7 +95,7 @@ AI나 사람이 새 기능을 추가할 때는 아래 순서를 따른다.
 새 기능을 넣을 때는 아래 순서를 기본 규칙으로 삼는다.
 
 - 화면 표시 상태, sheet/alert 플래그, 화면에서 직접 관찰해야 하는 값만 `AppState`에 둔다.
-- 네트워크, 오디오, 알림, 파일, Sentry/Analytics처럼 외부 효과가 있는 로직은 `Services/` 또는 전용 어댑터로 뺀다.
+- 네트워크, 오디오, 알림, 파일, Sentry/Analytics처럼 외부 효과가 있는 로직은 공유는 `Infra/`, Feature 전용은 해당 `Features/`의 어댑터로 뺀다.
 - 식사 측정, 온보딩, 친구 초대처럼 여러 서비스를 묶는 절차는 `AppState`에 길게 쓰지 말고 작은 private method나 별도 coordinator로 분리한다.
 - 알고리즘 판단은 `SignalProcessing/` 또는 순수 함수로 두고, `AppState`는 입력과 결과 연결만 맡는다.
 - 서버가 정본인 정책값은 앱에 매직넘버로 박지 않는다. 앱은 서버 값을 주입받고, 범위 정규화·fallback 같은 안전 처리만 한다.
