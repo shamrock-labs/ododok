@@ -20,6 +20,7 @@ SwiftUI 기반 오도독 iOS 앱. AirPods IMU 신호를 신호처리(DSP)로 분
 - 번들 ID는 환경별로 쪼개지 않는다(앱 하나에 번들 ID 하나로 고정, `com.shamrock.ododok`). 환경 분리는 백엔드 URL로만 한다.
 - 테스트 런치 인자(`-useNoopRemote`/`-useInsForge`)는 환경 config와 **직교한 오버라이드**다. 환경 분리(dev/prod)와 섞지 않는다.
 - 신호처리(DSP) 카운터는 `ChewChewIOS/SignalProcessing/ChewCounter.swift`(actor)다. 모델 추론이 아니라 IMU 신호처리 기반 감지다.
+- 모든 스펙(Obsidian `Projects/ododok/`) 구현은 README "코드 작성 원칙"과 `.swiftlint.yml`을 기준으로 한다. 구현 완료 전 `swiftlint`를 돌려 경고를 정리하고, 무서명 시뮬레이터 빌드와 함께 통과시킨다. lint·원칙에 어긋나는 구현은 완료로 보지 않는다.
 
 ## 디자인 규칙
 

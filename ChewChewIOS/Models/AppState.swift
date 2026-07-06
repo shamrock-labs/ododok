@@ -230,6 +230,10 @@ final class AppState {
     /// 원격 백엔드(InsForge)에 대한 추상화. 테스트/시뮬레이터에선 NoopRemoteStore 주입 가능.
     @ObservationIgnored let remoteStore: RemoteStore
 
+    @MainActor @ObservationIgnored lazy var records: RecordsStore = RecordsStore(
+        repository: RemoteStoreMealSessionRepository(remoteStore: remoteStore)
+    )
+
     /// 제품·리텐션 분석 포트(ODO-79). Amplitude·(후속) Firebase로 fan-out. 테스트/미설정 시 Noop.
     @ObservationIgnored let analytics: AnalyticsService
 
