@@ -68,6 +68,20 @@ final class AuthStore {
         onSessionExpired()
     }
 
+    func markLoggedIn(onboardingCompleted: Bool) {
+        isLoggedIn = true
+        hasCompletedOnboarding = onboardingCompleted
+        errorMessage = nil
+    }
+
+    func markLoggedOut() {
+        clearSessionState()
+    }
+
+    func updateOnboardingCompleted(_ completed: Bool) {
+        hasCompletedOnboarding = completed
+    }
+
     private func clearSessionState() {
         isLoggedIn = false
         hasCompletedOnboarding = false

@@ -4,6 +4,11 @@ struct FriendsView: View {
     @Environment(AppState.self) private var state
     @State private var toast: AppToastMessage?
 
+    @MainActor
+    private var store: FriendsStore {
+        state.friends
+    }
+
     var body: some View {
         VStack(spacing: AppSpacing.verticalLoose) {
             header
@@ -17,7 +22,7 @@ struct FriendsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .appToast($toast)
         .task {
-            await state.refreshFriendArea()
+            await store.load()
         }
     }
 
@@ -32,26 +37,27 @@ struct FriendsView: View {
     private var inviteCard: some View {
         AppCard(padding: AppSpacing.five, elevation: .flat) {
             VStack(spacing: AppSpacing.cell) {
-            // 카카오 초대를 가장 크게(주 액션). 카카오 공식 옐로우 + 어두운 텍스트.
-            AppActionButton(
-                action: {
-                Task { await shareInvite() }
-                },
-                foreground: Color.textDefault,
-                background: AnyShapeStyle(Color.kakaoYellow),
-                radius: AppRadius.container,
-                verticalPadding: AppSpacing.verticalLoose
-            ) {
-                HStack(spacing: AppSpacing.two) {
-                    Image(systemName: "message.fill")
-                        .font(.appFont(.boldBodyLarge))
-                    Text("카카오톡으로 초대하기")
-                        .font(.appFont(.heavyHeadline))
-                }
-            }
+                // 카카오 초대를 가장 크게(주 액션). 카카오 공식 옐로우 + 어두운 텍스트.
+                AppActionButton(
+                    action: {
+                        Task { await shareInvite() }
+                    },
+                    foreground: Color.textDefault,
+                    background: AnyShapeStyle(Color.kakaoYellow),
+                    radius: AppRadius.container,
+                    verticalPadding: AppSpacing.verticalLoose,
+                    label: {
+                        HStack(spacing: AppSpacing.two) {
+                            Image(systemName: "message.fill")
+                                .font(.appFont(.boldBodyLarge))
+                            Text("카카오톡으로 초대하기")
+                                .font(.appFont(.heavyHeadline))
+                        }
+                    }
+                )
 
-            // 내 초대 코드는 작게 아래에. 영구 단일 코드라 "새로고침"은 두지 않고, 실패 시에만 다시 시도.
-            inviteCodeLine
+                // 내 초대 코드는 작게 아래에. 영구 단일 코드라 "새로고침"은 두지 않고, 실패 시에만 다시 시도.
+                inviteCodeLine
             }
         }
     }
@@ -62,13 +68,13 @@ struct FriendsView: View {
             Text("내 초대 코드")
                 .font(.appFont(.semiboldCaption))
                 .foregroundStyle(Color.textSubtle)
-            if let code = state.friendInviteCode {
+            if let code = store.inviteCode {
                 Text(code)
                     .font(.appFont(.boldCallout))
                     .foregroundStyle(Color.textMuted)
-            } else if state.friendAreaLoadState == .failed {
+            } else if store.loadState == .failed {
                 Button("다시 시도") {
-                    Task { await state.refreshFriendArea() }
+                    Task { await store.refresh() }
                 }
                 .font(.appFont(.boldCaption))
                 .foregroundStyle(Color.statusSuccess)
@@ -86,28 +92,28 @@ struct FriendsView: View {
             Text("친구 랭킹")
                 .font(.appFont(.heavyHeadlineLarge))
                 .foregroundStyle(Color.textDefault)
-            if state.friendAreaLoadState == .loading && state.friendRankings.isEmpty {
+            if store.loadState == .loading && store.rankings.isEmpty {
                 // 첫 로딩(재시도 포함) 중엔 "없음" 대신 스피너.
                 ProgressView()
                     .controlSize(.small)
-            } else if state.friendAreaLoadState == .failed {
+            } else if store.loadState == .failed {
                 // 실패 시엔 직전 랭킹이 남아 있어도 성공처럼 보여주지 않는다(stale 노출 방지).
                 Text("잠시 후 다시 시도해 주세요")
                     .font(.appFont(.semiboldLabel))
                     .foregroundStyle(Color.textSubtle)
-            } else if state.friendRankings.isEmpty {
+            } else if store.rankings.isEmpty {
                 Text("아직 랭킹이 없어요. 친구를 초대해 보세요.")
                     .font(.appFont(.semiboldLabel))
                     .foregroundStyle(Color.textSubtle)
             } else {
                 VStack(spacing: AppSpacing.one) {
-                    ForEach(Array(state.friendRankings.enumerated()), id: \.element.id) { index, row in
+                    ForEach(Array(store.rankings.enumerated()), id: \.element.id) { index, row in
                         HStack(spacing: AppSpacing.inner) {
                             Text("\(index + 1)")
                                 .font(.appFont(.heavyLabel))
                                 .foregroundStyle(row.me ? Color.statusSuccess : Color.textSubtle)
                                 .frame(minWidth: AppSize.iconSmall)
-                            Text(rankingName(row))
+                            Text(store.displayName(for: row))
                                 .font(.appFont(.boldLabel))
                                 .foregroundStyle(Color.textDefault)
                                 .lineLimit(1)
@@ -130,19 +136,11 @@ struct FriendsView: View {
         }
     }
 
-    /// 랭킹 행 표시 이름. 내 행은 내 닉네임(없으면 "나"), 친구는 서버 표시 이름(없으면 "친구").
-    private func rankingName(_ row: FriendRankingDTO) -> String {
-        if row.me {
-            return state.displayName ?? row.name ?? "나"
-        }
-        return row.name ?? "친구"
-    }
-
     /// 카카오톡 인앱 공유로 초대를 보낸다(링크 복사 아님 — 카카오톡 공유 시트가 직접 뜬다).
     /// 코드 미로딩/카톡 미설치는 토스트로 안내한다.
     @MainActor
     private func shareInvite() async {
-        guard let code = state.friendInviteCode, !code.isEmpty else {
+        guard let code = store.inviteCode, !code.isEmpty else {
             toast = AppToastMessage("초대 코드를 불러오는 중이에요", kind: .info)
             return
         }
