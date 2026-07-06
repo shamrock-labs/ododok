@@ -18,7 +18,7 @@ let mealCalendarCalendar: Calendar = {
 ///   바깥에서 사용).
 struct MealCalendarGrid: View {
     var store: RecordsStore
-    var onTapSession: ((ChewingSessionDTO) -> Void)?
+    var onTapSession: ((MealSessionRecord) -> Void)?
 
     private var calendar: Calendar { mealCalendarCalendar }
 
@@ -253,97 +253,10 @@ struct MealCalendarView: View {
             )
             .navigationDestination(for: UUID.self) { sessionId in
                 if let session = records.monthSessions.first(where: { $0.id == sessionId }) {
-                    SessionReportDetailView(dto: session)
+                    SessionReportDetailView(record: session)
                 }
             }
         }
-    }
-}
-
-// MARK: - Day sessions list
-
-struct DaySessionsView: View {
-    let date: Date
-    /// 전체 월간 세션을 Binding으로 받아 view body 호출 시점마다 latest로 self-filter.
-    /// closure 안에서 한 번 평가된 sessions를 stale capture하는 race 회피.
-    @Binding var monthSessions: [ChewingSessionDTO]
-    let onDelete: (ChewingSessionDTO) -> Void
-    /// row 탭 시 호출. 호출자가 NavigationPath append 또는 다른 전환 처리.
-    let onTapSession: (ChewingSessionDTO) -> Void
-
-    private var sessions: [ChewingSessionDTO] {
-        monthSessions.filter { mealCalendarCalendar.isDate($0.startedAt, inSameDayAs: date) }
-    }
-
-    var body: some View {
-        Group {
-            if sessions.isEmpty {
-                VStack {
-                    Spacer()
-                    Text("이 날은 식사 기록이 없어요.")
-                        .font(.appFont(.semiboldBody))
-                        .foregroundStyle(Color.textSecondary)
-                    Spacer()
-                }
-            } else {
-                List {
-                    ForEach(sessions, id: \.id) { session in
-                        sessionRow(session)
-                            .contentShape(Rectangle())
-                            .onTapGesture { onTapSession(session) }
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.visible)
-                            .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                Button(role: .destructive) {
-                                    onDelete(session)
-                                } label: {
-                                    Label("삭제", systemImage: "trash")
-                                }
-                            }
-                    }
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(Color.pageBackground.ignoresSafeArea())
-        .navigationTitle(dateLabel)
-        .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private var dateLabel: String {
-        return KoDate.string(date, "M월 d일 EEEE")
-    }
-
-    private func sessionRow(_ session: ChewingSessionDTO) -> some View {
-        HStack(spacing: 12) {
-            Text(formatTime(session.startedAt))
-                .font(.appFont(.heavyHeadline))
-                .foregroundStyle(Color.textPrimary)
-                .monospacedDigit()
-            Spacer(minLength: 0)
-            Text(formatDuration(session.durationSec))
-                .font(.appFont(.semiboldLabel))
-                .foregroundStyle(Color.textSecondary)
-                .monospacedDigit()
-        }
-        .padding(.horizontal, 4)
-        .padding(.vertical, 14)
-    }
-
-    private func formatTime(_ date: Date) -> String {
-        return KoDate.clockTime(date)
-    }
-
-    private func formatDuration(_ seconds: Double) -> String {
-        let total = max(0, Int(seconds.rounded()))
-        let mins = total / 60
-        let secs = total % 60
-        if mins == 0 { return "\(secs)초" }
-        if secs == 0 { return "\(mins)분" }
-        return "\(mins)분 \(secs)초"
     }
 }
 
@@ -351,16 +264,24 @@ struct DaySessionsView: View {
 
 /// 캘린더에서 push되는 단일 세션 리포트 화면.
 struct SessionReportDetailView: View {
-    let dto: ChewingSessionDTO
+    private let model: ReportCardModel?
 
     /// PNG 렌더는 ImageRenderer 호출 비용이 작지 않아 view 진입 시 1회만 만든다.
     /// 빈 상태(분석 5필드 nil) 세션에선 nil로 남아 공유 버튼이 자동 hidden.
     @State private var sharePayload: ReportCardSharePayload?
 
+    init(dto: ChewingSessionDTO) {
+        self.model = ReportCardModel.from(dto)
+    }
+
+    init(record: MealSessionRecord) {
+        self.model = record.reportCard
+    }
+
     var body: some View {
         ScrollView {
             Group {
-                if let model = ReportCardModel.from(dto) {
+                if let model {
                     ReportCardView(model: model)
                 } else {
                     EmptyReportCardView()
@@ -388,7 +309,7 @@ struct SessionReportDetailView: View {
         }
         .task {
             guard sharePayload == nil,
-                  let model = ReportCardModel.from(dto),
+                  let model,
                   let data = ReportCardRenderer.render(model)
             else { return }
             sharePayload = ReportCardSharePayload(imageData: data)
@@ -401,8 +322,8 @@ struct SessionReportDetailView: View {
 /// 시간대별로 묶어 보여주는 일간 식사 리스트. 캘린더 그리드 바로 아래에서 펼침/접힘.
 private struct DayInlineSection: View {
     let date: Date
-    let sessions: [ChewingSessionDTO]
-    let onTapSession: ((ChewingSessionDTO) -> Void)?
+    let sessions: [MealSessionRecord]
+    let onTapSession: ((MealSessionRecord) -> Void)?
 
     var body: some View {
         if sessions.isEmpty {
@@ -421,7 +342,7 @@ private struct DayInlineSection: View {
         }
     }
 
-    private func slotBlock(slot: DayMealSlot, sessions: [ChewingSessionDTO]) -> some View {
+    private func slotBlock(slot: DayMealSlot, sessions: [MealSessionRecord]) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 OpenIconView(icon: slot.openIcon, color: slot.iconColor, lineWidth: 2.1)
@@ -439,7 +360,7 @@ private struct DayInlineSection: View {
         }
     }
 
-    private func sessionRow(_ session: ChewingSessionDTO) -> some View {
+    private func sessionRow(_ session: MealSessionRecord) -> some View {
         Button {
             onTapSession?(session)
         } label: {
@@ -464,9 +385,9 @@ private struct DayInlineSection: View {
         .buttonStyle(.plain)
     }
 
-    private var slotGroups: [(slot: DayMealSlot, sessions: [ChewingSessionDTO])] {
-        let grouped = Dictionary(grouping: sessions) { dto in
-            DayMealSlot(hour: Calendar.current.component(.hour, from: dto.startedAt))
+    private var slotGroups: [(slot: DayMealSlot, sessions: [MealSessionRecord])] {
+        let grouped = Dictionary(grouping: sessions) { session in
+            DayMealSlot(hour: Calendar.current.component(.hour, from: session.startedAt))
         }
         return DayMealSlot.allCases.compactMap { slot in
             guard let group = grouped[slot], !group.isEmpty else { return nil }

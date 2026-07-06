@@ -4,7 +4,7 @@ import Observation
 @Observable
 @MainActor
 final class RecordsStore {
-    private(set) var monthSessions: [ChewingSessionDTO] = []
+    private(set) var monthSessions: [MealSessionRecord] = []
     private(set) var oldestSessionMonth: Date?
     private(set) var isLoading: Bool = false
     private(set) var errorMessage: String?
@@ -48,7 +48,7 @@ final class RecordsStore {
                 until: monthInterval.end
             )
             guard generation == loadGeneration else { return }
-            monthSessions = rows.filter { ReportCardModel.from($0) != nil }
+            monthSessions = rows
             errorMessage = nil
             isLoading = false
         } catch {
@@ -76,7 +76,7 @@ final class RecordsStore {
         }
     }
 
-    func deleteSession(_ session: ChewingSessionDTO) async {
+    func deleteSession(_ session: MealSessionRecord) async {
         loadGeneration += 1
         do {
             try await repository.deleteSession(id: session.id)
@@ -103,7 +103,7 @@ final class RecordsStore {
         }
     }
 
-    func sessions(on date: Date) -> [ChewingSessionDTO] {
+    func sessions(on date: Date) -> [MealSessionRecord] {
         monthSessions.filter { calendar.isDate($0.startedAt, inSameDayAs: date) }
     }
 

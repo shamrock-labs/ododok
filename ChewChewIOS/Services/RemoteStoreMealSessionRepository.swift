@@ -7,12 +7,13 @@ struct RemoteStoreMealSessionRepository: MealSessionRepository {
         self.remoteStore = remoteStore
     }
 
-    func fetchSessions(since: Date, until: Date?) async throws -> [ChewingSessionDTO] {
-        try await remoteStore.fetchChewingSessions(
+    func fetchSessions(since: Date, until: Date?) async throws -> [MealSessionRecord] {
+        let sessions = try await remoteStore.fetchChewingSessions(
             deviceId: DeviceIdentity.shared,
             since: since,
             until: until
         )
+        return sessions.compactMap(MealSessionRecord.init)
     }
 
     func deleteSession(id: UUID) async throws {
