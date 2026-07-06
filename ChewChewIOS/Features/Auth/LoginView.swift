@@ -56,15 +56,7 @@ private enum Metrics {
 /// 소셜 로그인 화면. Apple/Google/Kakao 중 하나로 로그인 → 서버 JWT 발급 → onLoggedIn().
 /// 일반적인 앱의 소셜 로그인 UI(브랜드 컬러 풀폭 버튼)를 따른다. 온보딩 앞 게이트로 표시.
 struct LoginView: View {
-    /// 로그인 + 서버 토큰 발급 성공 시 호출. Bool = 서버가 판정한 onboardingCompleted,
-    /// String = 로그인 method(apple/google/kakao, 분석 계측용).
-    /// 호출처(AppState/ContentView)가 이 값으로 온보딩 표시 여부를 정한다.
-    var onLoggedIn: (Bool, String) -> Void
-
-    @State private var isLoading = false
-    @State private var errorMessage: String?
-
-    private let authClient = SpringAuthClient(config: .current)
+    var store: AuthStore
 
     var body: some View {
         VStack(spacing: 0) {
@@ -85,7 +77,7 @@ struct LoginView: View {
                 }
             }
 
-            if let errorMessage {
+            if let errorMessage = store.errorMessage {
                 Text(errorMessage)
                     .font(.appFont(.semiboldLabel))
                     .foregroundStyle(Color.textDanger)
@@ -103,9 +95,9 @@ struct LoginView: View {
         .padding(.bottom, AppSpacing.seven)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.pageBackground.ignoresSafeArea())
-        .disabled(isLoading)
+        .disabled(store.isLoading)
         .overlay {
-            if isLoading {
+            if store.isLoading {
                 ZStack {
                     Color.black.opacity(0.1).ignoresSafeArea()
                     ProgressView()
@@ -119,7 +111,7 @@ struct LoginView: View {
     /// 일반 소셜 로그인 버튼 스타일(브랜드 배경색 + 좌측 로고 + 중앙 라벨, 풀폭 라운드).
     private func socialButton(_ option: LoginProviderOption) -> some View {
         return Button {
-            Task { await signIn(with: option.makeProvider()) }
+            Task { await store.signIn(with: option.makeProvider()) }
         } label: {
             ZStack {
                 Text(option.title).font(.appFont(.dialogAction))
@@ -157,24 +149,4 @@ struct LoginView: View {
         }
     }
 
-    private func signIn(with provider: SocialLoginProvider) async {
-        guard !isLoading else { return }
-        isLoading = true
-        errorMessage = nil
-        defer { isLoading = false }
-        do {
-            let credential = try await provider.login()
-            let result = try await authClient.login(
-                provider: credential.provider,
-                idToken: credential.idToken,
-                deviceId: DeviceIdentity.shared,
-                name: credential.name
-            )
-            onLoggedIn(result.onboardingCompleted, credential.provider)
-        } catch SocialLoginError.cancelled {
-            // 사용자가 취소 — 에러 메시지 표시하지 않는다.
-        } catch {
-            errorMessage = (error as? LocalizedError)?.errorDescription ?? "로그인에 실패했어요. 잠시 후 다시 시도해 주세요."
-        }
-    }
 }

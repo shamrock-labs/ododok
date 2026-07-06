@@ -234,6 +234,25 @@ final class AppState {
         repository: RemoteStoreMealSessionRepository(remoteStore: remoteStore)
     )
 
+    @MainActor @ObservationIgnored lazy var auth: AuthStore = AuthStore(
+        repository: authRepository,
+        isLoggedIn: isLoggedIn,
+        didLoadProfile: didLoadProfile,
+        hasCompletedOnboarding: hasCompletedOnboarding,
+        onLoginCompleted: { [weak self] result, method in
+            self?.completeLogin(onboardingCompleted: result.onboardingCompleted, method: method)
+        },
+        onSessionExpired: { [weak self] in
+            self?.expireSession()
+        }
+    )
+
+    @MainActor @ObservationIgnored lazy var reminders: ReminderStore = ReminderStore(
+        coordinator: mealPushCoordinator,
+        permissionProvider: SystemReminderPermissionProvider(),
+        settingsStore: UserDefaultsReminderSettingsStore()
+    )
+
     /// 제품·리텐션 분석 포트(ODO-79). Amplitude·(후속) Firebase로 fan-out. 테스트/미설정 시 Noop.
     @ObservationIgnored let analytics: AnalyticsService
 
@@ -241,6 +260,7 @@ final class AppState {
     @ObservationIgnored let mealPushCoordinator: MealPushCoordinator
 
     @ObservationIgnored private let authSessionManager: AuthSessionManaging
+    @ObservationIgnored private let authRepository: AuthRepository
 
     /// 게임 상태 원격 동기화(upsert/delete) 직렬화 큐.
     /// 짧은 시간에 여러 mutate가 일어나면 detached Task들의 네트워크 도착 순서가 뒤집혀
@@ -314,10 +334,12 @@ final class AppState {
     init(
         remoteStore: RemoteStore = NoopRemoteStore(),
         authSessionManager: AuthSessionManaging = NoopAuthSessionManager(),
+        authRepository: AuthRepository? = nil,
         analytics: AnalyticsService = NoopAnalytics()
     ) {
         self.remoteStore = remoteStore
         self.authSessionManager = authSessionManager
+        self.authRepository = authRepository ?? (authSessionManager as? AuthRepository) ?? NoopAuthSessionManager()
         self.analytics = analytics
         self.mealPushCoordinator = MealPushCoordinator(remoteStore: remoteStore)
         // displayName은 game state(`PersistedSnapshot`)과 다른 별도 캐시 키 — cold-start

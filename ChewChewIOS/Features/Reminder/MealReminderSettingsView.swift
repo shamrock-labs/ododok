@@ -8,31 +8,22 @@ struct MealReminderSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
     @Environment(AppState.self) private var appState
-    @State private var settings: MealReminderSettings = .default
-    @State private var permissionStatus: UNAuthorizationStatus = .notDetermined
-    /// 서버에 저장된 마지막 값 — 저장 실패 시 "취소"로 이 값으로 되돌린다(변경 무성유실 방지, ODO-103).
-    @State private var lastSaved: MealReminderSettings = .default
-    @State private var isSaving = false
-    @State private var saveFailed = false
-    @State private var saveErrorReason = ""
     @State private var showDiscardConfirmation = false
 
-    private var draft: MealReminderDraft {
-        MealReminderDraft(settings: settings, lastSaved: lastSaved)
-    }
+    private var store: ReminderStore { appState.reminders }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: AppSpacing.four) {
-                    if permissionStatus == .denied {
+                    if store.permissionStatus == .denied {
                         deniedBanner
                     }
-                    mealCard(title: "아침", icon: .sunrise, tint: .butter600, slot: $settings.breakfast)
-                    mealCard(title: "점심", icon: .utensils, tint: .sage600, slot: $settings.lunch)
-                    mealCard(title: "저녁", icon: .moonStar, tint: .blush500, slot: $settings.dinner)
-                    mealCard(title: "추가 1", icon: .utensils, tint: .acorn600, slot: $settings.extra1)
-                    mealCard(title: "추가 2", icon: .moonStar, tint: .acorn700, slot: $settings.extra2)
+                    mealCard(title: "아침", icon: .sunrise, tint: .butter600, slot: .breakfast)
+                    mealCard(title: "점심", icon: .utensils, tint: .sage600, slot: .lunch)
+                    mealCard(title: "저녁", icon: .moonStar, tint: .blush500, slot: .dinner)
+                    mealCard(title: "추가 1", icon: .utensils, tint: .acorn600, slot: .extra1)
+                    mealCard(title: "추가 2", icon: .moonStar, tint: .acorn700, slot: .extra2)
                     footerHint
                     Spacer(minLength: AppSpacing.six)
                 }
@@ -48,27 +39,25 @@ struct MealReminderSettingsView: View {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     AppSheetTextActionButton(title: "완료") { saveAndDismiss() }
-                        .disabled(isSaving)
+                        .disabled(store.saveState.isSaving)
                 }
             }
         }
         .task {
-            settings = MealReminderSettings.load()
-            lastSaved = settings
-            await refreshPermissionStatus()
+            await store.load()
         }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
-            Task { await refreshPermissionStatus() }
+            Task { await store.refreshPermissionStatus() }
         }
-        .interactiveDismissDisabled(draft.hasUnsavedChanges)
+        .interactiveDismissDisabled(store.hasUnsavedChanges)
         .background {
-            SheetDismissAttemptReporter(isEnabled: draft.hasUnsavedChanges) {
+            SheetDismissAttemptReporter(isEnabled: store.hasUnsavedChanges) {
                 showDiscardConfirmation = true
             }
         }
         .appDialog(
-            isPresented: $saveFailed,
+            isPresented: saveFailedBinding,
             title: "저장에 실패했어요",
             message: "\(saveErrorReason)\n취소하면 변경 전 시간으로 돌아가요.",
             primary: .init("다시 시도") { saveAndDismiss() },
@@ -86,41 +75,21 @@ struct MealReminderSettingsView: View {
     // MARK: - 저장 (서버 정본)
 
     private func saveAndDismiss() {
-        guard !isSaving else { return }
-        isSaving = true
-        let draft = settings
         Task { @MainActor in
-            let outcome = await appState.mealPushCoordinator.apply(draft)
-            isSaving = false
-            switch outcome {
-            case .saved, .skipped:
-                draft.save()
-                lastSaved = draft
+            if await store.saveAndFinish() {
                 dismiss()
-            case .saveFailed(let reason):
-                saveErrorReason = reason
-                saveFailed = true
-            case .sessionExpired:
-                break
             }
         }
     }
 
     /// 저장 실패 다이얼로그의 "취소"/배경 탭 — 마지막 저장값으로 화면·로컬을 되돌린다.
     private func revertEdit() {
-        guard settings != lastSaved else { return }
-        settings = lastSaved
-        lastSaved.save()
+        store.revertEdit()
     }
 
     private func discardAndDismiss() {
-        settings = lastSaved
+        store.discardChanges()
         dismiss()
-    }
-
-    @MainActor
-    private func refreshPermissionStatus() async {
-        permissionStatus = await MealNotificationService.authorizationStatus()
     }
 
     // MARK: - Subviews
@@ -148,8 +117,9 @@ struct MealReminderSettingsView: View {
             .padding(.top, 8)
     }
 
-    private func mealCard(title: String, icon: OpenIcon, tint: Color, slot: Binding<MealSlot>) -> some View {
-        VStack(spacing: AppSpacing.three) {
+    private func mealCard(title: String, icon: OpenIcon, tint: Color, slot: ReminderSlot) -> some View {
+        let mealSlot = store.slot(slot)
+        return VStack(spacing: AppSpacing.three) {
             HStack {
                 HStack(spacing: AppSpacing.iconGap) {
                     OpenIconView(icon: icon, color: tint, lineWidth: 2.1)
@@ -164,10 +134,10 @@ struct MealReminderSettingsView: View {
                 Toggle("", isOn: toggleBinding(slot))
                     .labelsHidden()
                     .tint(Color.acorn600)
-                    .disabled(permissionStatus == .denied || isSaving)
+                    .disabled(store.permissionStatus == .denied || store.saveState.isSaving)
             }
 
-            if slot.wrappedValue.enabled && permissionStatus != .denied {
+            if mealSlot.enabled && store.permissionStatus != .denied {
                 HStack {
                     Text("알림 시각")
                         .font(.appFont(.semiboldBody))
@@ -181,7 +151,7 @@ struct MealReminderSettingsView: View {
                     .datePickerStyle(.compact)
                     .labelsHidden()
                     .tint(Color.acorn600)
-                    .disabled(permissionStatus == .denied || isSaving)
+                    .disabled(store.permissionStatus == .denied || store.saveState.isSaving)
                 }
             }
         }
@@ -193,45 +163,44 @@ struct MealReminderSettingsView: View {
     // MARK: - Bindings
 
     /// Toggle ON 시 권한 미결정이면 다이얼로그를 띄우고, 권한 거부 상태면 토글이 켜지지 않도록 가드.
-    private func toggleBinding(_ slot: Binding<MealSlot>) -> Binding<Bool> {
+    private func toggleBinding(_ slot: ReminderSlot) -> Binding<Bool> {
         Binding(
-            get: { slot.wrappedValue.enabled && permissionStatus != .denied },
+            get: { store.slot(slot).enabled && store.permissionStatus != .denied },
             set: { newValue in
-                if newValue {
-                    // 이미 denied면 다이얼로그 못 띄움 — banner로 안내만.
-                    guard permissionStatus != .denied else { return }
-                    Task {
-                        let ok = await MealNotificationService.requestAuthorizationIfNeeded()
-                        let status = await MealNotificationService.authorizationStatus()
-                        await MainActor.run {
-                            permissionStatus = status
-                            if ok {
-                                slot.wrappedValue.enabled = true
-                            }
-                        }
-                    }
-                } else {
-                    slot.wrappedValue.enabled = false
+                Task {
+                    await store.toggleSlot(slot, isEnabled: newValue)
                 }
             }
         )
     }
 
     /// hour/minute → Date 양방향 변환.
-    private func timeBinding(_ slot: Binding<MealSlot>) -> Binding<Date> {
+    private func timeBinding(_ slot: ReminderSlot) -> Binding<Date> {
         Binding(
             get: {
-                var comps = DateComponents()
-                comps.hour = slot.wrappedValue.hour
-                comps.minute = slot.wrappedValue.minute
-                return Calendar.current.date(from: comps) ?? Date()
+                store.date(for: slot)
             },
             set: { newDate in
-                let comps = Calendar.current.dateComponents([.hour, .minute], from: newDate)
-                slot.wrappedValue.hour = comps.hour ?? slot.wrappedValue.hour
-                slot.wrappedValue.minute = comps.minute ?? slot.wrappedValue.minute
+                store.updateTime(slot, to: newDate)
             }
         )
+    }
+
+    private var saveFailedBinding: Binding<Bool> {
+        Binding(
+            get: {
+                if case .failed = store.saveState { return true }
+                return false
+            },
+            set: { _ in }
+        )
+    }
+
+    private var saveErrorReason: String {
+        if case .failed(let reason) = store.saveState {
+            return reason
+        }
+        return ""
     }
 }
 
