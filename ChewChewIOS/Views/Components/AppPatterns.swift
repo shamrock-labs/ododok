@@ -140,22 +140,6 @@ struct AppSheetHeader<Trailing: View>: View {
     }
 }
 
-struct AppSheetCloseButton: View {
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: "xmark")
-                .font(.appFont(.semibold, size: AppSize.iconCompact))
-                .foregroundStyle(Color.textMuted)
-                .frame(width: AppSize.controlXLarge, height: AppSize.controlXLarge)
-                .background(Color.controlOnSurface, in: Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("닫기")
-    }
-}
-
 struct AppSheetTextActionButton: View {
     let title: String
     let action: () -> Void

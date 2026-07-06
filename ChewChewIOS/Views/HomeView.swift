@@ -43,13 +43,6 @@ struct HomeView: View {
                 state.pendingMealStartRequest = false
                 if !state.isEating { handleMealToggle() }
             }
-            #if DEBUG
-            if ProcessInfo.processInfo.arguments.contains("-showRewardHistory") {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    showRewardHistory = true
-                }
-            }
-            #endif
         }
         .sensoryFeedback(.impact(weight: .medium), trigger: hapticTrigger)
         .sheet(isPresented: $showMealReminderSettings) {
@@ -358,7 +351,7 @@ private struct RewardHistorySheet: View {
 
     private var sheetHeader: some View {
         AppSheetHeader(title: "도토리 적립 내역") {
-            AppSheetCloseButton(action: { dismiss() })
+            AppSheetTextActionButton(title: "닫기") { dismiss() }
         }
     }
 

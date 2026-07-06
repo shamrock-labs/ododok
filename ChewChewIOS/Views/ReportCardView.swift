@@ -720,7 +720,7 @@ private struct ScoreGuideView: View {
                     AppSheetTitleText(title: "씹기 점수 가이드")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    AppSheetCloseButton(action: { dismiss() })
+                    AppSheetTextActionButton(title: "닫기") { dismiss() }
                 }
             }
         }

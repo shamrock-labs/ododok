@@ -356,7 +356,7 @@ struct DailyReportView: View {
                     AppSheetTitleText(title: "일간 리포트")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    AppSheetCloseButton(action: { dismiss() })
+                    AppSheetTextActionButton(title: "닫기") { dismiss() }
                 }
             }
             .navigationDestination(for: DailyReportModel.MealSummary.ID.self) { id in

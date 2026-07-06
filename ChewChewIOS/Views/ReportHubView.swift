@@ -1130,7 +1130,7 @@ private struct ReportCalendarDialog: View {
                     AppSheetTitleText(title: "날짜 선택")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    AppSheetCloseButton(action: { dismiss() })
+                    AppSheetTextActionButton(title: "닫기") { dismiss() }
                 }
             }
         }

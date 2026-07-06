@@ -333,16 +333,6 @@ final class AppState {
         pendingInviteCode = UserDefaults.standard.string(forKey: Self.pendingInviteCodeKey)
         // 즉시 표시용 fallback — DB 실패 또는 응답 전에 화면 그려도 마지막 캐시값으로.
         loadPersistedSnapshot()
-        #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("-demoRewardHistory") {
-            displayName = "테스터"
-            hasCompletedOnboarding = true
-            didLoadProfile = true
-            isLoggedIn = true
-            points = max(points, 280)
-            streak = max(streak, 3)
-        }
-        #endif
         Task { [weak self] in
             // push 경로의 authExpired를 기존 세션 만료 처리(handleRemoteError → expireSession)로 연결한다.
             // init 시점엔 self 캡처가 불가해 생성 직후 여기서 핸들러를 건다.

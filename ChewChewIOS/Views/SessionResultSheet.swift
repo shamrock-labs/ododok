@@ -48,7 +48,7 @@ struct SessionResultSheet: View {
                     // 분석 중에는 닫기 버튼 숨김 — 분석은 보통 수 초 안에 끝나므로
                     // 사용자가 잠깐 기다리도록 유도. 인터랙티브 dismiss도 같이 차단.
                     ToolbarItem(placement: .topBarTrailing) {
-                        AppSheetCloseButton(action: onClose)
+                        AppSheetTextActionButton(title: "닫기", action: onClose)
                     }
                 }
             }

@@ -87,7 +87,7 @@ struct SettingsView: View {
                     AppSheetTitleText(title: "설정")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    AppSheetCloseButton(action: { dismiss() })
+                    AppSheetTextActionButton(title: "닫기") { dismiss() }
                 }
             }
         }
