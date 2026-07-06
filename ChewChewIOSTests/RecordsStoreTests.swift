@@ -73,7 +73,9 @@ final class RecordsStoreTests: XCTestCase {
         await store.loadInitial()
         await store.moveMonth(delta: -1)
 
+        let didFetchOldest = await repository.didFetchOldestSessionStartedAt()
         XCTAssertEqual(store.displayedMonth, monthStart(feb))
+        XCTAssertTrue(didFetchOldest)
     }
 
     func testDeleteSessionSuccessRemovesOnlyAfterRepositorySucceeds() async {
@@ -258,6 +260,7 @@ private actor FakeMealSessionRepository: MealSessionRepository {
     private let delaysByMonth: [Date: UInt64]
     private var deletedIDs: [UUID] = []
     private var deleteAllCalled = false
+    private var fetchOldestCalled = false
 
     init(
         calendar: Calendar,
@@ -277,15 +280,18 @@ private actor FakeMealSessionRepository: MealSessionRepository {
 
     func fetchSessions(since: Date, until: Date?) async throws -> [MealSessionRecord] {
         if let fetchError { throw fetchError }
-        if since == .distantPast {
-            return sessionsByMonth.values.flatMap { $0 }
-        }
 
         let month = calendar.dateInterval(of: .month, for: since)?.start ?? since
         if let delay = delaysByMonth[month] {
             try? await Task.sleep(nanoseconds: delay)
         }
         return sessionsByMonth[month] ?? []
+    }
+
+    func fetchOldestSessionStartedAt() async throws -> Date? {
+        if let fetchError { throw fetchError }
+        fetchOldestCalled = true
+        return sessionsByMonth.values.flatMap { $0 }.map(\.startedAt).min()
     }
 
     func deleteSession(id: UUID) async throws {
@@ -304,5 +310,9 @@ private actor FakeMealSessionRepository: MealSessionRepository {
 
     func didDeleteAllSessions() -> Bool {
         deleteAllCalled
+    }
+
+    func didFetchOldestSessionStartedAt() -> Bool {
+        fetchOldestCalled
     }
 }

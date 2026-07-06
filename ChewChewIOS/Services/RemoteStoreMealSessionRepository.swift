@@ -16,6 +16,19 @@ struct RemoteStoreMealSessionRepository: MealSessionRepository {
         return sessions.compactMap(MealSessionRecordMapper.map)
     }
 
+    func fetchOldestSessionStartedAt() async throws -> Date? {
+        let sessions = try await remoteStore.fetchChewingSessions(
+            deviceId: DeviceIdentity.shared,
+            since: .distantPast,
+            until: nil
+        )
+        return sessions
+            .lazy
+            .filter(MealSessionRecordMapper.isReportable)
+            .map(\.startedAt)
+            .min()
+    }
+
     func deleteSession(id: UUID) async throws {
         try await remoteStore.deleteChewingSession(id: id, deviceId: DeviceIdentity.shared)
     }

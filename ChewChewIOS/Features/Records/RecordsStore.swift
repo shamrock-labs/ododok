@@ -114,8 +114,7 @@ final class RecordsStore {
     private func loadOldestSessionMonthIfNeeded() async {
         guard oldestSessionMonth == nil else { return }
         do {
-            let rows = try await repository.fetchSessions(since: .distantPast, until: nil)
-            guard let earliest = rows.map(\.startedAt).min() else { return }
+            guard let earliest = try await repository.fetchOldestSessionStartedAt() else { return }
             oldestSessionMonth = calendar.dateInterval(of: .month, for: earliest)?.start
         } catch {
             errorMessage = "기록을 불러오지 못했어요."
