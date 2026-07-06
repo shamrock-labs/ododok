@@ -74,5 +74,5 @@ SwiftUI 기반 오도독 iOS 앱. AirPods IMU 신호를 신호처리(DSP)로 분
 
 - `/issue <ODO-NN> [type]` — Linear 이슈 하나를 시작한다(조회 → In Progress → 브랜치 생성 → 짧은 계획).
 - `/commit [--split]` — 변경을 커밋 컨벤션으로 커밋한다(push·PR 안 함). `--split`은 의미 단위 분할.
-- `/review [부모브랜치]` — 현재 브랜치 diff를 컨벤션 기준으로 적대적 리뷰한다.
+- `/review [부모브랜치]` — 현재 브랜치 diff를 컨벤션 기준으로 적대적 리뷰한다. 상세 iOS 리뷰 루브릭(도메인·상태·동시성)은 `docs/ios-review-guide.md`를 따른다 — 다른 AI로 리뷰할 때도 이 파일을 기준으로 붙여 쓴다.
 - `/ship` — 테스트(시뮬레이터 빌드) → 리뷰 → 커밋 → push → PR까지 보낸다(머지 안 함).
