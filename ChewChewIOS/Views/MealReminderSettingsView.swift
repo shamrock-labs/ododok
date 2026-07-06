@@ -121,9 +121,6 @@ struct MealReminderSettingsView: View {
     @MainActor
     private func refreshPermissionStatus() async {
         permissionStatus = await MealNotificationService.authorizationStatus()
-        if permissionStatus == .denied {
-            settings.disableAll()
-        }
     }
 
     // MARK: - Subviews
