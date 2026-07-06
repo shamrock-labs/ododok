@@ -24,7 +24,7 @@ struct RemoteStoreMealSessionRepository: MealSessionRepository {
         )
         return sessions
             .lazy
-            .filter(MealSessionRecordMapper.isReportable)
+            .filter(MealSessionReportability.isReportable)
             .map(\.startedAt)
             .min()
     }

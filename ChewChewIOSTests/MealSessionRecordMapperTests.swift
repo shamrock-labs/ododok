@@ -23,21 +23,21 @@ final class MealSessionRecordMapperTests: XCTestCase {
         )
 
         XCTAssertNil(MealSessionRecordMapper.map(dto))
-        XCTAssertFalse(MealSessionRecordMapper.isReportable(dto))
+        XCTAssertFalse(MealSessionReportability.isReportable(dto))
     }
 
     func testShortDurationDTOReturnsNil() {
         let dto = makeDTO(durationSec: 59.9)
 
         XCTAssertNil(MealSessionRecordMapper.map(dto))
-        XCTAssertFalse(MealSessionRecordMapper.isReportable(dto))
+        XCTAssertFalse(MealSessionReportability.isReportable(dto))
     }
 
     func testSixtySecondBoundaryCreatesRecord() {
         let dto = makeDTO(durationSec: 60)
 
         XCTAssertNotNil(MealSessionRecordMapper.map(dto))
-        XCTAssertTrue(MealSessionRecordMapper.isReportable(dto))
+        XCTAssertTrue(MealSessionReportability.isReportable(dto))
     }
 
     private func makeDTO(

@@ -844,7 +844,7 @@ extension ReportCardModel {
     /// `ChewingSessionDTO` → 카드 모델. `durationSec < 60`이거나 분석 5필드가
     /// 채워지지 않은 세션에서 nil 반환 → 호출자가 빈 상태 카드를 표시 (PRD #3 빈 분석 카드 "분석을 만들지 못했어요").
     static func from(_ dto: ChewingSessionDTO) -> ReportCardModel? {
-        guard dto.durationSec >= 60 else { return nil }
+        guard dto.durationSec >= MealSessionReportability.minDurationSec else { return nil }
         guard let score = SessionScore.compute(dto) else { return nil }
         let mins = max(0.001, dto.durationSec / 60)
         let chews = dto.estimatedTotalChews ?? 0

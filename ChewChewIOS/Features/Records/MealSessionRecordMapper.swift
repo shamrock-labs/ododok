@@ -10,9 +10,4 @@ enum MealSessionRecordMapper {
             reportCard: reportCard
         )
     }
-
-    static func isReportable(_ dto: ChewingSessionDTO) -> Bool {
-        guard dto.durationSec >= 60 else { return false }
-        return SessionScore.compute(dto) != nil
-    }
 }
