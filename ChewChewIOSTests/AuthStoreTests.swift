@@ -61,7 +61,6 @@ final class AuthStoreTests: XCTestCase {
         let store = AuthStore(
             repository: FakeAuthRepository(),
             isLoggedIn: true,
-            didLoadProfile: true,
             hasCompletedOnboarding: true,
             onSessionExpired: { expired = true }
         )
@@ -69,7 +68,6 @@ final class AuthStoreTests: XCTestCase {
         store.expireSession()
 
         XCTAssertFalse(store.isLoggedIn)
-        XCTAssertFalse(store.didLoadProfile)
         XCTAssertFalse(store.hasCompletedOnboarding)
         XCTAssertTrue(expired)
     }
@@ -80,7 +78,6 @@ final class AuthStoreTests: XCTestCase {
         let store = AuthStore(
             repository: repository,
             isLoggedIn: true,
-            didLoadProfile: true,
             hasCompletedOnboarding: true,
             onLogoutCompleted: { loggedOut = true }
         )
@@ -89,7 +86,6 @@ final class AuthStoreTests: XCTestCase {
 
         XCTAssertTrue(repository.didLogout)
         XCTAssertFalse(store.isLoggedIn)
-        XCTAssertFalse(store.didLoadProfile)
         XCTAssertFalse(store.hasCompletedOnboarding)
         XCTAssertTrue(loggedOut)
     }

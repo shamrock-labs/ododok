@@ -7,7 +7,6 @@ final class AuthStore {
     private(set) var isLoading: Bool = false
     private(set) var errorMessage: String?
     private(set) var isLoggedIn: Bool
-    private(set) var didLoadProfile: Bool
     private(set) var hasCompletedOnboarding: Bool
 
     private let repository: AuthRepository
@@ -18,7 +17,6 @@ final class AuthStore {
     init(
         repository: AuthRepository,
         isLoggedIn: Bool = false,
-        didLoadProfile: Bool = false,
         hasCompletedOnboarding: Bool = false,
         onLoginCompleted: @escaping (LoginResult, String) -> Void = { _, _ in },
         onLogoutCompleted: @escaping () -> Void = {},
@@ -26,7 +24,6 @@ final class AuthStore {
     ) {
         self.repository = repository
         self.isLoggedIn = isLoggedIn
-        self.didLoadProfile = didLoadProfile
         self.hasCompletedOnboarding = hasCompletedOnboarding
         self.onLoginCompleted = onLoginCompleted
         self.onLogoutCompleted = onLogoutCompleted
@@ -73,7 +70,6 @@ final class AuthStore {
 
     private func clearSessionState() {
         isLoggedIn = false
-        didLoadProfile = false
         hasCompletedOnboarding = false
         errorMessage = nil
     }

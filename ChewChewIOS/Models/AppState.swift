@@ -237,10 +237,12 @@ final class AppState {
     @MainActor @ObservationIgnored lazy var auth: AuthStore = AuthStore(
         repository: authRepository,
         isLoggedIn: isLoggedIn,
-        didLoadProfile: didLoadProfile,
         hasCompletedOnboarding: hasCompletedOnboarding,
         onLoginCompleted: { [weak self] result, method in
             self?.completeLogin(onboardingCompleted: result.onboardingCompleted, method: method)
+        },
+        onLogoutCompleted: { [weak self] in
+            self?.expireSession()
         },
         onSessionExpired: { [weak self] in
             self?.expireSession()
@@ -828,8 +830,7 @@ final class AppState {
     func logoutFromServer() async {
         // 토큰이 아직 유효할 때 서버 푸시 토큰을 해제한다(만료 후엔 401이라 의미 없음).
         await mealPushCoordinator.handleLogout()
-        await authSessionManager.logout()
-        expireSession()
+        await auth.logout()
     }
 
     /// refresh 만료/폐기 등으로 인증 세션을 더 쓸 수 없을 때 로그인 게이트로 복귀한다.
@@ -848,7 +849,7 @@ final class AppState {
     @MainActor
     private func handleRemoteError(_ error: Error) {
         if case RemoteStoreError.authExpired = error {
-            expireSession()
+            auth.expireSession()
         }
     }
 
