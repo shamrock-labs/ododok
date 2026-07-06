@@ -19,7 +19,7 @@ struct ReportHubView: View {
     private let weeklyWindowDays = 21
 
     var body: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: AppSpacing.gap) {
             timelineCard
             weeklyComparisonCard
             // 다람이 코치 카드는 UI에서 임시 제외(로직 유지, 추후 수정 예정).
@@ -103,14 +103,14 @@ struct ReportHubView: View {
 
     private var timelineCard: some View {
         let scale = ChartScale(days: timelineDays)
-        let ringRowHeight: CGFloat = 66   // 날짜행 강제 높이(축 스페이서와 동일값으로 세로 정렬 못박음)
+        let ringRowHeight: CGFloat = 58   // 날짜행 강제 높이(축 스페이서와 동일값으로 세로 정렬 못박음)
         let yAxisWidth: CGFloat = 34
-        let bandSpacing: CGFloat = 12     // 날짜행↔차트 간격(축 스페이서와 동일값)
+        let bandSpacing: CGFloat = 8      // 날짜행↔차트 간격(축 스페이서와 동일값)
 
         return VStack(alignment: .leading, spacing: AppSpacing.three) {
             HStack(spacing: AppSpacing.inner) {
                 Text(monthRangeLabel)
-                    .font(.appFont(.heavyBody))
+                    .font(.appFont(.heavyHeadline))
                     .foregroundStyle(Color.textDefault)
                 Spacer(minLength: 0)
                 Button { openCalendar() } label: {
@@ -151,7 +151,7 @@ struct ReportHubView: View {
                             )
                             .frame(width: dayWidth * CGFloat(timelineDays.count), height: scale.height)
                         }
-                        .padding(.vertical, 4)
+                        .padding(.vertical, 2)
                         .padding(.trailing, 4)
                         .contentShape(Rectangle())
                     }
@@ -173,59 +173,36 @@ struct ReportHubView: View {
                 .foregroundStyle(Color.textPrimary)
                 .monospacedDigit()
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, 2)
+                .padding(.top, AppSpacing.half)
 
-            Rectangle()
-                .fill(Color.hairline)
-                .frame(height: Metrics.chartHairline)
-                .padding(.vertical, 2)
+            if !selectedSessions.isEmpty {
+                Rectangle()
+                    .fill(Color.hairline)
+                    .frame(height: Metrics.chartHairline)
+                    .padding(.vertical, AppSpacing.half)
 
-            // 끼니 목록 — 날짜 헤더는 위와 중복이라 뺀다(그래프 카드와 합쳐진 한 카드).
-            if selectedSessions.isEmpty {
-                emptySessionState
-            } else {
+                // 끼니 목록 — 날짜 헤더는 위와 중복이라 뺀다(그래프 카드와 합쳐진 한 카드).
                 VStack(spacing: 6) {
                     ForEach(selectedSessions) { session in
                         sessionRow(session)
                     }
                     dailyReportRow
                 }
+            } else {
+                emptySessionState
             }
         }
-        .padding(AppSpacing.cardContent)
+        .padding(.horizontal, AppSpacing.cardContent)
+        .padding(.vertical, AppSpacing.three)
         .background(Color.bgCard, in: RoundedRectangle(cornerRadius: AppRadius.lg))
     }
 
-    private func dateRingCell(_ day: ReportDay) -> some View {
-        let selected = mealCalendarCalendar.isDate(day.date, inSameDayAs: selectedDate)
-        return Button {
-            selectDate(day.date, source: "date_ring")
-        } label: {
-            VStack(spacing: 5) {
-                Text(day.weekdayLabel)
-                    .font(.appFont(.boldMicro))
-                    .foregroundStyle(selected ? Color.acorn700 : Color.textTertiary)
-                ZStack {
-                    MealCompletionRing(meals: day.mealCount, selected: selected)
-                    Text(day.dayLabel)
-                        .font(.appFont(day.dayLabel.contains("/") ? .heavyMicro : .heavyLabel))
-                        .foregroundStyle(selected ? Color.white : Color.textPrimary)
-                        .monospacedDigit()
-                        .minimumScaleFactor(0.75)
-                }
-                .frame(width: Metrics.dateRing, height: Metrics.dateRing)
-            }
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("\(day.shortDateLabel), \(day.mealCount)끼 기록")
-    }
-
     private var emptySessionState: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: AppSpacing.three) {
             Text("🍽️")
                 .font(.appFont(.regularDisplaySmall))
                 .frame(width: Metrics.emptyIcon, height: Metrics.emptyIcon)
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: AppSpacing.microGap) {
                 Text(mealCalendarCalendar.isDateInToday(selectedDate) ? "오늘은 아직 식사 전이에요" : "이 날은 식사 기록이 없어요")
                     .font(.appFont(.heavyBody))
                     .foregroundStyle(Color.textPrimary)
@@ -235,7 +212,31 @@ struct ReportHubView: View {
             }
             Spacer(minLength: 0)
         }
-        .padding(.vertical, 4)
+        .padding(.top, AppSpacing.half)
+    }
+
+    private func dateRingCell(_ day: ReportDay) -> some View {
+        let selected = mealCalendarCalendar.isDate(day.date, inSameDayAs: selectedDate)
+        return Button {
+            selectDate(day.date, source: "date_ring")
+        } label: {
+            VStack(spacing: AppSpacing.oneHalf) {
+                Text(day.weekdayLabel)
+                    .font(.appFont(.boldCaption))
+                    .foregroundStyle(selected ? Color.acorn700 : Color.textMuted)
+                ZStack {
+                    MealCompletionRing(meals: day.mealCount, selected: selected)
+                    Text(day.dayLabel)
+                        .font(.appFont(day.dayLabel.contains("/") ? .heavyCaption : .heavyLabel))
+                        .foregroundStyle(selected ? Color.white : Color.textPrimary)
+                        .monospacedDigit()
+                        .minimumScaleFactor(0.75)
+                }
+                .frame(width: Metrics.dateRing, height: Metrics.dateRing)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(day.shortDateLabel), \(day.mealCount)끼 기록")
     }
 
     private func sessionRow(_ session: ChewingSessionDTO) -> some View {
@@ -254,7 +255,7 @@ struct ReportHubView: View {
                         .font(.appFont(.heavyBody))
                         .foregroundStyle(Color.textPrimary)
                     Text("\(timeLabel(session.startedAt)) · \((session.estimatedTotalChews ?? 0).koLocale)회")
-                        .font(.appFont(.semiboldCaption))
+                        .font(.appFont(.semiboldCallout))
                         .foregroundStyle(Color.textSecondary)
                 }
                 Spacer(minLength: 0)
@@ -368,7 +369,7 @@ struct ReportHubView: View {
                         .font(.appFont(.heavyBody))
                         .foregroundStyle(Color.acorn700)
                     Text("하루 전체 요약 보기")
-                        .font(.appFont(.semiboldCaption))
+                        .font(.appFont(.semiboldCallout))
                         .foregroundStyle(Color.textSecondary)
                 }
                 Spacer()
@@ -388,8 +389,8 @@ struct ReportHubView: View {
         let maxChews = max(1, weeks.map(\.chews).max() ?? 1)
         let maxMinutes = max(1, weeks.map(\.minutes).max() ?? 1)
 
-        return AppCard {
-            VStack(alignment: .leading, spacing: AppSpacing.three) {
+        return AppCard(padding: AppSpacing.three) {
+            VStack(alignment: .leading, spacing: AppSpacing.two) {
             HStack {
                 Text("주간 리포트")
                     .font(.appFont(.heavyBodyLarge))
@@ -399,7 +400,7 @@ struct ReportHubView: View {
             }
 
             if hasData {
-                HStack(alignment: .bottom, spacing: AppSpacing.inputH) {
+                HStack(alignment: .bottom, spacing: AppSpacing.four) {
                     ForEach(weeks) { week in
                         VStack(spacing: 7) {
                             HStack(alignment: .bottom, spacing: 7) {
@@ -409,7 +410,7 @@ struct ReportHubView: View {
                             // 현재 주만 라벨 weight/색으로 표시 — 막대는 비교를 위해 모두 같은 농도로 둔다
                             // (이전엔 opacity 0.58 + ink400 + 약한 weight 삼중 인코딩으로 과거 주가 안 보였다).
                             Text(week.label)
-                                .font(.appFont(week.isCurrent ? .heavyCaption : .semiboldCaption))
+                                .font(.appFont(week.isCurrent ? .heavyLabel : .semiboldLabel))
                                 .foregroundStyle(week.isCurrent ? Color.textPrimary : Color.textSecondary)
                         }
                         .frame(maxWidth: .infinity)
@@ -507,7 +508,7 @@ struct ReportHubView: View {
     private func metricBar(value: Int, maxValue: Int, color: Color, label: String) -> some View {
         VStack(spacing: AppSpacing.one) {
             Text(label)
-                .font(.appFont(.heavyMicro))
+                .font(.appFont(.heavyCallout))
                 .foregroundStyle(color)
                 .monospacedDigit()
             RoundedRectangle(cornerRadius: AppSpacing.oneHalf)
@@ -928,7 +929,7 @@ private struct ChartScale {
     let bottomPad: CGFloat
     let height: CGFloat
 
-    init(days: [ReportDay], topPad: CGFloat = 18, bottomPad: CGFloat = 16, height: CGFloat = 164) {
+    init(days: [ReportDay], topPad: CGFloat = 16, bottomPad: CGFloat = 14, height: CGFloat = 132) {
         self.maxValue = max(days.map(\.avgChewCount).max() ?? 1, 1)
         self.topPad = topPad
         self.bottomPad = bottomPad
@@ -1050,7 +1051,7 @@ private struct YAxisColumn: View {
     var body: some View {
         VStack(spacing: 0) {
             // 날짜행 + 밴드 간격 + 상단 padding(4)만큼 비워 차트 밴드 상단에 정렬.
-            Color.clear.frame(height: ringRowHeight + bandSpacing + 4)
+            Color.clear.frame(height: ringRowHeight + bandSpacing + 2)
             Canvas { context, size in
                 for tick in scale.tickValues {
                     let yy = scale.y(tick)
@@ -1060,15 +1061,15 @@ private struct YAxisColumn: View {
                     context.stroke(t, with: .color(Color.textTertiary.opacity(0.5)), lineWidth: 1)
                     if tick > 0 {
                         context.draw(
-                            Text("\(tick)").font(.appFont(.boldMicroTiny)).foregroundColor(Color.textTertiary),
+                            Text("\(tick)").font(.appFont(.boldMicro)).foregroundColor(Color.textMuted),
                             at: CGPoint(x: size.width - 7, y: yy), anchor: .trailing
                         )
                     }
                 }
             }
             .frame(height: scale.height)
-            Spacer(minLength: 0)
         }
+        .frame(height: ringRowHeight + bandSpacing + 2 + scale.height)
         .accessibilityHidden(true)
     }
 }
@@ -1085,7 +1086,7 @@ private struct TrendLegend: View {
         HStack(spacing: AppSpacing.microLabelGap) {
             Circle().fill(color).frame(width: Metrics.legendDot, height: Metrics.legendDot)
             Text(label)
-                .font(.appFont(.boldMicro))
+                .font(.appFont(.boldCallout))
                 .foregroundStyle(Color.textMuted)
         }
     }
@@ -1167,8 +1168,8 @@ private struct ReportCalendarDialog: View {
         return HStack(spacing: AppSpacing.one) {
             ForEach(symbols, id: \.self) { sym in
                 Text(sym)
-                    .font(.appFont(.boldMicro))
-                    .foregroundStyle(Color.textTertiary)
+                    .font(.appFont(.boldCaption))
+                    .foregroundStyle(Color.textMuted)
                     .frame(maxWidth: .infinity)
             }
         }
@@ -1259,13 +1260,13 @@ private enum Metrics {
     static let chartHairline = AppSize.border
     static let dateRing = AppSize.controlXLarge
     static let emptyIcon: CGFloat = 42
-    static let weeklyChartHeight: CGFloat = 116
+    static let weeklyChartHeight: CGFloat = 104
     static let weeklyCoachAvatar: CGFloat = 66
     static let legendIcon: CGFloat = 13
     static let legendDot = AppSize.indicatorMedium
     static let chartBarWidth: CGFloat = 18
     static let chartBarMinHeight: CGFloat = 16
-    static let chartBarMaxHeight: CGFloat = 72
+    static let chartBarMaxHeight: CGFloat = 64
     static let calendarButton = AppSize.controlLarge
     static let calendarCellHeight: CGFloat = 46
     static let calendarRing = AppSize.iconContainerLarge

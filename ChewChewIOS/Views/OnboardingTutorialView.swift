@@ -303,7 +303,7 @@ private struct StreakDemo: View {
                                 .opacity(i < filled ? 1 : 0)
                         }
                         Text(days[i])
-                            .font(.appFont(.mediumTiny))
+                            .font(.appFont(.mediumCaption))
                                 .foregroundStyle(Color.textSubtle)
                     }
                 }

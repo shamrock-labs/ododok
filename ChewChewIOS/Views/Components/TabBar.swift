@@ -10,7 +10,7 @@ struct TabBarView: View {
                 Button {
                     selection = tab
                 } label: {
-                    VStack(spacing: AppSpacing.microGap) {
+                    VStack(spacing: AppSpacing.one) {
                         Image(systemName: tab.systemImage)
                             .font(.appFont(active ? .bold : .regular, size: Metrics.icon))
                             .foregroundStyle(active ? Color.textActionStrong : Color.textSubtle)
@@ -19,7 +19,7 @@ struct TabBarView: View {
                             .foregroundStyle(active ? Color.textAction : Color.textSubtle)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, AppSpacing.oneHalf)
+                    .padding(.vertical, AppSpacing.two)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)

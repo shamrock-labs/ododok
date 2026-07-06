@@ -18,7 +18,6 @@ enum AppRadius {
     static let container = md
     static let containerLoose: CGFloat = 20
     static let page = xl
-    static let full: CGFloat = 9999
     static let iconContainer: CGFloat = 11
 }
 
@@ -38,7 +37,6 @@ enum AppSpacing {
     static let eight: CGFloat = 32
     static let nine: CGFloat = 36
     static let ten: CGFloat = 40
-    static let eleven: CGFloat = 44
 
     static let page: CGFloat = 20     // 화면 바깥 좌우 여백
     static let cardH: CGFloat = 14    // 카드 내부 좌우
@@ -50,10 +48,7 @@ enum AppSpacing {
     static let microLabelGap: CGFloat = 5
 
     static let sectionGap = five
-    static let sectionGapCompact = three
     static let inner: CGFloat = 10
-    static let controlH = four
-    static let controlV = three
     static let badgeH: CGFloat = 7
     static let badgeV = microGap
     static let row = four
@@ -94,12 +89,10 @@ enum AppSize {
     static let iconCompact: CGFloat = 14
     static let iconSmall: CGFloat = 18
     static let iconMedium: CGFloat = 16
-    static let iconLarge = iconSmall
     static let iconXLarge: CGFloat = 22
     static let iconXXLarge: CGFloat = 24
 
     static let controlTiny: CGFloat = 20
-    static let controlSmall: CGFloat = 22
     static let controlMedium: CGFloat = 26
     static let controlLarge: CGFloat = 32
     static let controlXLarge: CGFloat = 40
@@ -122,7 +115,6 @@ enum AppSize {
 }
 
 enum AppMotion {
-    static let durationFast: TimeInterval = 0.16
     static let durationSignal: TimeInterval = 0.07
     static let durationButtonPress: TimeInterval = 0.12
     static let durationStateChange: TimeInterval = 0.22
@@ -148,5 +140,4 @@ enum AppElevation {
     case low
     case medium
     case high
-    case inset
 }

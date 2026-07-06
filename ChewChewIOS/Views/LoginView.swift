@@ -74,7 +74,7 @@ struct LoginView: View {
                     .font(.appFont(.loginWordmark))
                     .foregroundStyle(Color.textActionStrong)
                 Text("잘 씹는 습관을 만드는 가장 쉬운 방법")
-                    .font(.subheadline)
+                    .font(.appFont(.semiboldLabel))
                     .foregroundStyle(Color.textMuted)
             }
             Spacer()
@@ -87,20 +87,20 @@ struct LoginView: View {
 
             if let errorMessage {
                 Text(errorMessage)
-                    .font(.footnote)
-                    .foregroundStyle(.red)
+                    .font(.appFont(.semiboldLabel))
+                    .foregroundStyle(Color.textDanger)
                     .multilineTextAlignment(.center)
-                    .padding(.top, 12)
+                    .padding(.top, AppSpacing.gap)
             }
 
             Text("로그인하면 서비스 이용약관 및 개인정보처리방침에 동의하게 돼요.")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+                .font(.appFont(.semiboldLabel))
+                .foregroundStyle(Color.textMuted)
                 .multilineTextAlignment(.center)
-                .padding(.top, 20)
+                .padding(.top, AppSpacing.sectionGap)
         }
-        .padding(.horizontal, 24)
-        .padding(.bottom, 28)
+        .padding(.horizontal, AppSpacing.six)
+        .padding(.bottom, AppSpacing.seven)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.pageBackground.ignoresSafeArea())
         .disabled(isLoading)

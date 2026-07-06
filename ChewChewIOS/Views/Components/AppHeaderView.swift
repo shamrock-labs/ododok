@@ -20,10 +20,10 @@ struct AppHeaderView<Accessory: View>: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: AppSpacing.gap) {
-            VStack(alignment: .leading, spacing: AppSpacing.microGap) {
+            VStack(alignment: .leading, spacing: AppSpacing.one) {
                 if let eyebrow {
                     Text(eyebrow)
-                        .font(.appFont(.boldCaption))
+                        .font(.appFont(.boldCallout))
                         .foregroundStyle(Color.textActionStrong)
                         .lineLimit(1)
                         .minimumScaleFactor(0.8)

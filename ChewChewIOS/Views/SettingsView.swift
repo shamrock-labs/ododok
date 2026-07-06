@@ -568,7 +568,6 @@ private struct AirPodsPickerDialog: View {
                 .buttonStyle(.plain)
             }
             .frame(height: AppSize.dialogActionHeight)
-            .padding(.bottom, AppSpacing.gapTight)
         }
         .frame(maxWidth: AppSize.dialogMaxWidth)
         .background(Color.bgPopover, in: RoundedRectangle(cornerRadius: AppRadius.element))

@@ -66,7 +66,6 @@ extension Font {
         case regularEmojiXLarge
         case regularEmojiXXLarge
         case regularEmojiHuge
-        case mediumTiny
         case mediumCaption
         case mediumBodyLarge
         case mediumHeadline
@@ -77,8 +76,6 @@ extension Font {
         case semiboldBody
         case semiboldBodyLarge
         case semiboldHeadline
-        case boldTiny
-        case boldMicroTiny
         case boldMicro
         case boldCaption
         case boldCallout
@@ -89,7 +86,6 @@ extension Font {
         case boldTitleCompact
         case boldTitle
         case boldTitleLarge
-        case heavyTiny
         case heavyMicro
         case heavyCaption
         case heavyCallout
@@ -136,8 +132,7 @@ extension Font {
                  .regularEmojiXXLarge,
                  .regularEmojiHuge:
                 .regular
-            case .mediumTiny,
-                 .mediumCaption,
+            case .mediumCaption,
                  .mediumBodyLarge,
                  .mediumHeadline:
                 .medium
@@ -149,9 +144,7 @@ extension Font {
                  .semiboldBodyLarge,
                  .semiboldHeadline:
                 .semibold
-            case .boldTiny,
-                 .boldMicroTiny,
-                 .boldMicro,
+            case .boldMicro,
                  .boldCaption,
                  .boldCallout,
                  .boldLabel,
@@ -162,8 +155,7 @@ extension Font {
                  .boldTitle,
                  .boldTitleLarge:
                 .bold
-            case .heavyTiny,
-                 .heavyMicro,
+            case .heavyMicro,
                  .heavyCaption,
                  .heavyCallout,
                  .heavyLabel,
@@ -195,12 +187,12 @@ extension Font {
             case .dialogActionStrong: 16
             case .inputText: 16
             case .rewardNumber: 36
-            case .callout:  13
+            case .callout:  14
             case .caption:  12
             case .micro:    11
             case .regularMicro: 11
             case .regularCaption: 12
-            case .regularCallout: 13
+            case .regularCallout: 14
             case .regularLabel: 14
             case .regularBodyLarge: 16
             case .regularHeadline: 18
@@ -211,22 +203,19 @@ extension Font {
             case .regularEmojiXLarge: 32
             case .regularEmojiXXLarge: 40
             case .regularEmojiHuge: 44
-            case .mediumTiny: 10
             case .mediumCaption: 12
             case .mediumBodyLarge: 16
             case .mediumHeadline: 18
             case .semiboldMicro: 11
             case .semiboldCaption: 12
-            case .semiboldCallout: 13
+            case .semiboldCallout: 14
             case .semiboldLabel: 14
             case .semiboldBody: 15
             case .semiboldBodyLarge: 16
             case .semiboldHeadline: 17
-            case .boldTiny: 9
-            case .boldMicroTiny: 10
             case .boldMicro: 11
             case .boldCaption: 12
-            case .boldCallout: 13
+            case .boldCallout: 14
             case .boldLabel: 14
             case .boldBody: 15
             case .boldBodyLarge: 16
@@ -234,10 +223,9 @@ extension Font {
             case .boldTitleCompact: 19
             case .boldTitle: 20
             case .boldTitleLarge: 22
-            case .heavyTiny: 9
             case .heavyMicro: 11
             case .heavyCaption: 12
-            case .heavyCallout: 13
+            case .heavyCallout: 14
             case .heavyLabel: 14
             case .heavyBody: 15
             case .heavyBodyLarge: 16

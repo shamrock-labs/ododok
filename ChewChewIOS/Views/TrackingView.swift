@@ -10,13 +10,13 @@ struct TrackingView: View {
     private var isEating: Bool { state.isEating }
 
     var body: some View {
-        VStack(spacing: AppSpacing.cell) {
+        VStack(spacing: AppSpacing.gap) {
             // 라이브 IMU 진단 카드(AirPods 수신 상태 + FG 샘플 카운터)는 UI에서 제외(로직 유지).
             ReportHubView()
         }
         .padding(.horizontal, AppSpacing.page)
-        .padding(.top, AppSpacing.verticalLoose)
-        .padding(.bottom, AppSpacing.seven)
+        .padding(.top, AppSpacing.gap)
+        .padding(.bottom, AppSpacing.four)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .overlay(alignment: .bottom) {
             if let fb = feedback {

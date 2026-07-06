@@ -189,7 +189,7 @@ private struct ShopGridView: View {
                         text: "희귀",
                         foreground: Color.textActionInverse,
                         background: Color.statusWarning,
-                        font: .heavyTiny
+                        font: .heavyMicro
                     )
                 } else {
                     Color.clear.frame(height: AppSpacing.cell)

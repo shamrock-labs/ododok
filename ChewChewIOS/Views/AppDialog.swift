@@ -69,7 +69,6 @@ struct AppDialog: View {
             }
         }
         .frame(height: AppSize.dialogActionHeight)
-        .padding(.bottom, AppSpacing.gapTight)
     }
 
     private enum Emphasis { case primary, secondary }

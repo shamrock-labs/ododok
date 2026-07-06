@@ -65,7 +65,7 @@ struct AppBadge: View {
     let text: String
     var foreground: Color = Color.textAction
     var background: Color = Color.bgSunken
-    var font: Font.Role = .boldTiny
+    var font: Font.Role = .boldMicro
     var horizontalPadding: CGFloat = AppSpacing.oneHalf
     var verticalPadding: CGFloat = AppSpacing.half
 
