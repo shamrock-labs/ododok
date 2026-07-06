@@ -112,6 +112,7 @@ enum AppSize {
     static let iconContainerXL = visualSmall
     static let statusDot = indicatorLarge
     static let statusDotTiny = indicatorSmall
+    static let toastIcon = iconSmall
 }
 
 enum AppMotion {
@@ -124,10 +125,13 @@ enum AppMotion {
     static let durationPulse: TimeInterval = 1.2
     static let durationChew: TimeInterval = 0.72
     static let durationDemoChew: TimeInterval = 0.9
+    static let durationToast: TimeInterval = 1.8
 
     static let springFastResponse: Double = 0.28
     static let springResponse: Double = 0.32
     static let springDampingFraction: Double = 0.88
+    static let springToastResponse: Double = 0.3
+    static let springToastDampingFraction: Double = 0.9
     static let springDemoResponse: Double = 0.3
     static let springPlayfulResponse: Double = 0.35
     static let springPlayfulDamping: Double = 0.6
@@ -137,7 +141,5 @@ enum AppMotion {
 
 enum AppElevation {
     case flat
-    case low
-    case medium
-    case high
+    case floating
 }

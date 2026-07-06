@@ -15,6 +15,6 @@ struct AppTextField: View {
             .padding(.horizontal, AppSpacing.inputH)
             .padding(.vertical, AppSpacing.inputV)
             .background(Color.inputBg.opacity(0.85), in: RoundedRectangle(cornerRadius: AppRadius.element))
-            .appElevation(.medium)
+            .appElevation(.flat)
     }
 }

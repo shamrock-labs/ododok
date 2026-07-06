@@ -3,6 +3,7 @@ import SwiftUI
 struct ContentView: View {
     @Environment(AppState.self) private var state
     @State private var tab: Tab = Tab.initial
+    @State private var presentedGlobalToast: AppToastMessage?
 
     enum Tab: String, CaseIterable {
         case home, track, friends, shop
@@ -57,21 +58,10 @@ struct ContentView: View {
                 }
             }
         }
-        // 전역 토스트(딥링크 친구 수락 결과 등) — 로그인 화면/탭 어디서나 위에 뜬다.
-        .overlay(alignment: .bottom) {
-            if let toast = state.globalToast {
-                Text(toast)
-                    .font(.appFont(.bold, size: 13))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 11)
-                    .background(Color.textPrimary, in: RoundedRectangle(cornerRadius: 16))
-                    .softShadow(.lg)
-                    .padding(.bottom, 100)
-                    .transition(.scale.combined(with: .opacity))
-            }
+        .appToast($presentedGlobalToast)
+        .onChange(of: state.globalToast) { _, toast in
+            presentedGlobalToast = toast.map { AppToastMessage($0, kind: .info) }
         }
-        .animation(.spring(response: 0.3), value: state.globalToast)
     }
 
     private var mainTabs: some View {

@@ -39,7 +39,7 @@ private struct ShopPlaceholderView: View {
     }
 
     private var comingSoonCard: some View {
-        AppCard(padding: AppSpacing.dialogH, radius: AppRadius.page, elevation: .medium) {
+        AppCard(padding: AppSpacing.dialogH, radius: AppRadius.page, elevation: .flat) {
             AppEmptyState(
                 spacing: AppSpacing.verticalLoose,
                 title: "상점을 준비하고 있어요",
@@ -63,8 +63,7 @@ private struct ShopGridView: View {
     @Environment(AppState.self) private var state
 
     @State private var category: Category = .all
-    @State private var toast: ToastMessage?
-    @State private var toastTimer: Timer?
+    @State private var toast: AppToastMessage?
 
     enum Category: String, CaseIterable, Identifiable {
         case all, hat, glasses, acc, pack
@@ -111,7 +110,7 @@ private struct ShopGridView: View {
         .padding(.top, AppSpacing.three)
         .padding(.bottom, AppSpacing.cardOuterBottom)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .overlay(alignment: .bottom) { toastView }
+        .appToast($toast)
     }
 
     // MARK: Header
@@ -231,7 +230,7 @@ private struct ShopGridView: View {
                 startPoint: .topLeading, endPoint: .bottomTrailing),
             in: RoundedRectangle(cornerRadius: AppRadius.container)
         )
-        .appElevation(.medium)
+        .appElevation(.flat)
     }
 
     private func typeLabel(_ k: ShopItem.Kind) -> String {
@@ -252,7 +251,7 @@ private struct ShopGridView: View {
         if equipped {
             Button {
                 state.unequip(item.type)
-                showToast(ToastMessage(text: "장착 해제됨", kind: .info))
+                toast = AppToastMessage("장착 해제됨", kind: .info)
             } label: {
                 pillLabel("장착 중", style: .sage)
             }
@@ -260,7 +259,7 @@ private struct ShopGridView: View {
         } else if owned {
             Button {
                 state.equip(item)
-                showToast(ToastMessage(text: "\(item.name) 장착", kind: .success))
+                toast = AppToastMessage("\(item.name) 장착", kind: .success)
             } label: {
                 pillLabel("장착하기", style: .acorn)
             }
@@ -269,9 +268,9 @@ private struct ShopGridView: View {
             Button {
                 switch state.buyItem(item) {
                 case .success:
-                    showToast(ToastMessage(text: "\(item.name) 구매 완료", kind: .success))
+                    toast = AppToastMessage("\(item.name) 구매 완료", kind: .success)
                 case .notEnoughPoints:
-                    showToast(ToastMessage(text: "도토리가 부족해요", kind: .warn))
+                    toast = AppToastMessage("도토리가 부족해요", kind: .warning)
                 case .alreadyOwned:
                     break
                 }
@@ -368,9 +367,9 @@ private struct ShopGridView: View {
             Button {
                 switch state.buyAcornPack(pack) {
                 case .success:
-                    showToast(ToastMessage(text: "\(pack.name) 획득", kind: .success))
+                    toast = AppToastMessage("\(pack.name) 획득", kind: .success)
                 case .notEnoughPoints:
-                    showToast(ToastMessage(text: "도토리가 부족해요", kind: .warn))
+                    toast = AppToastMessage("도토리가 부족해요", kind: .warning)
                 case .alreadyOwned:
                     break
                 }
@@ -399,59 +398,7 @@ private struct ShopGridView: View {
         }
         .padding(AppSpacing.cell)
         .background(Color.bgCard, in: RoundedRectangle(cornerRadius: AppRadius.container))
-        .appElevation(.medium)
-    }
-
-    // MARK: Toast
-
-    private struct ToastMessage: Identifiable, Equatable {
-        let id = UUID()
-        let text: String
-        let kind: Kind
-        enum Kind { case success, warn, info }
-    }
-
-    private func showToast(_ msg: ToastMessage) {
-        withAnimation { toast = msg }
-        toastTimer?.invalidate()
-        toastTimer = Timer.scheduledTimer(withTimeInterval: 1.8, repeats: false) { _ in
-            withAnimation { toast = nil }
-        }
-    }
-
-    @ViewBuilder
-    private var toastView: some View {
-        if let t = toast {
-            HStack(spacing: AppSpacing.two) {
-                Image(systemName: toastIcon(t.kind))
-                    .font(.appFont(.boldCallout))
-                Text(t.text)
-                    .font(.appFont(.boldCallout))
-            }
-            .foregroundStyle(Color.textActionInverse)
-            .padding(.horizontal, AppSpacing.toastH)
-            .padding(.vertical, AppSpacing.toastV)
-            .background(toastBG(t.kind), in: RoundedRectangle(cornerRadius: AppRadius.elementLarge))
-            .softShadow(.lg)
-            .padding(.bottom, AppSpacing.overlayBottom)
-            .transition(.scale.combined(with: .opacity))
-        }
-    }
-
-    private func toastIcon(_ k: ToastMessage.Kind) -> String {
-        switch k {
-        case .success: "checkmark.circle.fill"
-        case .warn:    "exclamationmark.triangle.fill"
-        case .info:    "info.circle.fill"
-        }
-    }
-
-    private func toastBG(_ k: ToastMessage.Kind) -> Color {
-        switch k {
-        case .success: Color.statusSuccess
-        case .warn:    Color.statusDanger
-        case .info:    Color.textDefault
-        }
+        .appElevation(.flat)
     }
 }
 

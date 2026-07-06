@@ -571,7 +571,7 @@ private struct AirPodsPickerDialog: View {
         }
         .frame(maxWidth: AppSize.dialogMaxWidth)
         .background(Color.bgPopover, in: RoundedRectangle(cornerRadius: AppRadius.element))
-        .appElevation(.high)
+        .appElevation(.floating)
     }
 
     private var divider: some View {

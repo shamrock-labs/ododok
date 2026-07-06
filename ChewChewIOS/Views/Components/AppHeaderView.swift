@@ -53,7 +53,7 @@ struct AppHeaderView<Accessory: View>: View {
             RoundedRectangle(cornerRadius: AppSpacing.dialogH)
                 .stroke(Color.bgSurface.opacity(0.85), lineWidth: AppSize.border)
         )
-        .appElevation(.medium)
+        .appElevation(.flat)
     }
 }
 

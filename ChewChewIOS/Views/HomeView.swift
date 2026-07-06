@@ -209,7 +209,7 @@ struct HomeView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
         .background(Color.bgCard, in: RoundedRectangle(cornerRadius: AppRadius.container))
-        .appElevation(.medium)
+        .appElevation(.flat)
     }
 
     // MARK: Squirrel card + IMU waveform
@@ -270,7 +270,7 @@ struct HomeView: View {
         .frame(maxWidth: .infinity)
         .frame(minHeight: Metrics.squirrelCardMinHeight)
         .background(Color.bgCard, in: RoundedRectangle(cornerRadius: Metrics.squirrelCardRadius))
-        .appElevation(.low)
+        .appElevation(.flat)
     }
 
     private var imuWaveformCard: some View {

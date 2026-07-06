@@ -176,7 +176,7 @@ private struct MeasureDemo: View {
         .padding(AppSpacing.cardH)
         .frame(width: Metrics.cardWidth)
         .background(Color.bgCard, in: RoundedRectangle(cornerRadius: AppRadius.containerLoose))
-        .appElevation(.medium)
+        .appElevation(.flat)
     }
 }
 
@@ -246,7 +246,7 @@ private struct ChewDemo: View {
         .padding(AppSpacing.cardH)
         .frame(width: Metrics.cardWidth)
         .background(Color.bgCard, in: RoundedRectangle(cornerRadius: AppRadius.containerLoose))
-        .appElevation(.medium)
+        .appElevation(.flat)
     }
 }
 

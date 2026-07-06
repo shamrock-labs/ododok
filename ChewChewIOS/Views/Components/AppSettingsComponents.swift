@@ -52,6 +52,6 @@ struct AppSettingsRow: View {
         }
         .padding(AppSpacing.row)
         .background(Color.bgCard, in: RoundedRectangle(cornerRadius: AppRadius.container))
-        .appElevation(.medium)
+        .appElevation(.flat)
     }
 }

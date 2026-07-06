@@ -23,9 +23,9 @@ extension View {
     @ViewBuilder
     func appElevation(_ elevation: AppElevation) -> some View {
         switch elevation {
-        case .flat, .low, .medium:
+        case .flat:
             self
-        case .high:
+        case .floating:
             self.shadow(color: .black.opacity(0.18), radius: 24, y: 8)
         }
     }

@@ -49,7 +49,7 @@ struct RewardDialogView: View {
         .padding(.horizontal, AppSpacing.dialogContentH)
         .frame(maxWidth: AppSize.dialogMaxWidth)
         .background(Color.bgPopover, in: RoundedRectangle(cornerRadius: AppRadius.page))
-        .appElevation(.high)
+        .appElevation(.floating)
         .contentShape(Rectangle())
         .onTapGesture { onDismiss() }
         .task {

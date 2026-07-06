@@ -182,7 +182,7 @@ struct MealReminderSettingsView: View {
         }
         .padding(AppSpacing.cardContent)
         .background(Color.bgCard, in: RoundedRectangle(cornerRadius: AppRadius.container))
-        .appElevation(.medium)
+        .appElevation(.flat)
     }
 
     // MARK: - Bindings

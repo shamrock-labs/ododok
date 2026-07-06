@@ -2,8 +2,7 @@ import SwiftUI
 
 struct FriendsView: View {
     @Environment(AppState.self) private var state
-    @State private var inviteToastVisible = false
-    @State private var toastMessage = ""
+    @State private var toast: AppToastMessage?
 
     var body: some View {
         VStack(spacing: AppSpacing.verticalLoose) {
@@ -16,19 +15,7 @@ struct FriendsView: View {
         .padding(.top, AppSpacing.cardOuter)
         .padding(.bottom, AppSpacing.cardOuterBottom)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .overlay(alignment: .bottom) {
-            if inviteToastVisible {
-                Text(toastMessage)
-                    .font(.appFont(.boldCaption))
-                    .foregroundStyle(Color.textActionInverse)
-                    .padding(.horizontal, AppSpacing.toastH)
-                    .padding(.vertical, AppSpacing.toastV)
-                    .background(Color.textDefault, in: RoundedRectangle(cornerRadius: AppRadius.elementLarge))
-                    .softShadow(.lg)
-                    .padding(.bottom, AppSpacing.overlayBottom)
-                    .transition(.scale.combined(with: .opacity))
-            }
-        }
+        .appToast($toast)
         .task {
             await state.refreshFriendArea()
         }
@@ -45,7 +32,7 @@ struct FriendsView: View {
     // MARK: Invite
 
     private var inviteCard: some View {
-        AppCard(padding: AppSpacing.five, elevation: .medium) {
+        AppCard(padding: AppSpacing.five, elevation: .flat) {
             VStack(spacing: AppSpacing.cell) {
             // 카카오 초대를 가장 크게(주 액션). 카카오 공식 옐로우 + 어두운 텍스트.
             AppActionButton(
@@ -96,7 +83,7 @@ struct FriendsView: View {
     }
 
     private var rankingCard: some View {
-        AppCard(padding: AppSpacing.dialogH, radius: AppRadius.page, elevation: .medium) {
+        AppCard(padding: AppSpacing.dialogH, radius: AppRadius.page, elevation: .flat) {
             VStack(alignment: .leading, spacing: AppSpacing.cell) {
             Text("친구 랭킹")
                 .font(.appFont(.heavyHeadlineLarge))
@@ -158,23 +145,15 @@ struct FriendsView: View {
     @MainActor
     private func shareInvite() async {
         guard let code = state.friendInviteCode, !code.isEmpty else {
-            showToast("초대 코드를 불러오는 중이에요")
+            toast = AppToastMessage("초대 코드를 불러오는 중이에요", kind: .info)
             return
         }
         do {
             try await KakaoInviteSharer.share(code: code)
         } catch KakaoInviteSharer.ShareError.kakaoTalkUnavailable {
-            showToast("카카오톡이 설치되어 있지 않아요")
+            toast = AppToastMessage("카카오톡이 설치되어 있지 않아요", kind: .warning)
         } catch {
-            showToast("초대 공유에 실패했어요")
-        }
-    }
-
-    private func showToast(_ message: String) {
-        toastMessage = message
-        withAnimation { inviteToastVisible = true }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
-            withAnimation { inviteToastVisible = false }
+            toast = AppToastMessage("초대 공유에 실패했어요", kind: .warning)
         }
     }
 }
