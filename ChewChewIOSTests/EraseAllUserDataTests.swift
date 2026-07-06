@@ -54,15 +54,18 @@ final class SpyRemoteStore: RemoteStore {
 }
 
 final class SpyAuthSessionManager: AuthSessionManaging {
+    // swiftlint:disable:next large_tuple
+    typealias AuthMeResult = (displayName: String?, onboardingCompleted: Bool, alertVolume: Double?)
+
     private(set) var logoutCallCount = 0
     /// me() 가 반환할 값. nil이면 throw(오프라인 시뮬레이션).
-    var meResult: (displayName: String?, onboardingCompleted: Bool, alertVolume: Double?)? = nil
+    var meResult: AuthMeResult?
 
     func logout() async {
         logoutCallCount += 1
         TokenManager.clear()
     }
-    func me() async throws -> (displayName: String?, onboardingCompleted: Bool, alertVolume: Double?) {
+    func me() async throws -> AuthMeResult {
         guard let result = meResult else { throw RemoteStoreError.offline }
         return result
     }
@@ -156,7 +159,7 @@ final class EraseAllUserDataTests: XCTestCase {
         XCTAssertFalse(state.pendingMealStartRequest)
         XCTAssertEqual(state.sessionUploadStatus, .idle)
         XCTAssertNil(state.sessionUploadErrorMessage)
-        XCTAssertNil(state.pendingInviteCode)
+        XCTAssertNil(state.friends.pendingInviteCode)
     }
 
     func testEraseAllUserData_resetsStreakToZero() async {
@@ -197,7 +200,11 @@ final class EraseAllUserDataTests: XCTestCase {
 
         await waitFor(spy.deleteUserDataAccessToken != nil)
         XCTAssertEqual(spy.deleteUserDataAccessToken, "access-token", "서버 삭제 요청은 Keychain이 아니라 삭제 시점 token snapshot으로 인증해야 한다")
-        XCTAssertEqual(spy.deleteUserDataRefreshToken, "refresh-token", "삭제 요청 중 access token 만료 시에도 Keychain 없이 refresh snapshot으로 재시도해야 한다")
+        XCTAssertEqual(
+            spy.deleteUserDataRefreshToken,
+            "refresh-token",
+            "삭제 요청 중 access token 만료 시에도 Keychain 없이 refresh snapshot으로 재시도해야 한다"
+        )
     }
 
     func testLogoutClearsLocalAccountCacheWithoutDeletingRemoteData() {
@@ -273,7 +280,7 @@ final class EraseAllUserDataTests: XCTestCase {
 
         await waitFor(!remote.acceptedInviteCodes.isEmpty)
         XCTAssertEqual(remote.acceptedInviteCodes, ["FRIEND-123"])
-        XCTAssertEqual(state.pendingInviteCode, "FRIEND-123")
+        XCTAssertEqual(state.friends.pendingInviteCode, "FRIEND-123")
         XCTAssertEqual(
             UserDefaults.standard.string(forKey: pendingInviteKey),
             "FRIEND-123"

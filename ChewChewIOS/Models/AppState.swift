@@ -98,22 +98,6 @@ final class AppState {
         }
     }
 
-    var friendInviteCode: String?
-    var friendInviteDeepLink: String?
-    var friendRankings: [FriendRankingDTO] = []
-
-    /// 친구 영역(초대 코드·랭킹) 로딩 상태. 실패를 "불러오는 중"과 구분해, 무한 로딩 대신 에러+재시도를 노출한다.
-    enum FriendAreaLoadState: Equatable {
-        case loading
-        case loaded
-        case failed
-    }
-
-    var friendAreaLoadState: FriendAreaLoadState = .loading
-
-    /// 딥링크로 받았지만 아직 미로그인이라 보류 중인 초대 코드. 로그인/가입(OAuth) 완료 후 자동 수락한다.
-    var pendingInviteCode: String?
-
     /// 전역 토스트(딥링크 친구 수락 결과 등). ContentView가 하단에 표시한다.
     var globalToast: String?
 
@@ -249,6 +233,29 @@ final class AppState {
         }
     )
 
+    @MainActor @ObservationIgnored lazy var friends: FriendsStore = FriendsStore(
+        repository: RemoteStoreFriendRepository(remoteStore: remoteStore),
+        isLoggedIn: { [weak self] in self?.isLoggedIn ?? false },
+        currentDisplayName: { [weak self] in self?.displayName },
+        initialPendingInviteCode: UserDefaults.standard.string(forKey: Self.pendingInviteCodeKey),
+        onToast: { [weak self] message in
+            self?.flashToast(message)
+        },
+        onAuthExpired: { [weak self] in
+            self?.auth.expireSession()
+        },
+        onInviteReceived: { [weak self] loggedIn in
+            self?.analytics.track(.friendInviteReceived(loggedIn: loggedIn))
+        },
+        onPendingInviteCodeChanged: { code in
+            if let code {
+                UserDefaults.standard.set(code, forKey: Self.pendingInviteCodeKey)
+            } else {
+                UserDefaults.standard.removeObject(forKey: Self.pendingInviteCodeKey)
+            }
+        }
+    )
+
     @MainActor @ObservationIgnored lazy var reminders: ReminderStore = ReminderStore(
         coordinator: mealPushCoordinator,
         permissionProvider: SystemReminderPermissionProvider(),
@@ -341,7 +348,9 @@ final class AppState {
     ) {
         self.remoteStore = remoteStore
         self.authSessionManager = authSessionManager
-        self.authRepository = authRepository ?? (authSessionManager as? AuthRepository) ?? NoopAuthSessionManager()
+        self.authRepository = authRepository
+            ?? (authSessionManager as? AuthRepository)
+            ?? AuthSessionManagerRepositoryAdapter(sessionManager: authSessionManager)
         self.analytics = analytics
         self.mealPushCoordinator = MealPushCoordinator(remoteStore: remoteStore)
         // displayName은 game state(`PersistedSnapshot`)과 다른 별도 캐시 키 — cold-start
@@ -357,8 +366,6 @@ final class AppState {
             hasCompletedOnboarding = true
             UserDefaults.standard.set(true, forKey: Self.onboardingCompleteKey)
         }
-        // 로그인 도중 앱이 종료돼도 보류 초대가 살아남도록 복원(로그인 완료 시 소비).
-        pendingInviteCode = UserDefaults.standard.string(forKey: Self.pendingInviteCodeKey)
         // 즉시 표시용 fallback — DB 실패 또는 응답 전에 화면 그려도 마지막 캐시값으로.
         loadPersistedSnapshot()
         Task { [weak self] in
@@ -742,6 +749,7 @@ final class AppState {
 
     // MARK: - Reset
 
+    @MainActor
     func reset() {
         stopEating()
         clearTransientRuntimeState()
@@ -771,6 +779,7 @@ final class AppState {
     /// 로그인 계정 기준으로 홈/프로필을 다시 적재한다.
     /// `onboardingCompleted`는 로그인 응답(`/auth/login`)의 정본 — true면 즉시 온보딩을
     /// 스킵해, 재로그인 시 온보딩이 다시 뜨던 회귀를 막는다.
+    @MainActor
     func completeLogin(onboardingCompleted: Bool, method: String) {
         clearLocalSessionCache()
         // clearLocalSessionCache가 hasCompletedOnboarding을 false로 리셋하므로 그 뒤에 세팅한다.
@@ -779,6 +788,7 @@ final class AppState {
         // 로그인 provider 저장 — clearLocalSessionCache가 nil로 비운 뒤라 여기서 세팅한다.
         loginMethod = method
         isLoggedIn = true
+        auth.markLoggedIn(onboardingCompleted: onboardingCompleted)
         let deviceIdForLogin = DeviceIdentity.shared
         analytics.setUserId(deviceIdForLogin)
         analytics.setUserProperty("has_completed_onboarding", onboardingCompleted)
@@ -796,7 +806,7 @@ final class AppState {
             // (.task는 앱 시작 시 1회뿐이라, 앱 실행 중 로그인하면 여기서 다시 걸어줘야 계정 전환이 반영된다.)
             await self?.mealPushCoordinator.syncFromServer()
             // 미로그인 상태에서 받은 초대가 있으면 로그인/가입 완료 후 자동 수락한다.
-            await self?.consumePendingInviteCodeIfNeeded()
+            await self?.friends.consumePendingInviteIfNeeded()
         }
     }
 
@@ -821,6 +831,7 @@ final class AppState {
     }
 
     /// 로그아웃 — 로컬 토큰 제거 후 로그인 게이트로 복귀. 게임 데이터는 보존('계정 삭제'와 구분).
+    @MainActor
     func logout() {
         expireSession()
     }
@@ -834,6 +845,7 @@ final class AppState {
     }
 
     /// refresh 만료/폐기 등으로 인증 세션을 더 쓸 수 없을 때 로그인 게이트로 복귀한다.
+    @MainActor
     private func expireSession() {
         // 로컬 끼니 알림 정리 + 코디네이터의 in-memory 등록 토큰 리셋(서버 토큰 해제는 logoutFromServer에서
         // 토큰이 유효할 때 수행. 만료 경로는 401이라 DELETE 무의미하므로 in-memory만 비운다).
@@ -1133,6 +1145,7 @@ final class AppState {
 
     /// 로그아웃/계정 전환 시 iOS에 남은 계정별 화면 캐시만 제거한다.
     /// 원격 데이터 삭제는 `eraseAllUserData` 전용이며 여기서는 호출하지 않는다.
+    @MainActor
     private func clearLocalSessionCache() {
         clearTransientRuntimeState()
         streak = 0
@@ -1147,6 +1160,7 @@ final class AppState {
         loginMethod = nil
         didLoadProfile = false
         hasCompletedOnboarding = false
+        auth.markLoggedOut()
         serverHome = nil
         homeApplyVersion += 1
         // 끼니 설정 로컬 캐시도 비운다 — 다음 계정이 이전 계정 알림시각을 보지 않도록(ODO-103).
@@ -1167,8 +1181,9 @@ final class AppState {
         pendingUpload = nil
     }
 
+    @MainActor
     private func clearPendingInviteCode() {
-        pendingInviteCode = nil
+        friends.setPendingInviteCode(nil)
         UserDefaults.standard.removeObject(forKey: Self.pendingInviteCodeKey)
     }
 
@@ -1364,6 +1379,7 @@ final class AppState {
             if let result = try? await authSessionManager.me() {
                 // 서버 값이 정본 — true/false 모두 기존 로컬 값에 우선한다.
                 hasCompletedOnboarding = result.onboardingCompleted
+                auth.updateOnboardingCompleted(result.onboardingCompleted)
                 // displayName도 함께 갱신(있을 때만).
                 if let name = result.displayName, !name.isEmpty, name != displayName {
                     displayName = name
@@ -1398,6 +1414,7 @@ final class AppState {
             // 재설치로 로컬 플래그가 비었어도 사용법 튜토리얼을 다시 띄우지 않도록 완료로 마크.
             if !meSucceeded && !hasCompletedOnboarding {
                 hasCompletedOnboarding = true
+                auth.updateOnboardingCompleted(true)
             }
         }
         // displayName 먼저 set 후 마지막에 didLoadProfile = true. 둘이 같은 main-actor
@@ -1455,6 +1472,7 @@ final class AppState {
     func completeOnboarding() {
         guard !hasCompletedOnboarding else { return }
         hasCompletedOnboarding = true
+        auth.updateOnboardingCompleted(true)
         analytics.track(.onboardingCompleted())
         Task { await grantDailyAttendanceIfNeeded() }
     }
@@ -1548,89 +1566,11 @@ final class AppState {
         }
     }
 
-    @MainActor
-    func refreshFriendArea() async {
-        // 이미 코드를 받아둔 뒤의 새로고침은 화면을 비우지 않는다(첫 로딩일 때만 로딩 상태로).
-        if friendInviteCode == nil { friendAreaLoadState = .loading }
-        // 일시적 실패로 바로 에러를 띄우지 않는다: 짧은 backoff로 최대 3회 시도하고, 그 동안은 로딩(스피너) 유지.
-        let maxAttempts = 3
-        for attempt in 1...maxAttempts {
-            do {
-                let invite = try await remoteStore.fetchFriendInviteCode()
-                friendInviteCode = invite.code
-                friendInviteDeepLink = invite.deepLink
-                friendRankings = try await remoteStore.fetchFriendRanking()
-                friendAreaLoadState = .loaded
-                return
-            } catch {
-                // 인증 만료는 재시도로 풀리지 않으므로 즉시 실패 처리(세션 만료 핸들링은 그대로).
-                if case RemoteStoreError.authExpired = error {
-                    handleRemoteError(error)
-                    friendAreaLoadState = .failed
-                    return
-                }
-                if attempt < maxAttempts {
-                    try? await Task.sleep(for: .seconds(1))  // 다음 시도 전 짧게 대기
-                } else {
-                    friendAreaLoadState = .failed  // 3회 모두 실패한 뒤에만 에러 노출
-                }
-            }
-        }
-    }
-
-    @MainActor
-    @discardableResult
-    func acceptFriendInvite(code: String) async -> Bool {
-        do {
-            let result = try await remoteStore.acceptFriendInvite(code: code)
-            await refreshFriendArea()
-            flashToast(result.bonusGranted ? "친구가 됐어요! 도토리 100개 받았어요" : "이미 친구예요")
-            return true
-        } catch {
-            handleRemoteError(error) // authExpired면 세션 만료 처리(로그인 게이트로 복귀)
-            flashToast(acceptErrorMessage(error))
-            return false
-        }
-    }
-
     /// 딥링크(카카오/외부 공유)로 받은 초대 코드 처리. 로그인 상태면 바로 수락하고,
     /// 미로그인이면 보관했다가 로그인/가입(OAuth) 완료 후 자동 수락한다.
     @MainActor
     func receiveInviteCode(_ code: String) {
-        let trimmed = code.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        analytics.track(.friendInviteReceived(loggedIn: isLoggedIn))
-        if isLoggedIn {
-            Task { await acceptFriendInvite(code: trimmed) }
-        } else {
-            // 로그인 게이트(isLoggedIn=false)는 이미 노출됨. 로그인 후 자동 수락하도록 보관.
-            pendingInviteCode = trimmed
-            UserDefaults.standard.set(trimmed, forKey: Self.pendingInviteCodeKey)
-            flashToast("로그인하면 친구가 돼요")
-        }
-    }
-
-    /// 보류된 초대 코드가 있으면 수락하고 비운다(로그인 완료 직후 호출).
-    @MainActor
-    private func consumePendingInviteCodeIfNeeded() async {
-        guard let code = pendingInviteCode else { return }
-        if await acceptFriendInvite(code: code) {
-            clearPendingInviteCode()
-        }
-    }
-
-    /// 친구 수락 실패 토스트 문구. 서버 에러 코드(4011/4012)·오프라인·만료를 구분한다.
-    private func acceptErrorMessage(_ error: Error) -> String {
-        if case let RemoteStoreError.server(_, code, _) = error {
-            switch code {
-            case 4012: return "본인 초대 코드는 수락할 수 없어요"
-            case 4011: return "유효하지 않은 초대 코드예요"
-            default: break
-            }
-        }
-        if case RemoteStoreError.offline = error { return "네트워크 연결을 확인해 주세요" }
-        if case RemoteStoreError.authExpired = error { return "다시 로그인한 뒤 시도해 주세요" }
-        return "친구 맺기에 실패했어요"
+        friends.receiveInviteCode(code)
     }
 
     /// 전역 토스트 표시(2.2초). 같은 메시지일 때만 정리해 새 토스트가 일찍 사라지지 않게 한다.
