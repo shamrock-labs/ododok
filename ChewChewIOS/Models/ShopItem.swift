@@ -27,17 +27,3 @@ struct ShopItem: Identifiable, Hashable {
         return all.first(where: { $0.id == id })
     }
 }
-
-struct AcornPack: Identifiable, Hashable {
-    let id: String
-    let name: String
-    let emoji: String
-    let price: Int
-    let effect: String
-
-    static let all: [AcornPack] = [
-        .init(id: "a-snack", name: "견과 한 줌",     emoji: "🥜", price: 80,  effect: "+10 기분"),
-        .init(id: "a-acorn", name: "특상 도토리",   emoji: "🌰", price: 240, effect: "+25 친밀도"),
-        .init(id: "a-cake",  name: "다람쥐 케이크", emoji: "🎂", price: 680, effect: "+1 스트릭 보호"),
-    ]
-}

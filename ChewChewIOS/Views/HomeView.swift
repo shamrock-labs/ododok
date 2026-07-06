@@ -10,6 +10,7 @@ struct HomeView: View {
 
     // MARK: - 끼니 알림 설정 sheet
     @State private var showMealReminderSettings = false
+    @State private var showRewardHistory = false
 
     // MARK: - 설정 sheet (REQ-05)
     @State private var showSettings = false
@@ -46,6 +47,10 @@ struct HomeView: View {
         .sensoryFeedback(.impact(weight: .medium), trigger: hapticTrigger)
         .sheet(isPresented: $showMealReminderSettings) {
             MealReminderSettingsView()
+        }
+        .sheet(isPresented: $showRewardHistory) {
+            RewardHistorySheet()
+                .presentationDetents([.medium, .large])
         }
         .sheet(isPresented: $showSettings) {
             SettingsView()
@@ -119,7 +124,13 @@ struct HomeView: View {
         AppHeaderView(eyebrow: todayLabel, title: "오도독", subtitle: homeHeaderSubtitle) {
             HStack(spacing: 7) {
                 HeaderMetricPill(icon: .flame, value: "\(state.currentStreak)", tint: .statusWarning)
-                HeaderMetricPill(icon: .acorn, value: state.points.koLocale, tint: .rewardAcorn)
+                Button {
+                    showRewardHistory = true
+                } label: {
+                    HeaderMetricPill(icon: .acorn, value: state.points.koLocale, tint: .rewardAcorn)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("RewardHistoryButton")
                 HeaderIconButton(systemName: "bell", showsBadge: true) {
                     showMealReminderSettings = true
                 }
@@ -319,6 +330,116 @@ struct HomeView: View {
     }
 }
 
+private struct RewardHistorySheet: View {
+    @Environment(AppState.self) private var state
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: AppSpacing.five) {
+            sheetHeader
+            content
+        }
+        .padding(.horizontal, AppSpacing.sheetContent)
+        .padding(.top, AppSpacing.four)
+        .padding(.bottom, AppSpacing.cardOuterBottom)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(Color.bgPage.ignoresSafeArea())
+        .task {
+            await state.fetchRewardHistory()
+        }
+    }
+
+    private var sheetHeader: some View {
+        AppSheetHeader(title: "도토리 적립 내역") {
+            AppSheetTextActionButton(title: "닫기") { dismiss() }
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch state.rewardHistoryLoadState {
+        case .idle, .loading:
+            ProgressView()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .failed:
+            VStack(spacing: AppSpacing.two) {
+                Text("내역을 불러오지 못했어요")
+                    .font(.appFont(.boldHeadline))
+                    .foregroundStyle(Color.textDefault)
+                Button("다시 시도") {
+                    Task { await state.fetchRewardHistory() }
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, AppSpacing.four)
+                .frame(height: AppSize.dialogActionHeight)
+                .background(Color.controlOnSurface, in: Capsule())
+                .font(.appFont(.semiboldBody))
+                .foregroundStyle(Color.tintInteractive)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .loaded:
+            if state.rewardHistory.isEmpty {
+                VStack(spacing: AppSpacing.two) {
+                    OpenIconView(icon: .acorn, color: .rewardAcorn, lineWidth: 2.2)
+                        .frame(width: AppSize.iconXXLarge, height: AppSize.iconXXLarge)
+                    Text("아직 적립 내역이 없어요")
+                        .font(.appFont(.boldHeadline))
+                        .foregroundStyle(Color.textDefault)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: AppSpacing.none) {
+                        ForEach(Array(state.rewardHistory.enumerated()), id: \.element.id) { index, entry in
+                            RewardHistoryRow(entry: entry)
+                            if index < state.rewardHistory.count - 1 {
+                                Color.borderDefault
+                                    .frame(height: AppSize.hairline)
+                                    .padding(.leading, Metrics.rewardSheetSeparatorInset)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+private struct RewardHistoryRow: View {
+    let entry: RewardHistoryDTO
+
+    var body: some View {
+        HStack(spacing: AppSpacing.inner) {
+            OpenIconView(icon: .acorn, color: .rewardAcorn, lineWidth: 2.1)
+                .frame(width: AppSize.iconMedium, height: AppSize.iconMedium)
+                .frame(width: Metrics.rewardSheetIconContainer, height: Metrics.rewardSheetIconContainer)
+                .background(Color.rewardAcorn.opacity(0.12), in: RoundedRectangle(cornerRadius: AppRadius.iconContainer))
+
+            VStack(alignment: .leading, spacing: AppSpacing.half) {
+                Text(entry.eventType.displayTitle)
+                    .font(.appFont(.boldBody))
+                    .foregroundStyle(Color.textDefault)
+                    .lineLimit(1)
+                Text(entry.eventDay)
+                    .font(.appFont(.semiboldLabel))
+                    .foregroundStyle(Color.textMuted)
+                    .monospacedDigit()
+            }
+
+            Spacer(minLength: AppSpacing.gap)
+
+            Text("+\(entry.grantedPoints)")
+                .font(.appFont(.heavyHeadline))
+                .foregroundStyle(Color.rewardAcorn)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(minHeight: Metrics.rewardSheetRowHeight)
+        .contentShape(Rectangle())
+    }
+}
+
 private enum Metrics {
     static let circleButton = AppSize.controlXXLarge
     static let statIcon = AppSize.iconXXLarge
@@ -331,6 +452,9 @@ private enum Metrics {
     static let imuWaveformHeight = AppSize.visualMedium
     static let mealButtonRadius = AppSize.controlTiny
     static let mealButtonHighlightBorder = AppSize.indicatorTiny
+    static let rewardSheetIconContainer = AppSize.iconContainer
+    static let rewardSheetRowHeight: CGFloat = 76
+    static let rewardSheetSeparatorInset = AppSize.iconContainer + AppSpacing.inner
 }
 
 private extension HomeView {

@@ -189,6 +189,59 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
         XCTAssertNil(TokenManager.refreshToken)
     }
 
+    func testFetchRewardHistory_sendsExpectedRequestAndDecodesResult() async throws {
+        let store = makeStore()
+        var capturedRequest: URLRequest?
+
+        MockURLProtocol.handler = { request in
+            capturedRequest = request
+            return (
+                HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!,
+                Data(
+                    """
+                    {
+                      "code": 1000,
+                      "message": "요청에 성공하였습니다.",
+                      "result": [
+                        {
+                          "id": "11111111-1111-1111-1111-111111111111",
+                          "eventType": "SESSION",
+                          "eventDay": "2026-07-03",
+                          "grantedPoints": 24,
+                          "capped": false,
+                          "sessionId": "22222222-2222-2222-2222-222222222222"
+                        },
+                        {
+                          "id": "33333333-3333-3333-3333-333333333333",
+                          "eventType": "ATTENDANCE",
+                          "eventDay": "2026-07-01",
+                          "grantedPoints": 10,
+                          "capped": false,
+                          "sessionId": null
+                        }
+                      ]
+                    }
+                    """.utf8
+                )
+            )
+        }
+
+        let result = try await store.fetchRewardHistory()
+
+        XCTAssertEqual(capturedRequest?.httpMethod, "GET")
+        XCTAssertEqual(capturedRequest?.url?.absoluteString, "http://localhost:8080/v1/me/rewards")
+        XCTAssertEqual(result.map(\.eventType), [.session, .attendance])
+        XCTAssertEqual(result.map(\.grantedPoints), [24, 10])
+        XCTAssertEqual(result.first?.eventDay, "2026-07-03")
+        XCTAssertEqual(result.first?.sessionId?.uuidString.lowercased(), "22222222-2222-2222-2222-222222222222")
+        XCTAssertNil(result.last?.sessionId)
+    }
+
     private func makeStore() -> SpringRemoteStore {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [MockURLProtocol.self]

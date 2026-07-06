@@ -167,6 +167,12 @@ final class SpringRemoteStore: RemoteStore {
         return try decodeResult(AttendanceResultDTO.self, from: data)
     }
 
+    func fetchRewardHistory() async throws -> [RewardHistoryDTO] {
+        let req = jsonRequest(method: "GET", path: "/v1/me/rewards")
+        let data = try await sendExpectingSuccess(req)
+        return try decodeOptionalResult([RewardHistoryDTO].self, from: data) ?? []
+    }
+
     func fetchChewingSessions(deviceId: String, since: Date, until: Date?) async throws -> [ChewingSessionDTO] {
         let sinceIso = Self.isoFormatter.string(from: since)
         // since/until 값에 +, : 가 포함되어 URL 인코딩 필수.

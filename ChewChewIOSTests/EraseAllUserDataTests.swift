@@ -6,7 +6,9 @@ final class SpyRemoteStore: RemoteStore {
     private(set) var deleteUserDataCallCount = 0
     private(set) var deleteUserDataAccessToken: String?
     private(set) var deleteUserDataRefreshToken: String?
+    private(set) var acceptedInviteCodes: [String] = []
     var fetchHomeError: Error?
+    var acceptFriendInviteError: Error?
 
     func upsertProfile(_ profile: ProfileDTO) async throws {}
     func fetchProfile() async throws -> ProfileDTO? { nil }
@@ -44,6 +46,11 @@ final class SpyRemoteStore: RemoteStore {
     func deleteChewingSession(id: UUID, deviceId: String) async throws {}
     func deleteAllChewingSessions(deviceId: String) async throws {}
     func uploadIMUCSV(sessionId: UUID, deviceId: String, csvData: Data) async throws -> String { "" }
+    func acceptFriendInvite(code: String) async throws -> FriendAcceptResultDTO {
+        acceptedInviteCodes.append(code)
+        if let acceptFriendInviteError { throw acceptFriendInviteError }
+        return FriendAcceptResultDTO(accepted: true, bonusGranted: true)
+    }
 }
 
 final class SpyAuthSessionManager: AuthSessionManaging {
@@ -63,9 +70,25 @@ final class SpyAuthSessionManager: AuthSessionManaging {
 
 @MainActor
 final class EraseAllUserDataTests: XCTestCase {
+    private let pendingInviteKey = "ChewChewIOS.AppState.pendingInviteCode"
+
+    override func setUp() {
+        super.setUp()
+        TokenManager.clear()
+        UserDefaults.standard.removeObject(forKey: pendingInviteKey)
+    }
+
     override func tearDown() {
         TokenManager.clear()
+        UserDefaults.standard.removeObject(forKey: pendingInviteKey)
         super.tearDown()
+    }
+
+    private func waitFor(_ predicate: @autoclosure () -> Bool) async {
+        for _ in 0..<50 where !predicate() {
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(10))
+        }
     }
 
     func testEraseAllUserData_callsDeleteUserDataOnce() async {
@@ -77,9 +100,7 @@ final class EraseAllUserDataTests: XCTestCase {
 
         await state.eraseAllUserData()
 
-        // remoteSyncChain이 비동기로 실행되므로 Task 완료를 기다림
-        await Task.yield()
-        await Task.yield()
+        await waitFor(spy.deleteUserDataCallCount == 1)
 
         XCTAssertEqual(spy.deleteUserDataCallCount, 1, "eraseAllUserData 호출 시 deleteUserData가 정확히 1회 호출되어야 한다")
     }
@@ -122,6 +143,22 @@ final class EraseAllUserDataTests: XCTestCase {
         XCTAssertTrue(state.todaySessions.isEmpty, "삭제 후 todaySessions는 빈 배열이어야 한다")
     }
 
+    func testEraseAllUserDataClearsPendingRuntimeState() async {
+        let spy = SpyRemoteStore()
+        let state = AppState(remoteStore: spy)
+        state.pendingMealStartRequest = true
+        state.sessionUploadStatus = .failure
+        state.sessionUploadErrorMessage = "offline"
+        state.receiveInviteCode("FRIEND-123")
+
+        await state.eraseAllUserData()
+
+        XCTAssertFalse(state.pendingMealStartRequest)
+        XCTAssertEqual(state.sessionUploadStatus, .idle)
+        XCTAssertNil(state.sessionUploadErrorMessage)
+        XCTAssertNil(state.pendingInviteCode)
+    }
+
     func testEraseAllUserData_resetsStreakToZero() async {
         let spy = SpyRemoteStore()
         let state = AppState(remoteStore: spy)
@@ -136,6 +173,7 @@ final class EraseAllUserDataTests: XCTestCase {
         TokenManager.save(access: "access-token", refresh: "refresh-token")
         let spy = SpyRemoteStore()
         let state = AppState(remoteStore: spy)
+        state.isLoggedIn = true
 
         XCTAssertTrue(state.isLoggedIn)
 
@@ -157,9 +195,7 @@ final class EraseAllUserDataTests: XCTestCase {
         let restoredState = AppState(remoteStore: NoopRemoteStore())
         XCTAssertFalse(restoredState.isLoggedIn, "계정 삭제 직후 재실행되어도 Keychain 토큰으로 로그인 상태가 복원되면 안 된다")
 
-        for _ in 0..<10 where spy.deleteUserDataAccessToken == nil {
-            await Task.yield()
-        }
+        await waitFor(spy.deleteUserDataAccessToken != nil)
         XCTAssertEqual(spy.deleteUserDataAccessToken, "access-token", "서버 삭제 요청은 Keychain이 아니라 삭제 시점 token snapshot으로 인증해야 한다")
         XCTAssertEqual(spy.deleteUserDataRefreshToken, "refresh-token", "삭제 요청 중 access token 만료 시에도 Keychain 없이 refresh snapshot으로 재시도해야 한다")
     }
@@ -175,7 +211,6 @@ final class EraseAllUserDataTests: XCTestCase {
         state.streak = 3
         state.freezeInventory = 2
         state.owned = ["hat-basic"]
-        state.ownedAcornPacks = ["starter": 1]
         state.persistSnapshot()
 
         state.logout()
@@ -188,7 +223,6 @@ final class EraseAllUserDataTests: XCTestCase {
         XCTAssertEqual(state.streak, 0)
         XCTAssertEqual(state.freezeInventory, 0)
         XCTAssertTrue(state.owned.isEmpty)
-        XCTAssertTrue(state.ownedAcornPacks.isEmpty)
         XCTAssertEqual(spy.deleteUserDataCallCount, 0, "로그아웃은 원격 데이터를 삭제하면 안 된다")
     }
 
@@ -226,5 +260,23 @@ final class EraseAllUserDataTests: XCTestCase {
         XCTAssertNil(TokenManager.accessToken)
         XCTAssertNil(state.displayName)
         XCTAssertFalse(state.hasCompletedOnboarding)
+    }
+
+    func testPendingInviteCodeRemainsWhenAcceptFailsAfterLogin() async {
+        let remote = SpyRemoteStore()
+        remote.acceptFriendInviteError = RemoteStoreError.offline
+        let state = AppState(remoteStore: remote)
+        state.isLoggedIn = false
+        state.receiveInviteCode("FRIEND-123")
+
+        state.completeLogin(onboardingCompleted: true, method: "kakao")
+
+        await waitFor(!remote.acceptedInviteCodes.isEmpty)
+        XCTAssertEqual(remote.acceptedInviteCodes, ["FRIEND-123"])
+        XCTAssertEqual(state.pendingInviteCode, "FRIEND-123")
+        XCTAssertEqual(
+            UserDefaults.standard.string(forKey: pendingInviteKey),
+            "FRIEND-123"
+        )
     }
 }

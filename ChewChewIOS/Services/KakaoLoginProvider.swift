@@ -1,4 +1,5 @@
 import KakaoSDKAuth
+import KakaoSDKCommon
 import KakaoSDKUser
 
 /// Kakao 로그인. 카카오톡 설치 시 앱 로그인, 아니면 계정(웹) 로그인.
@@ -9,6 +10,11 @@ final class KakaoLoginProvider: SocialLoginProvider {
         let oauthToken: OAuthToken = try await withCheckedThrowingContinuation { continuation in
             let handler: (OAuthToken?, Error?) -> Void = { token, error in
                 if let error {
+                    if let sdkError = error as? SdkError,
+                       sdkError.getClientError().reason == .Cancelled {
+                        continuation.resume(throwing: SocialLoginError.cancelled)
+                        return
+                    }
                     continuation.resume(throwing: error)
                 } else if let token {
                     continuation.resume(returning: token)

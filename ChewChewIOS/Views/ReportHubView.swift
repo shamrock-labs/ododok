@@ -1123,12 +1123,14 @@ private struct ReportCalendarDialog: View {
             }
             .padding(AppSpacing.page)
             .background(LinearGradient.appBackground.ignoresSafeArea())
-            .navigationTitle("날짜 선택")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    AppSheetTitleText(title: "날짜 선택")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("닫기") { dismiss() }
-                        .foregroundStyle(Color.textAction)
+                    AppSheetTextActionButton(title: "닫기") { dismiss() }
                 }
             }
         }

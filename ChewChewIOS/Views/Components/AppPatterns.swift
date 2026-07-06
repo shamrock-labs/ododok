@@ -109,3 +109,48 @@ struct AppEmptyState<Visual: View>: View {
         .frame(maxWidth: .infinity, alignment: .center)
     }
 }
+
+struct AppSheetTitleText: View {
+    let title: String
+
+    var body: some View {
+        Text(title)
+            .font(.appFont(.boldHeadline))
+            .foregroundStyle(Color.textDefault)
+            .lineLimit(1)
+            .minimumScaleFactor(0.82)
+    }
+}
+
+struct AppSheetHeader<Trailing: View>: View {
+    let title: String
+    @ViewBuilder let trailing: () -> Trailing
+
+    var body: some View {
+        ZStack {
+            AppSheetTitleText(title: title)
+                .frame(maxWidth: .infinity)
+
+            HStack {
+                Spacer()
+                trailing()
+            }
+        }
+        .frame(height: AppSize.dialogActionHeight)
+    }
+}
+
+struct AppSheetTextActionButton: View {
+    let title: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(title, action: action)
+            .buttonStyle(.plain)
+            .font(.appFont(.semiboldBody))
+            .foregroundStyle(Color.tintInteractive)
+            .padding(.horizontal, AppSpacing.four)
+            .frame(height: AppSize.dialogActionHeight)
+            .background(Color.controlOnSurface, in: Capsule())
+    }
+}

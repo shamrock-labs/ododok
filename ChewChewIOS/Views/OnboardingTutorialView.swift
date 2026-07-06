@@ -43,15 +43,15 @@ struct OnboardingTutorialView: View {
             Spacer()
             Button(action: onFinish) {
                 Text("건너뛰기")
-                    .font(.appFont(.semiboldLabel))
-                    .foregroundStyle(Color.textSubtle)
-                    .padding(.horizontal, AppSpacing.cardH)
-                    .padding(.vertical, AppSpacing.gapTight)
+                    .font(.appFont(.boldLabel))
+                    .foregroundStyle(Color.textMuted)
+                    .padding(.vertical, AppSpacing.oneHalf)
+                    .padding(.horizontal, AppSpacing.inner)
             }
             .accessibilityIdentifier("OnboardingSkip")
         }
-        .padding(.horizontal, AppSpacing.gap)
-        .padding(.top, AppSpacing.gapTight)
+        .padding(.trailing, AppSpacing.three)
+        .padding(.top, AppSpacing.dialogH)
     }
 
     private func cardView(_ step: OnboardingStep) -> some View {

@@ -713,13 +713,14 @@ private struct ScoreGuideView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .background(Color.bgPage.ignoresSafeArea())
-            .navigationTitle("씹기 점수 가이드")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    AppSheetTitleText(title: "씹기 점수 가이드")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("닫기") { dismiss() }
-                        .font(.appFont(.boldBody))
-                        .foregroundStyle(Color.textAction)
+                    AppSheetTextActionButton(title: "닫기") { dismiss() }
                 }
             }
         }

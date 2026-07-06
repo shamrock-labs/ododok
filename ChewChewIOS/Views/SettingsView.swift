@@ -80,13 +80,14 @@ struct SettingsView: View {
                 .padding(.top, AppSpacing.gap)
             }
             .background(Color.pageBackground.ignoresSafeArea())
-            .navigationTitle("설정")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    AppSheetTitleText(title: "설정")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("완료") { dismiss() }
-                        .foregroundStyle(Color.tintInteractive)
-                        .font(.appFont(.semiboldBody))
+                    AppSheetTextActionButton(title: "닫기") { dismiss() }
                 }
             }
         }

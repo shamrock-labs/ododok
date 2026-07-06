@@ -150,9 +150,6 @@ final class AppState {
     /// 장착 슬롯. 타입당 1개. nil = 미장착.
     var equipped: Equipped = Equipped()
 
-    /// AcornPack 보유 수량. 효과 실연동은 자정 롤오버 합류 시.
-    var ownedAcornPacks: [String: Int] = [:]
-
     struct Equipped: Codable, Equatable {
         var hat: String?
         var glasses: String?
@@ -286,6 +283,15 @@ final class AppState {
     /// 세션 적립 trigger는 `SessionResultSheet`와 동시 표시되지 않도록 ContentView
     /// overlay가 `lastCompletedSession == nil`(=sheet 닫힘)일 때만 그려진다.
     var pendingRewardGrant: RewardGrant?
+    var rewardHistory: [RewardHistoryDTO] = []
+    var rewardHistoryLoadState: RewardHistoryLoadState = .idle
+
+    enum RewardHistoryLoadState: Equatable {
+        case idle
+        case loading
+        case loaded
+        case failed
+    }
 
     /// 업로드 실패 시 사용자가 "다시 시도"를 누르면 재시도할 payload (finalize 결과 + 분석 통계).
     /// in-memory 1회 retry 한정 — 영구 retry 큐는 다음 PR.
@@ -604,17 +610,6 @@ final class AppState {
         persistSnapshot()
     }
 
-    /// AcornPack 구매. 이번 라운드는 보유 카운트만 누적.
-    @discardableResult
-    func buyAcornPack(_ pack: AcornPack) -> PurchaseResult {
-        guard points >= pack.price else { return .notEnoughPoints }
-        points -= pack.price
-        ownedAcornPacks[pack.id, default: 0] += 1
-        persistSnapshot()
-        analytics.track(.acornPackPurchased(packId: pack.id, price: pack.price))
-        return .success
-    }
-
     func isOwned(_ item: ShopItem) -> Bool { owned.contains(item.id) }
 
     func isEquipped(_ item: ShopItem) -> Bool {
@@ -686,6 +681,8 @@ final class AppState {
     func eraseAllUserData() async {
         // 로컬 인메모리 상태 리셋 (reset()과 동일 범위)
         stopEating()
+        clearTransientRuntimeState()
+        clearPendingInviteCode()
         streak = 0
         points = 0
         animKey = 0
@@ -694,7 +691,6 @@ final class AppState {
         imuWaveformSource = .idle
         owned = []
         equipped = Equipped()
-        ownedAcornPacks = [:]
         todaySessions = []
         lastCompletedSession = nil
         displayName = nil
@@ -720,6 +716,8 @@ final class AppState {
 
     func reset() {
         stopEating()
+        clearTransientRuntimeState()
+        clearPendingInviteCode()
         streak = 0
         points = 0
         animKey = 0
@@ -727,7 +725,6 @@ final class AppState {
         imuWaveformSource = .idle
         owned = []
         equipped = Equipped()
-        ownedAcornPacks = [:]
         todaySessions = []
         lastCompletedSession = nil
         displayName = nil
@@ -1053,7 +1050,7 @@ final class AppState {
 
     private static let persistenceKey = "ChewChewIOS.AppState.snapshot.v1"
 
-    /// v2 — `owned`/`equipped`/`ownedAcornPacks` 추가.
+    /// v2 — `owned`/`equipped` 추가.
     /// v3 — `freezeInventory` 추가. 옵셔널이라 옛 스냅샷은 nil → 기본값(0)으로 초기화.
     /// v4 — 미사용 가짜 카운터 `chewCount`/`goalAlreadyHit` 제거. 옛 스냅샷에 남아 있어도
     /// 디코드 시 미지 키로 무시돼 하위호환 문제 없음.
@@ -1064,7 +1061,6 @@ final class AppState {
         let savedAt: Date
         var owned: [String]?
         var equipped: Equipped?
-        var ownedAcornPacks: [String: Int]?
         var freezeInventory: Int?
     }
 
@@ -1082,7 +1078,6 @@ final class AppState {
             savedAt: now,
             owned: Array(owned),
             equipped: equipped,
-            ownedAcornPacks: ownedAcornPacks,
             freezeInventory: freezeInventory
         )
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
@@ -1103,9 +1098,6 @@ final class AppState {
         if let savedEquipped = snapshot.equipped {
             equipped = savedEquipped
         }
-        if let savedPacks = snapshot.ownedAcornPacks {
-            ownedAcornPacks = savedPacks
-        }
         // v3 옵셔널 필드 — 옛 스냅샷에선 nil이라 신규 streak 상태(0)로 시작
         if let savedFreeze = snapshot.freezeInventory {
             freezeInventory = savedFreeze
@@ -1115,18 +1107,15 @@ final class AppState {
     /// 로그아웃/계정 전환 시 iOS에 남은 계정별 화면 캐시만 제거한다.
     /// 원격 데이터 삭제는 `eraseAllUserData` 전용이며 여기서는 호출하지 않는다.
     private func clearLocalSessionCache() {
+        clearTransientRuntimeState()
         streak = 0
         points = 0
         freezeInventory = 0
         owned = []
         equipped = Equipped()
-        ownedAcornPacks = [:]
         todaySessions = []
-        lastCompletedSession = nil
-        pendingRewardGrant = nil
-        sessionUploadStatus = .idle
-        sessionUploadErrorMessage = nil
-        pendingUpload = nil
+        rewardHistory = []
+        rewardHistoryLoadState = .idle
         displayName = nil
         loginMethod = nil
         didLoadProfile = false
@@ -1137,6 +1126,23 @@ final class AppState {
         // 정본은 서버이므로 로그인 후 syncFromServer가 이 계정 값으로 다시 채운다.
         MealReminderSettings.clear()
         UserDefaults.standard.removeObject(forKey: Self.persistenceKey)
+    }
+
+    private func clearTransientRuntimeState() {
+        pendingMealStartRequest = false
+        startButtonHighlighted = false
+        showShortSessionConfirm = false
+        showAirPodsConnectionPrompt = false
+        lastCompletedSession = nil
+        pendingRewardGrant = nil
+        sessionUploadStatus = .idle
+        sessionUploadErrorMessage = nil
+        pendingUpload = nil
+    }
+
+    private func clearPendingInviteCode() {
+        pendingInviteCode = nil
+        UserDefaults.standard.removeObject(forKey: Self.pendingInviteCodeKey)
     }
 
     func clearPersistedSnapshot() {
@@ -1471,6 +1477,18 @@ final class AppState {
         await refreshFromServerHome()
     }
 
+    @MainActor
+    func fetchRewardHistory() async {
+        rewardHistoryLoadState = .loading
+        do {
+            rewardHistory = try await remoteStore.fetchRewardHistory()
+            rewardHistoryLoadState = .loaded
+        } catch {
+            handleRemoteError(error)
+            rewardHistoryLoadState = .failed
+        }
+    }
+
     /// 단일 세션 삭제 — 캘린더 DaySessionsView에서 swipe로 호출. todaySessions에서도
     /// 즉시 제거해 UI 동기화. 실패는 silent — 다음 reload에서 서버 상태와 다시 sync.
     @MainActor
@@ -1534,14 +1552,17 @@ final class AppState {
     }
 
     @MainActor
-    func acceptFriendInvite(code: String) async {
+    @discardableResult
+    func acceptFriendInvite(code: String) async -> Bool {
         do {
             let result = try await remoteStore.acceptFriendInvite(code: code)
             await refreshFriendArea()
             flashToast(result.bonusGranted ? "친구가 됐어요! 도토리 100개 받았어요" : "이미 친구예요")
+            return true
         } catch {
             handleRemoteError(error) // authExpired면 세션 만료 처리(로그인 게이트로 복귀)
             flashToast(acceptErrorMessage(error))
+            return false
         }
     }
 
@@ -1566,9 +1587,9 @@ final class AppState {
     @MainActor
     private func consumePendingInviteCodeIfNeeded() async {
         guard let code = pendingInviteCode else { return }
-        pendingInviteCode = nil
-        UserDefaults.standard.removeObject(forKey: Self.pendingInviteCodeKey)
-        await acceptFriendInvite(code: code)
+        if await acceptFriendInvite(code: code) {
+            clearPendingInviteCode()
+        }
     }
 
     /// 친구 수락 실패 토스트 문구. 서버 에러 코드(4011/4012)·오프라인·만료를 구분한다.

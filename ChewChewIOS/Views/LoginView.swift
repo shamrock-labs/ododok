@@ -158,6 +158,7 @@ struct LoginView: View {
     }
 
     private func signIn(with provider: SocialLoginProvider) async {
+        guard !isLoading else { return }
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }

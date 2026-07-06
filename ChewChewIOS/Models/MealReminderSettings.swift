@@ -30,6 +30,32 @@ struct MealReminderSettings: Equatable {
         breakfast.enabled || lunch.enabled || dinner.enabled
             || extra1.enabled || extra2.enabled
     }
+
+    mutating func disableAll() {
+        breakfast.enabled = false
+        lunch.enabled = false
+        dinner.enabled = false
+        extra1.enabled = false
+        extra2.enabled = false
+    }
+}
+
+struct MealReminderDraft: Equatable {
+    enum DismissDecision: Equatable {
+        case dismiss
+        case confirmDiscard
+    }
+
+    var settings: MealReminderSettings
+    var lastSaved: MealReminderSettings
+
+    var hasUnsavedChanges: Bool {
+        settings != lastSaved
+    }
+
+    var dismissDecision: DismissDecision {
+        hasUnsavedChanges ? .confirmDiscard : .dismiss
+    }
 }
 
 // MARK: - Codable (extra1/extra2 backward-compatible — 구버전 JSON에 키 없으면 기본값)
