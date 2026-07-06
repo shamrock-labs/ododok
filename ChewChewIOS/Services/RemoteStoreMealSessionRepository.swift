@@ -13,7 +13,7 @@ struct RemoteStoreMealSessionRepository: MealSessionRepository {
             since: since,
             until: until
         )
-        return sessions.compactMap(MealSessionRecord.init)
+        return sessions.compactMap(MealSessionRecordMapper.map)
     }
 
     func deleteSession(id: UUID) async throws {

@@ -211,7 +211,7 @@ final class RecordsStoreTests: XCTestCase {
             estimatedTotalChews: 300,
             modelVersion: "test"
         )
-        guard let record = MealSessionRecord(dto) else {
+        guard let record = MealSessionRecordMapper.map(dto) else {
             XCTFail("Test record must be reportable")
             return MealSessionRecord(
                 id: dto.id,

@@ -6,7 +6,7 @@ final class MealSessionRecordMapperTests: XCTestCase {
         let startedAt = Date(timeIntervalSince1970: 1_800)
         let dto = makeDTO(startedAt: startedAt, durationSec: 600)
 
-        let record = MealSessionRecord(dto)
+        let record = MealSessionRecordMapper.map(dto)
 
         XCTAssertEqual(record?.id, dto.id)
         XCTAssertEqual(record?.startedAt, startedAt)
@@ -22,19 +22,19 @@ final class MealSessionRecordMapperTests: XCTestCase {
             estimatedTotalChews: nil
         )
 
-        XCTAssertNil(MealSessionRecord(dto))
+        XCTAssertNil(MealSessionRecordMapper.map(dto))
     }
 
     func testShortDurationDTOReturnsNil() {
         let dto = makeDTO(durationSec: 59.9)
 
-        XCTAssertNil(MealSessionRecord(dto))
+        XCTAssertNil(MealSessionRecordMapper.map(dto))
     }
 
     func testSixtySecondBoundaryCreatesRecord() {
         let dto = makeDTO(durationSec: 60)
 
-        XCTAssertNotNil(MealSessionRecord(dto))
+        XCTAssertNotNil(MealSessionRecordMapper.map(dto))
     }
 
     private func makeDTO(

@@ -8,21 +8,4 @@ struct MealSessionRecord: Equatable, Identifiable {
     let startedAt: Date
     let durationSec: Double
     let reportCard: ReportCardModel
-
-    init(id: UUID, startedAt: Date, durationSec: Double, reportCard: ReportCardModel) {
-        self.id = id
-        self.startedAt = startedAt
-        self.durationSec = durationSec
-        self.reportCard = reportCard
-    }
-
-    init?(_ dto: ChewingSessionDTO) {
-        guard let reportCard = ReportCardModel.from(dto) else { return nil }
-        self.init(
-            id: dto.id,
-            startedAt: dto.startedAt,
-            durationSec: dto.durationSec,
-            reportCard: reportCard
-        )
-    }
 }
