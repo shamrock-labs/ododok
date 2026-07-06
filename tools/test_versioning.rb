@@ -21,4 +21,10 @@ class VersioningTest < Minitest::Test
   def test_reads_marketing_version_from_xcconfig
     assert_equal "1.0.1", OdodokVersioning.read_marketing_version("Config/Version.xcconfig")
   end
+
+  def test_reads_marketing_version_when_fastlane_changes_directory
+    Dir.chdir("fastlane") do
+      assert_equal "1.0.1", OdodokVersioning.read_marketing_version("Config/Version.xcconfig")
+    end
+  end
 end

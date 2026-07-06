@@ -4,10 +4,20 @@ module OdodokVersioning
   module_function
 
   def read_marketing_version(path)
-    line = File.readlines(path).find { |candidate| candidate.match?(/^\s*MARKETING_VERSION\s*=/) }
-    raise "MARKETING_VERSION not found in #{path}" unless line
+    resolved_path = resolve_path(path)
+    line = File.readlines(resolved_path).find { |candidate| candidate.match?(/^\s*MARKETING_VERSION\s*=/) }
+    raise "MARKETING_VERSION not found in #{resolved_path}" unless line
 
     line.split("=", 2).last.strip
+  end
+
+  def resolve_path(path)
+    return path if File.exist?(path)
+
+    repo_relative_path = File.expand_path("../#{path}", __dir__)
+    return repo_relative_path if File.exist?(repo_relative_path)
+
+    path
   end
 
   def next_marketing_version(repo_version, live_version)
