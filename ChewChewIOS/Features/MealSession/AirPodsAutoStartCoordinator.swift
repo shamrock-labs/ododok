@@ -11,11 +11,11 @@ final class AirPodsAutoStartCoordinator {
         }
     }
 
-    private let monitor: AirPodsConnectionMonitor
+    private let monitor: AirPodsConnectionMonitoring
     private let countdown: StartCountdownController
 
     init(
-        monitor: AirPodsConnectionMonitor = AirPodsConnectionMonitor(),
+        monitor: AirPodsConnectionMonitoring = AirPodsConnectionMonitor(),
         countdown: StartCountdownController = StartCountdownController()
     ) {
         self.monitor = monitor

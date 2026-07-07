@@ -127,7 +127,7 @@ final class MealSessionRuntimeStore {
     func stopEating() {
         guard isEating else { return }
         isEating = false
-        let sessionDurationSec = eatingStartedAt.map { Int(dateProvider().timeIntervalSince($0)) } ?? 0
+        let sessionDurationSec = currentSessionDurationSec()
         eatingStartedAt = nil
         let counter = stopEatingRuntime()
         onPersistSnapshot()
@@ -151,7 +151,7 @@ final class MealSessionRuntimeStore {
     func discardCurrentSession() {
         guard isEating else { return }
         isEating = false
-        let sessionDurationSec = eatingStartedAt.map { Int(dateProvider().timeIntervalSince($0)) } ?? 0
+        let sessionDurationSec = currentSessionDurationSec()
         eatingStartedAt = nil
         _ = stopEatingRuntime()
         onPersistSnapshot()
@@ -189,7 +189,7 @@ final class MealSessionRuntimeStore {
     func stopMeasurementFromNotification() {
         MealNotificationService.cancelInterruptionPrompt()
         guard isEating else { return }
-        if MealSessionRuntimeRules.shouldConfirmShortSessionStop(startedAt: eatingStartedAt, now: dateProvider()) {
+        if shouldConfirmShortSessionStop {
             showShortSessionConfirm = true
             return
         }
@@ -358,6 +358,14 @@ final class MealSessionRuntimeStore {
         return Float(max(0.0, min(1.0, volume)))
     }
 
+    private func currentSessionDurationSec() -> Int {
+        eatingStartedAt.map { Int(dateProvider().timeIntervalSince($0)) } ?? 0
+    }
+
+    private var shouldConfirmShortSessionStop: Bool {
+        MealSessionRuntimeRules.shouldConfirmShortSessionStop(startedAt: eatingStartedAt, now: dateProvider())
+    }
+
     private func prepareEatingSession(startedAt: Date) {
         imuSampleCount = 0
         lastIMUSampleAt = nil
@@ -383,7 +391,7 @@ final class MealSessionRuntimeStore {
     private func configureMealAirPodsConnectionHandling() {
         mealAirPodsConnectionMonitor.start { [weak self] connected in
             guard let self, self.isEating, !connected else { return }
-            if MealSessionRuntimeRules.shouldConfirmShortSessionStop(startedAt: self.eatingStartedAt, now: self.dateProvider()) {
+            if self.shouldConfirmShortSessionStop {
                 self.showShortSessionConfirm = true
                 return
             }
@@ -457,7 +465,9 @@ final class MealSessionRuntimeStore {
     private func startChewAnimationLoop() {
         stopChewAnimationLoop()
         chewPulseTimer = Timer.scheduledTimer(withTimeInterval: 0.85, repeats: true) { [weak self] _ in
-            self?.onChewPulse()
+            Task { @MainActor [weak self] in
+                self?.onChewPulse()
+            }
         }
     }
 
@@ -551,14 +561,19 @@ final class MealSessionRuntimeStore {
         }
         imuWaveformPhase = 0
         demoIMUWaveformTimer = Timer.scheduledTimer(withTimeInterval: 0.07, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            self.imuWaveformPhase += 0.38
-
-            let bitePulse = pow(max(0, sin(self.imuWaveformPhase)), 2.8)
-            let microMotion = sin(self.imuWaveformPhase * 3.1) * 0.08
-            let energy = 0.12 + bitePulse * 0.72 + microMotion
-            self.appendIMUWaveformSample(energy)
+            Task { @MainActor [weak self] in
+                self?.appendNextDemoIMUWaveformSample()
+            }
         }
+    }
+
+    private func appendNextDemoIMUWaveformSample() {
+        imuWaveformPhase += 0.38
+
+        let bitePulse = pow(max(0, sin(imuWaveformPhase)), 2.8)
+        let microMotion = sin(imuWaveformPhase * 3.1) * 0.08
+        let energy = 0.12 + bitePulse * 0.72 + microMotion
+        appendIMUWaveformSample(energy)
     }
 
     private func stopDemoIMUWaveformLoop() {

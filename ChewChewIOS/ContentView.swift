@@ -151,33 +151,43 @@ struct ContentView: View {
             }
         }
         .overlay(alignment: .center) {
-            if state.showAirPodsConnectionPrompt {
-                ZStack {
-                    Color.black.opacity(0.28).ignoresSafeArea()
-                    AirPodsPromptDialogView {
-                        state.dismissAirPodsConnectionPrompt()
-                    }
-                    .padding(.horizontal, AppSpacing.overlayH)
-                }
-                .transition(.opacity.combined(with: .scale(scale: 0.92)))
-                .zIndex(10)
-            }
+            airPodsPromptOverlay
         }
         .overlay(alignment: .center) {
-            if let countdownValue = state.startCountdownValue {
-                ZStack {
-                    Color.black.opacity(0.28).ignoresSafeArea()
-                    StartCountdownView(value: countdownValue)
-                }
-                .transition(.opacity)
-                .zIndex(11)
-            }
+            startCountdownOverlay
         }
         .animation(
             .spring(response: AppMotion.springFastResponse, dampingFraction: AppMotion.springDampingFraction),
             value: state.showAirPodsConnectionPrompt
         )
         .animation(.easeInOut(duration: AppMotion.durationStateChange), value: state.startCountdownValue)
+    }
+
+    @ViewBuilder
+    private var airPodsPromptOverlay: some View {
+        if state.showAirPodsConnectionPrompt {
+            ZStack {
+                Color.black.opacity(0.28).ignoresSafeArea()
+                AirPodsPromptDialogView {
+                    state.dismissAirPodsConnectionPrompt()
+                }
+                .padding(.horizontal, AppSpacing.overlayH)
+            }
+            .transition(.opacity.combined(with: .scale(scale: 0.92)))
+            .zIndex(10)
+        }
+    }
+
+    @ViewBuilder
+    private var startCountdownOverlay: some View {
+        if let countdownValue = state.startCountdownValue {
+            ZStack {
+                Color.black.opacity(0.28).ignoresSafeArea()
+                StartCountdownView(value: countdownValue)
+            }
+            .transition(.opacity)
+            .zIndex(11)
+        }
     }
 
     private var shortSessionBinding: Binding<Bool> {
