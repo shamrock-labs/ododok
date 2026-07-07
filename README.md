@@ -39,7 +39,13 @@ ChewChewIOS/
 │   ├── AppState.swift         # @Observable 앱 상태 facade
 │   ├── ShopItem.swift         # 의상/도토리팩 정적 데이터
 │   └── MoodStatus.swift       # 4표정 분기 + 피드백 라인
-├── Features/                  # 도메인별 Store·View·포트·어댑터 (Auth/Records/Friends/Reminder/MealSession)
+├── Features/                  # 도메인별 Store·View·포트·어댑터
+│   ├── Auth/                  # 로그인 View, OAuth provider, AuthStore, AuthRepository
+│   ├── Home/                  # HomeView, HomeStore, HomeRepository
+│   ├── Records/               # 기록 캘린더 View, RecordsStore, 기록 도메인 모델·mapper
+│   ├── Reminder/              # 끼니 알림 View, ReminderStore, 알림 권한·설정 adapter
+│   ├── Friends/               # 친구 View, FriendsStore, 초대 공유·repository
+│   └── MealSession/           # 측정 런타임, 결과 업로드, IMU/오디오/Live Activity adapter
 ├── Infra/                     # 여러 Feature가 공유하는 인프라 (RemoteStore·TokenManager·DeviceIdentity·config)
 ├── SignalProcessing/          # IMU 신호처리와 씹기 감지 알고리즘
 ├── Analytics/                 # Amplitude/Firebase/Sentry 계측 포트와 어댑터
@@ -47,8 +53,7 @@ ChewChewIOS/
 │   ├── Colors.swift           # acorn/sage/butter/blush/ink 토큰
 │   ├── Shadows.swift          # 뉴모피즘 그림자 modifier
 │   └── Constants.swift        # dailyGoal, pointsPerChew
-├── Views/
-│   ├── HomeView.swift
+├── Views/                     # 아직 Feature로 이동하지 않은 레거시 화면·공유 UI
 │   ├── TrackingView.swift
 │   ├── ShopView.swift
 │   └── Components/
@@ -64,8 +69,9 @@ ChewChewIOS/
 
 새 코드는 먼저 어느 레이어에 속하는지 정한 뒤 배치한다. 기존 파일에 붙여 넣는 것을 기본값으로 삼지 않는다.
 
-- `Views/`: SwiftUI 화면과 작은 UI 컴포넌트만 둔다. 네트워크 호출, 파일 저장, 오디오 제어, 알고리즘 판단을 직접 하지 않는다.
-- `Models/`: 화면 상태, DTO가 아닌 앱 내부 모델, 값 타입을 둔다. 외부 시스템 호출은 넣지 않는다.
+- `Features/<Feature>/`: 기능 단위 화면, Store, 포트, Feature 전용 어댑터를 함께 둔다. 새 기능의 기본 위치다.
+- `Views/`: 아직 Feature로 co-locate하지 않은 레거시 화면과 작은 공유 UI 컴포넌트만 둔다. 네트워크 호출, 파일 저장, 오디오 제어, 알고리즘 판단을 직접 하지 않는다.
+- `Models/`: `AppState` facade, DTO가 아닌 앱 내부 값 타입, 전환 중 남은 공용 모델을 둔다. 외부 시스템 호출은 넣지 않는다.
 - `Infra/`: 여러 Feature가 공유하는 외부 효과 어댑터·포트(RemoteStore, SpringRemoteStore, TokenManager, DeviceIdentity, config, NotificationDelegate). Feature 전용 어댑터·Provider는 해당 `Features/<Feature>/`에 둔다.
 - `SignalProcessing/`: IMU 신호처리처럼 입력 데이터로 판단 결과를 만드는 알고리즘을 둔다. UI 상태나 서버 저장을 직접 알지 않는다.
 - `Analytics/`: 이벤트 이름, 속성 스키마, provider fan-out을 둔다. 화면과 `AppState`는 이벤트 호출만 한다.
@@ -73,11 +79,12 @@ ChewChewIOS/
 
 AI나 사람이 새 기능을 추가할 때는 아래 순서를 따른다.
 
-1. 화면만 바뀌면 `Views/` 안에서 끝낸다.
-2. 상태가 필요하면 `AppState`에 최소 상태만 추가한다.
-3. 외부 효과가 있으면 공유는 `Infra/`, Feature 전용은 해당 `Features/<Feature>/`에 타입을 만들고 `AppState`는 호출만 한다.
-4. 판단 로직이 테스트 가능하면 순수 함수나 `SignalProcessing/` 타입으로 분리한다.
-5. 같은 코드가 두 화면 이상에서 필요해질 때만 공통 컴포넌트나 helper로 올린다.
+1. 기능 단위 변경이면 `Features/<Feature>/`에서 시작한다. 새 화면도 가능하면 해당 Feature에 둔다.
+2. 화면만 바뀌고 기존 Feature가 없으면 `Views/` 안에서 끝낸다.
+3. 상태가 필요하면 Feature Store를 우선 만들고, `AppState`에는 화면 전환·전역 이벤트에 필요한 얇은 facade만 둔다.
+4. 외부 효과가 있으면 공유는 `Infra/`, Feature 전용은 해당 `Features/<Feature>/`에 타입을 만들고 Store가 주입받는다.
+5. 판단 로직이 테스트 가능하면 순수 함수나 `SignalProcessing/` 타입으로 분리한다.
+6. 같은 코드가 두 화면 이상에서 필요해질 때만 공통 컴포넌트나 helper로 올린다.
 
 ### 목표 배치: 도메인(Feature)별
 
