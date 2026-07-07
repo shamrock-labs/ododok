@@ -1,6 +1,4 @@
 import SwiftUI
-import CoreMotion
-import AVFoundation
 
 struct HomeView: View {
     @Environment(AppState.self) private var state
@@ -73,51 +71,16 @@ struct HomeView: View {
             return
         }
 
-        // 시뮬레이터에선 가드 없이 바로 시작 (데모 흐름 유지)
-        #if !targetEnvironment(simulator)
-        let service = CMHeadphoneMotionManager()
-        let status = CMHeadphoneMotionManager.authorizationStatus()
-        let available = service.isDeviceMotionAvailable
-
-        // 모션 권한·기기 호환·실제 오디오 라우트(에어팟/헤드폰 등) 셋 다 확인.
-        // isDeviceMotionAvailable이 기기 호환만 보고 연결을 확신하지 못하는 케이스를
-        // 라우트 체크로 보완 — 시작 자체를 막아 silent 빈 세션을 차단한다.
-        if status == .denied || status == .restricted || !available || !hasHeadphoneAudioRoute {
-            mealSession.showAirPodsConnectionPrompt = true
-            return
-        }
-
-        // REQ-01: notDetermined이면 즉시 시작하지 않고 권한 요청 → 결과에 따라 분기.
-        if !MealSessionRuntimeRules.shouldStartImmediately(status: status, available: available) {
-            mealSession.requestMotionPermission {
-                // 권한 허용됨 — 햅틱 + 측정 시작
-                hapticTrigger.toggle()
-                mealSession.startEating()
-            } onDenied: {
-                mealSession.showAirPodsConnectionPrompt = true
-            }
-            return
-        }
-        #endif
-
-        // 차단 안 됐을 때만 햅틱 + 시작
+        #if targetEnvironment(simulator)
         hapticTrigger.toggle()
         mealSession.toggleEating()
-    }
-
-    /// 현재 오디오 출력 라우트에 AirPods/Bluetooth/유선 헤드폰이 포함되어 있는지.
-    /// CMHeadphoneMotionManager.isDeviceMotionAvailable이 미연결 상태에서도 true를
-    /// 반환하는 케이스를 보완한다.
-    private var hasHeadphoneAudioRoute: Bool {
-        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
-        return outputs.contains { output in
-            switch output.portType {
-            case .bluetoothA2DP, .bluetoothLE, .bluetoothHFP, .headphones, .headsetMic:
-                return true
-            default:
-                return false
-            }
+        #else
+        mealSession.beginMealStartAfterAirPodsReadiness {
+            hapticTrigger.toggle()
+        } onFinished: {
+            mealSession.toggleEating()
         }
+        #endif
     }
 
     // MARK: Top bar

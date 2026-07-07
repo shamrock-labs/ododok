@@ -120,12 +120,6 @@ struct ContentView: View {
             secondary: .init("취소", role: .cancel) { mealResults.dismissSessionUploadStatus() }
         )
         .appDialog(
-            isPresented: airPodsPromptBinding,
-            title: "AirPods를 연결해 주세요",
-            message: "AirPods Pro · 3·4세대 중 하나를 연결하고 착용해 주세요.",
-            primary: .init("확인") {}
-        )
-        .appDialog(
             isPresented: shortSessionBinding,
             title: "측정이 너무 짧아요",
             message: "1분 미만은 분석할 수 없어요. 더 씹을까요?",
@@ -159,19 +153,50 @@ struct ContentView: View {
                 .animation(.spring(response: 0.35, dampingFraction: 0.85), value: state.home.pendingRewardGrant)
             }
         }
+        .overlay(alignment: .center) {
+            airPodsPromptOverlay
+        }
+        .overlay(alignment: .center) {
+            startCountdownOverlay
+        }
+        .animation(
+            .spring(response: AppMotion.springFastResponse, dampingFraction: AppMotion.springDampingFraction),
+            value: mealSession.showAirPodsConnectionPrompt
+        )
+        .animation(.easeInOut(duration: AppMotion.durationStateChange), value: mealSession.startCountdownValue)
+    }
+
+    @ViewBuilder
+    private var airPodsPromptOverlay: some View {
+        if mealSession.showAirPodsConnectionPrompt {
+            ZStack {
+                Color.black.opacity(0.28).ignoresSafeArea()
+                AirPodsPromptDialogView {
+                    mealSession.dismissAirPodsConnectionPrompt()
+                }
+                .padding(.horizontal, AppSpacing.overlayH)
+            }
+            .transition(.opacity.combined(with: .scale(scale: 0.92)))
+            .zIndex(10)
+        }
+    }
+
+    @ViewBuilder
+    private var startCountdownOverlay: some View {
+        if let countdownValue = mealSession.startCountdownValue {
+            ZStack {
+                Color.black.opacity(0.28).ignoresSafeArea()
+                StartCountdownView(value: countdownValue)
+            }
+            .transition(.opacity)
+            .zIndex(11)
+        }
     }
 
     private var shortSessionBinding: Binding<Bool> {
         Binding(
             get: { mealSession.showShortSessionConfirm },
             set: { newValue in if !newValue { mealSession.dismissShortSessionConfirmation() } }
-        )
-    }
-
-    private var airPodsPromptBinding: Binding<Bool> {
-        Binding(
-            get: { mealSession.showAirPodsConnectionPrompt },
-            set: { newValue in if !newValue { mealSession.showAirPodsConnectionPrompt = false } }
         )
     }
 

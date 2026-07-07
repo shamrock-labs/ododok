@@ -51,6 +51,7 @@ final class MealSessionRuntimeStore {
         }
     }
     var showAirPodsConnectionPrompt: Bool = false
+    var startCountdownValue: Int?
 
     private let analytics: AnalyticsService
     private let onChewPulse: @MainActor () -> Void
@@ -68,6 +69,20 @@ final class MealSessionRuntimeStore {
     @ObservationIgnored private lazy var backgroundKeepAlive = runtimeServices.makeAudioFeedbackService()
     @ObservationIgnored private var alertVolume: Float = 0.5
     @ObservationIgnored private lazy var mealActivity = runtimeServices.makeActivityController()
+    @ObservationIgnored private lazy var mealAirPodsConnectionMonitor = runtimeServices.makeAirPodsConnectionMonitor()
+    @ObservationIgnored private lazy var airPodsAutoStartCoordinator: AirPodsAutoStartCoordinator = {
+        let coordinator = AirPodsAutoStartCoordinator(
+            monitor: runtimeServices.makeAirPodsConnectionMonitor(),
+            countdown: runtimeServices.makeStartCountdownController()
+        )
+        coordinator.onPromptVisibilityChange = { [weak self] isVisible in
+            self?.showAirPodsConnectionPrompt = isVisible
+        }
+        coordinator.onCountdownValueChange = { [weak self] value in
+            self?.startCountdownValue = value
+        }
+        return coordinator
+    }()
     @ObservationIgnored private var chewCounter: ChewCounter?
     @ObservationIgnored private var imuSessionRecorder: IMUSessionRecorder?
 
@@ -95,12 +110,13 @@ final class MealSessionRuntimeStore {
 
     func updateAlertVolume(_ volume: Double) {
         alertVolume = Self.normalizedAlertVolume(volume)
+        backgroundKeepAlive.volume = alertVolume
     }
 
     func startEating() {
         guard !isEating else { return }
         analytics.track(.mealSessionStarted())
-        let now = Date()
+        let now = runtimeServices.now()
         phase = .measuring(MealSessionMeasurementContext(startedAt: now))
 
         prepareEatingSession(startedAt: now)
@@ -109,6 +125,7 @@ final class MealSessionRuntimeStore {
         startChewAnimationLoop()
 
         configureCallInterruptionHandling()
+        configureMealAirPodsConnectionHandling()
         Task { [notificationScheduler = runtimeServices.notificationScheduler] in
             await notificationScheduler.requestAuthorizationIfNeeded()
         }
@@ -123,7 +140,7 @@ final class MealSessionRuntimeStore {
     func stopEating() {
         guard isEating else { return }
         let startedAt = eatingStartedAt
-        let endedAt = Date()
+        let endedAt = runtimeServices.now()
         let sessionDurationSec = startedAt.map { Int(endedAt.timeIntervalSince($0)) } ?? 0
         if let startedAt {
             phase = .analyzing(MealSessionAnalysisContext(startedAt: startedAt, endedAt: endedAt))
@@ -155,14 +172,15 @@ final class MealSessionRuntimeStore {
     func discardCurrentSession() {
         guard isEating else { return }
         let startedAt = eatingStartedAt
-        let sessionDurationSec = startedAt.map { Int(Date().timeIntervalSince($0)) } ?? 0
+        let endedAt = runtimeServices.now()
+        let sessionDurationSec = startedAt.map { Int(endedAt.timeIntervalSince($0)) } ?? 0
         phase = .idle
         _ = stopEatingRuntime()
         onPersistSnapshot()
         chewCounter = nil
         if let recorder = imuSessionRecorder {
             imuSessionRecorder = nil
-            _ = recorder.finalize(endedAt: Date())
+            _ = recorder.finalize(endedAt: endedAt)
         }
         analytics.track(.mealSessionAborted(reason: "user_discard", durationSec: sessionDurationSec))
     }
@@ -181,7 +199,7 @@ final class MealSessionRuntimeStore {
             return
         }
         if let began = interruptionBeganAt {
-            imuSessionRecorder?.recordInterruptionGap(began: began, ended: Date())
+            imuSessionRecorder?.recordInterruptionGap(began: began, ended: runtimeServices.now())
         }
         interruptionWasCall = false
         interruptionBeganAt = nil
@@ -196,7 +214,7 @@ final class MealSessionRuntimeStore {
     func stopMeasurementFromNotification() {
         runtimeServices.notificationScheduler.cancelInterruptionPrompt()
         guard isEating else { return }
-        if MealSessionRuntimeRules.shouldConfirmShortSessionStop(startedAt: eatingStartedAt) {
+        if shouldConfirmShortSessionStop {
             showShortSessionConfirm = true
             return
         }
@@ -244,6 +262,26 @@ final class MealSessionRuntimeStore {
         }
     }
 
+    func beginMealStartAfterAirPodsReadiness(
+        onCountdownStarted: @escaping () -> Void,
+        onFinished: @escaping () -> Void
+    ) {
+        let decision = AirPodsAutoStartGate.decision(
+            status: headphoneMotionService.authorizationStatus,
+            available: headphoneMotionService.isDeviceMotionAvailable,
+            hasHeadphoneAudioRoute: airPodsAutoStartCoordinator.isHeadphoneConnected
+        )
+        continueMealStartAfterAirPodsDecision(
+            decision,
+            onCountdownStarted: onCountdownStarted,
+            onFinished: onFinished
+        )
+    }
+
+    func dismissAirPodsConnectionPrompt() {
+        airPodsAutoStartCoordinator.dismissPromptAndStop()
+    }
+
     func requestMotionPermission(onGranted: @escaping () -> Void, onDenied: @escaping () -> Void) {
         headphoneMotionService.start { [weak self] _ in
             self?.headphoneMotionService.stop()
@@ -279,6 +317,8 @@ final class MealSessionRuntimeStore {
         startButtonHighlighted = false
         dismissShortSessionConfirmation()
         showAirPodsConnectionPrompt = false
+        startCountdownValue = nil
+        airPodsAutoStartCoordinator.dismissPromptAndStop()
     }
 
     func resetRuntimeState() {
@@ -308,6 +348,10 @@ private extension MealSessionRuntimeStore {
         return Float(max(0.0, min(1.0, volume)))
     }
 
+    var shouldConfirmShortSessionStop: Bool {
+        MealSessionRuntimeRules.shouldConfirmShortSessionStop(startedAt: eatingStartedAt, now: runtimeServices.now())
+    }
+
     func prepareEatingSession(startedAt: Date) {
         imuSampleCount = 0
         lastIMUSampleAt = nil
@@ -330,11 +374,62 @@ private extension MealSessionRuntimeStore {
         callMonitor.start()
     }
 
+    func configureMealAirPodsConnectionHandling() {
+        mealAirPodsConnectionMonitor.start { [weak self] connected in
+            guard let self, self.isEating, !connected else { return }
+            if self.shouldConfirmShortSessionStop {
+                self.showShortSessionConfirm = true
+                return
+            }
+            self.stopEating()
+        }
+    }
+
+    func continueMealStartAfterAirPodsDecision(
+        _ decision: AirPodsAutoStartDecision,
+        onCountdownStarted: @escaping () -> Void,
+        onFinished: @escaping () -> Void
+    ) {
+        switch decision {
+        case .block:
+            showAirPodsConnectionPrompt = true
+        case .requestPermission:
+            requestMotionPermission {
+                if self.airPodsAutoStartCoordinator.isHeadphoneConnected {
+                    self.beginMealStartCountdown(
+                        onCountdownStarted: onCountdownStarted,
+                        onFinished: onFinished
+                    )
+                } else {
+                    self.waitForAirPodsConnectionThenStart(onFinished: onFinished)
+                }
+            } onDenied: {
+                self.showAirPodsConnectionPrompt = true
+            }
+        case .waitForAirPodsConnection:
+            waitForAirPodsConnectionThenStart(onFinished: onFinished)
+        case .startCountdown:
+            beginMealStartCountdown(
+                onCountdownStarted: onCountdownStarted,
+                onFinished: onFinished
+            )
+        }
+    }
+
+    func waitForAirPodsConnectionThenStart(onFinished: @escaping () -> Void) {
+        airPodsAutoStartCoordinator.waitForConnectionThenStart(onFinished: onFinished)
+    }
+
+    func beginMealStartCountdown(onCountdownStarted: @escaping () -> Void, onFinished: @escaping () -> Void) {
+        onCountdownStarted()
+        airPodsAutoStartCoordinator.startCountdownWithDisconnectMonitoring(onFinished: onFinished)
+    }
+
     func pauseMeasurementForCall() async {
         guard isEating else { return }
         await withMealBackgroundTask(named: "MealCallPause") {
             interruptionWasCall = true
-            let pausedAt = Date()
+            let pausedAt = runtimeServices.now()
             if interruptionBeganAt == nil { interruptionBeganAt = pausedAt }
             if let startedAt = eatingStartedAt {
                 phase = .paused(MealSessionPauseContext(startedAt: startedAt, pausedAt: pausedAt, reason: .call))
@@ -387,6 +482,7 @@ private extension MealSessionRuntimeStore {
         callMonitor.onCallStarted = nil
         callMonitor.onCallEnded = nil
         callMonitor.stop()
+        mealAirPodsConnectionMonitor.stop()
         interruptionWasCall = false
         interruptionBeganAt = nil
         runtimeServices.notificationScheduler.cancelInterruptionPrompt()
@@ -399,7 +495,9 @@ private extension MealSessionRuntimeStore {
     func startChewAnimationLoop() {
         stopChewAnimationLoop()
         chewPulseTimer = Timer.scheduledTimer(withTimeInterval: 0.85, repeats: true) { [weak self] _ in
-            self?.onChewPulse()
+            Task { @MainActor [weak self] in
+                self?.onChewPulse()
+            }
         }
     }
 
@@ -491,14 +589,19 @@ private extension MealSessionRuntimeStore {
         }
         imuWaveformPhase = 0
         demoIMUWaveformTimer = Timer.scheduledTimer(withTimeInterval: 0.07, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            self.imuWaveformPhase += 0.38
-
-            let bitePulse = pow(max(0, sin(self.imuWaveformPhase)), 2.8)
-            let microMotion = sin(self.imuWaveformPhase * 3.1) * 0.08
-            let energy = 0.12 + bitePulse * 0.72 + microMotion
-            self.appendIMUWaveformSample(energy)
+            Task { @MainActor [weak self] in
+                self?.appendNextDemoIMUWaveformSample()
+            }
         }
+    }
+
+    func appendNextDemoIMUWaveformSample() {
+        imuWaveformPhase += 0.38
+
+        let bitePulse = pow(max(0, sin(imuWaveformPhase)), 2.8)
+        let microMotion = sin(imuWaveformPhase * 3.1) * 0.08
+        let energy = 0.12 + bitePulse * 0.72 + microMotion
+        appendIMUWaveformSample(energy)
     }
 
     func stopDemoIMUWaveformLoop() {

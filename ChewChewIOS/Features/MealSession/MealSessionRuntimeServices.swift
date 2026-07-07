@@ -52,14 +52,20 @@ struct MealSessionRuntimeServices {
     let makeAudioFeedbackService: () -> any MealAudioFeedbackServicing
     let makeCallInterruptionMonitor: () -> any MealCallInterruptionMonitoring
     let makeActivityController: () -> any MealActivityControlling
+    let makeAirPodsConnectionMonitor: () -> any AirPodsConnectionMonitoring
+    let makeStartCountdownController: () -> StartCountdownController
     let notificationScheduler: any MealInterruptionNotificationScheduling
+    let now: () -> Date
 
     static let live = MealSessionRuntimeServices(
         makeMotionService: { HeadphoneMotionService() },
         makeAudioFeedbackService: { BackgroundAudioKeepAlive() },
         makeCallInterruptionMonitor: { CallInterruptionMonitor() },
         makeActivityController: { MealActivityController() },
-        notificationScheduler: LiveInterruptionNotifier()
+        makeAirPodsConnectionMonitor: { AirPodsConnectionMonitor() },
+        makeStartCountdownController: { StartCountdownController() },
+        notificationScheduler: LiveInterruptionNotifier(),
+        now: Date.init
     )
 }
 

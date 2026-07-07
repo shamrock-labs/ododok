@@ -128,7 +128,9 @@ private final class FakeMealSessionRuntimeServices {
     let audio = FakeAudioFeedbackService()
     let callMonitor = FakeCallInterruptionMonitor()
     let activity = FakeMealActivityController()
+    let airPodsMonitor = FakeAirPodsConnectionMonitor()
     let notification = FakeInterruptionNotifier()
+    var currentDate = Date()
 
     var services: MealSessionRuntimeServices {
         MealSessionRuntimeServices(
@@ -136,7 +138,10 @@ private final class FakeMealSessionRuntimeServices {
             makeAudioFeedbackService: { self.audio },
             makeCallInterruptionMonitor: { self.callMonitor },
             makeActivityController: { self.activity },
-            notificationScheduler: notification
+            makeAirPodsConnectionMonitor: { self.airPodsMonitor },
+            makeStartCountdownController: { StartCountdownController() },
+            notificationScheduler: notification,
+            now: { self.currentDate }
         )
     }
 }
@@ -188,6 +193,24 @@ private final class FakeCallInterruptionMonitor: MealCallInterruptionMonitoring 
 
     func stop() {
         stopCallCount += 1
+    }
+}
+
+private final class FakeAirPodsConnectionMonitor: AirPodsConnectionMonitoring {
+    var isConnected = true
+    private var onRouteConnectionChanged: ((Bool) -> Void)?
+
+    func start(onRouteConnectionChanged: @escaping (Bool) -> Void) {
+        self.onRouteConnectionChanged = onRouteConnectionChanged
+    }
+
+    func stop() {
+        onRouteConnectionChanged = nil
+    }
+
+    func emitConnectionChanged(_ connected: Bool) {
+        isConnected = connected
+        onRouteConnectionChanged?(connected)
     }
 }
 
