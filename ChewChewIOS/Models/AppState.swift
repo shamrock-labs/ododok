@@ -1,10 +1,6 @@
 import Foundation
 import Observation
 import CoreMotion
-import UserNotifications
-#if canImport(UIKit)
-import UIKit
-#endif
 
 enum IMUWaveformSource: Equatable {
     case idle
@@ -45,37 +41,21 @@ enum IMUWaveformSource: Equatable {
     }
 }
 
-/// 앱의 글로벌 상태 + 식사 세션 관리.
-///
-/// 실 씹기 검출은 `ChewCounter`(DSP)가 IMU sample을 받아 피크를 세고,
-/// 세션 종료 시 `chewing_session` 행의 분석 5필드로 저장 — Tracking 탭의 "오늘의 식사 기록"
-/// 에서 사후 확인. 식사 중 다람이의 씹기 모션은 `animKey`를 일정 주기로 올려 구동하며,
-/// 실제 씹기 검출과는 무관한 화면 연출이다.
+/// 앱 전역 상태 facade. 기능별 Store가 화면 상태와 외부 효과의 실제 소유권을 나눠 갖는다.
 @Observable
 final class AppState {
-    private static let maxIMUWaveformSamples = 54
-    private static let idleIMUWaveformSamples: [Double] = (0..<maxIMUWaveformSamples).map { i in
-        0.05 + sin(Double(i) * 0.42) * 0.015
-    }
-
-    // MARK: - Persisted-ish state (현재는 인메모리)
-    //
-    // 신규 디바이스 첫 실행은 모두 0/빈 상태에서 시작. 시드값을 더미로 박아 두면
-    // 새 사용자에게 "이미 누군가 사용한 듯한" 느낌을 주고, `dailyGoal` 도달 보너스가
-    // 첫 식사에서 즉시 트리거되는 부작용도 있어 제거.
+    // MARK: - Local display cache
 
     var streak: Int = 0
     var points: Int = 0
-    /// 다람이 씹기 모션 트리거 — 식사 중 펄스 타이머가 일정 주기로 올려 SquirrelView가
-    /// 한 번 우물거리는 bounce를 재생한다. 실제 씹기 횟수가 아니라 화면 연출용 카운터.
+
+    /// 다람이 씹기 모션 트리거. 실제 씹기 횟수가 아니라 화면 연출용 카운터.
     var animKey: Int = 0
 
-    /// 스트릭 프리즈 인벤토리(0~3). ODO-54 전환 후 정본은 서버다 — `applyHome`이 서버 홈 응답의
-    /// `freezeInventory`로 갱신하고 HomeView가 "🛡️N"으로 표시한다. 마일스톤 적립·소진 계산은 모두 서버.
+    /// 스트릭 프리즈 인벤토리(0~3). 서버 홈 응답을 화면/스냅샷 호환용으로 캐시한다.
     var freezeInventory: Int = 0
 
-    /// 사용자가 온보딩에서 정한 표시 닉네임. `profiles.displayName`과 매핑.
-    /// nil이면 HomeView는 "친구" 등 fallback. didSet에서 UserDefaults 캐시 갱신.
+    /// 사용자가 온보딩에서 정한 표시 닉네임. nil이면 HomeView는 fallback 문구를 쓴다.
     var displayName: String? {
         didSet {
             if let name = displayName {
@@ -86,9 +66,7 @@ final class AppState {
         }
     }
 
-    /// 로그인에 사용한 소셜 provider 식별자("apple"/"kakao"/"google"). 설정 화면의
-    /// "로그인 계정" 표시용. `completeLogin(method:)`에서 set, 로그아웃/세션 클리어 시 nil.
-    /// didSet에서 UserDefaults 캐시 갱신 — cold-start에 즉시 복원한다.
+    /// 로그인에 사용한 소셜 provider 식별자. 설정 화면 표시용으로 로컬 캐시한다.
     var loginMethod: String? {
         didSet {
             if let method = loginMethod {
@@ -106,20 +84,13 @@ final class AppState {
     /// Int를 증가시켜 같은 화면에서 여러 번 성공해도 ContentView가 매번 감지하게 한다.
     var friendsTabRequestID: Int = 0
 
-    /// `fetchAndApplyDisplayName` 한 번 끝났는지. 시작 직후 DB fetch 완료 전엔 false로 두어
-    /// "기존 사용자가 reinstall한 cold-start에서 sheet이 잠깐 깜빡이는" 케이스를 차단.
-    /// 처음 fetch가 끝나면 true로 마크 — 그 시점에 displayName nil이면 진짜 신규 디바이스.
+    /// 프로필 복원 완료 여부. 완료 전에는 온보딩 sheet 판정을 보류한다.
     var didLoadProfile: Bool = false
 
-    /// 서버 OAuth 로그인 여부(ODO-47). 토큰이 Keychain에 있으면 로그인 상태로 시작.
-    /// false인 동안 ContentView가 LoginView를 fullScreenCover로 띄운다.
-    var isLoggedIn: Bool = TokenManager.isLoggedIn
+    /// 서버 OAuth 로그인 여부. false면 ContentView가 로그인 화면을 띄운다.
+    var isLoggedIn: Bool = false
 
-    /// 온보딩(닉네임 입력 + 사용법 튜토리얼)을 끝까지 마쳤는지. false인 동안 ContentView가
-    /// onboarding sheet를 띄운다. 튜토리얼 마지막 "시작하기"/"건너뛰기"의 `completeOnboarding()`
-    /// 에서 true로. 출석/스트릭 보상은 이 값이 true가 되기 전엔 트리거하지 않아, 보상이 온보딩
-    /// 위로 떠버리는 회귀를 막는다. didSet으로 UserDefaults에 영속(단, init 내 대입은 didSet이
-    /// 발동하지 않으므로 마이그레이션 시 명시적으로 write).
+    /// 온보딩 완료 여부. false면 ContentView가 온보딩 sheet를 띄운다.
     var hasCompletedOnboarding: Bool = false {
         didSet {
             UserDefaults.standard.set(hasCompletedOnboarding, forKey: Self.onboardingCompleteKey)
@@ -133,10 +104,8 @@ final class AppState {
 
     // MARK: - Wardrobe (다람쥐 꾸미기)
 
-    /// 보유 중인 ShopItem id 집합.
     var owned: Set<String> = []
 
-    /// 장착 슬롯. 타입당 1개. nil = 미장착.
     var equipped: Equipped = Equipped()
 
     struct Equipped: Codable, Equatable {
@@ -147,81 +116,43 @@ final class AppState {
 
     // MARK: - Eating session
 
-    /// 현재 식사 중인지 여부. 홈의 "식사 시작/종료" 버튼이 토글, 트래킹 탭이 관찰.
-    var isEating: Bool = false
+    @MainActor var isEating: Bool { mealSession.isEating }
 
-    /// 식사 시작 시각. 통계/지속시간 표시 등에 사용.
-    @ObservationIgnored private(set) var eatingStartedAt: Date?
+    @MainActor var eatingStartedAt: Date? { mealSession.eatingStartedAt }
 
-    /// 화면 표시용 최근 IMU 에너지 샘플. 원시 IMU 데이터는 저장하지 않음.
-    var imuWaveformSamples: [Double] = AppState.idleIMUWaveformSamples
-    var imuWaveformSource: IMUWaveformSource = .idle
+    @MainActor var imuWaveformSamples: [Double] { mealSession.imuWaveformSamples }
+    @MainActor var imuWaveformSource: IMUWaveformSource {
+        get { mealSession.imuWaveformSource }
+        set { mealSession.imuWaveformSource = newValue }
+    }
 
     // MARK: - IMU diagnostics (원시 데이터는 저장 안 함, 진단 지표만)
 
-    /// 현재 식사 세션에서 받은 실제 IMU 샘플 개수 (데모/페이크 timer는 카운트 X).
-    var imuSampleCount: Int = 0
+    @MainActor var imuSampleCount: Int { mealSession.imuSampleCount }
 
-    /// 마지막으로 실제 IMU 샘플이 들어온 시각. 백그라운드 수집 검증용.
-    var lastIMUSampleAt: Date?
+    @MainActor var lastIMUSampleAt: Date? { mealSession.lastIMUSampleAt }
 
-    /// 알림 딥링크(`chewchew://start`) 수신 시 true. 3초 후 자동 false.
-    /// HomeView의 MealToggle 강조 스타일 트리거.
-    var startButtonHighlighted: Bool = false
+    @MainActor var startButtonHighlighted: Bool {
+        get { mealSession.startButtonHighlighted }
+        set { mealSession.startButtonHighlighted = newValue }
+    }
 
-    /// 끼니 리마인더 알림의 "식사 시작" 액션에서 set. HomeView가 관찰해 시작 가드를
-    /// 그대로 태운다(모션 권한·AirPods 체크 재사용). 한 번 처리하면 false로 되돌린다.
-    var pendingMealStartRequest: Bool = false
+    @MainActor var pendingMealStartRequest: Bool {
+        get { mealSession.pendingMealStartRequest }
+        set { mealSession.pendingMealStartRequest = newValue }
+    }
 
-    /// 앱 foreground 여부. scenePhase 관찰자가 갱신.
-    /// 초기값 false — 앱 launch 시점엔 아직 .active phase가 아니므로, scenePhase가
-    /// `.active`로 처음 도달할 때 `sceneDidChange(toForeground:true)`의 전이
-    /// 조건(`!wasInForeground && toForeground`)이 성립해 일일 출석 보너스가 트리거된다.
     var isInForeground: Bool = false
 
-    /// 시뮬레이터에선 첫 접근을 막아 CoreMotion 권한 다이얼로그가 안 뜨도록 lazy.
-    /// 실기기에선 식사 시작 시 최초 1회 init.
-    @ObservationIgnored private lazy var headphoneMotionService = HeadphoneMotionService()
-    @ObservationIgnored private var chewPulseTimer: Timer?
-    @ObservationIgnored private var demoIMUWaveformTimer: Timer?
-    @ObservationIgnored private var imuWaveformPhase: Double = 0
+    // MARK: - Stores / services
 
-    /// 식사 세션 동안 전화 통화 시작을 관찰해, 측정을 멈추고 통화 종료 시 이어가기를 유도한다.
-    @ObservationIgnored private let callMonitor = CallInterruptionMonitor()
-
-    /// 직전 인터럽트가 전화였는지 표시. 전화면 자동 재개하지 않고,
-    /// 중단 알림의 "계속하기"를 누를 때까지 기다린다.
-    @ObservationIgnored private var interruptionWasCall = false
-
-    /// 통화 등으로 측정이 멈춘 시각. 이어가기 시 이 구간을 IMU 세션 갭으로 기록해
-    /// 한 끼가 통화로 두 세션으로 쪼개지지 않게 한다.
-    @ObservationIgnored private var interruptionBeganAt: Date?
-
-    /// 식사 세션 동안 오디오 세션을 유지하고 씹기 페이스 톤을 낸다.
-    @ObservationIgnored private let backgroundKeepAlive = BackgroundAudioKeepAlive()
-
-    /// `/auth/me`의 `alertVolume`으로 갱신하고 식사 시작 시 keep-alive에 주입한다.
-    @ObservationIgnored private var alertVolume: Float = 0.5
-
-    /// 식사 측정 Live Activity(잠금화면·다이내믹 아일랜드) 관리자. 설정에서 꺼져 있으면 노옵.
-    @ObservationIgnored private let mealActivity = MealActivityController()
-
-    // MARK: - 씹기 감지 (DSP)
-
-    /// 식사 세션 동안 활성. IMU 샘플을 받아 DSP로 씹기 피크를 세고, 종료 시 세션 통계 산출.
-    @ObservationIgnored private var chewCounter: ChewCounter?
-
-    /// 현재 사용 중인 감지 알고리즘 식별자. DB의 `model_version` 컬럼에 저장.
-    private static let modelVersion = "dsp-chewcounter-1"
-
-    // MARK: - Remote persistence
-
-    /// 원격 백엔드(InsForge)에 대한 추상화. 테스트/시뮬레이터에선 NoopRemoteStore 주입 가능.
+    /// 원격 백엔드 추상화. 테스트/시뮬레이터에선 NoopRemoteStore 주입 가능.
     @ObservationIgnored let remoteStore: RemoteStore
+
+    @ObservationIgnored private let authTokenStorage: any AuthTokenStorage
 
     @MainActor @ObservationIgnored lazy var home: HomeStore = HomeStore(
         repository: RemoteStoreHomeRepository(remoteStore: remoteStore),
-        initialHome: serverHome,
         initialPoints: points,
         initialStreak: streak,
         initialFreezeInventory: freezeInventory,
@@ -296,10 +227,41 @@ final class AppState {
         settingsStore: UserDefaultsReminderSettingsStore()
     )
 
-    /// 제품·리텐션 분석 포트(ODO-79). Amplitude·(후속) Firebase로 fan-out. 테스트/미설정 시 Noop.
+    /// 제품·리텐션 분석 포트. 테스트/미설정 시 Noop.
     @ObservationIgnored let analytics: AnalyticsService
 
-    /// 서버 기반 식사 푸시 조정자(ODO-56) — APNs 토큰 등록 + 서버/로컬 알림 전환을 관리.
+    @MainActor @ObservationIgnored lazy var mealSession: MealSessionRuntimeStore = MealSessionRuntimeStore(
+        analytics: analytics,
+        onChewPulse: { [weak self] in
+            self?.animKey &+= 1
+        },
+        onPersistSnapshot: { [weak self] in
+            self?.persistSnapshot()
+        },
+        onSessionReadyForUpload: { [weak self] output, stats in
+            await self?.mealResults.uploadSession(output, stats: stats)
+        }
+    )
+
+    @MainActor @ObservationIgnored lazy var mealResults: MealSessionResultStore = MealSessionResultStore(
+        remoteStore: remoteStore,
+        analytics: analytics,
+        appVersion: Self.appVersion,
+        onHomeReceived: { [weak self] home in
+            self?.applyHome(home)
+        },
+        onSessionRewardReceived: { [weak self] result in
+            self?.home.applySessionReward(from: result)
+        },
+        onRemoteError: { [weak self] error in
+            self?.handleRemoteError(error)
+        },
+        refreshHome: { [weak self] in
+            await self?.refreshFromServerHome()
+        }
+    )
+
+    /// 서버 기반 식사 푸시 조정자.
     @ObservationIgnored let mealPushCoordinator: MealPushCoordinator
 
     @ObservationIgnored private let authSessionManager: AuthSessionManaging
@@ -310,50 +272,38 @@ final class AppState {
     /// 중간 상태가 winner로 굳을 수 있어, 각 작업이 이전 작업 종료를 await하는 체인으로 직렬화한다.
     @ObservationIgnored private var remoteSyncChain: Task<Void, Never> = Task {}
 
-    /// 한 끼 식사의 raw IMU 6채널을 메모리에 모으는 버퍼. 식사 종료 시 봉인 + 업로드.
-    @ObservationIgnored private var imuSessionRecorder: IMUSessionRecorder?
+    /// 측정 결과 업로드 상태 facade. 실제 소유권은 `MealSessionResultStore`에 둔다.
+    @MainActor var sessionUploadStatus: MealSessionUploadStatus {
+        get { mealResults.sessionUploadStatus }
+        set { mealResults.sessionUploadStatus = newValue }
+    }
 
-    /// 식사 종료 직후 IMU 세션 업로드 결과. 화면이 alert 표시할 때 binding으로 관찰.
-    var sessionUploadStatus: SessionUploadStatus = .idle
+    @MainActor var sessionUploadErrorMessage: String? {
+        get { mealResults.sessionUploadErrorMessage }
+        set { mealResults.sessionUploadErrorMessage = newValue }
+    }
 
-    /// 업로드 실패 시 사용자에게 보여줄 사유(서버가 준 메시지 / 오프라인 안내 등).
-    /// nil이면 화면이 기본 카피를 쓴다. 성공·dismiss 시 비운다.
-    var sessionUploadErrorMessage: String?
+    /// 오늘 기록/result sheet facade. 실제 소유권은 `MealSessionResultStore`에 둔다.
+    @MainActor var todaySessions: [ChewingSessionDTO] {
+        get { mealResults.todaySessions }
+        set { mealResults.todaySessions = newValue }
+    }
 
-    /// 서버가 계산한 홈 상태(도토리/스트릭/오늘 진행도)의 최신 스냅샷. ODO-54 thin-client 전환 후
-    /// 도토리·스트릭·오늘완료의 정본은 서버다. 세션 저장 응답·홈 조회·출석 적립이 이 값을 갱신하고,
-    /// `points`/`streak`/`freezeInventory`와 derived 프로퍼티는 모두 여기서 흘러나온다.
-    /// nil이면 아직 서버 응답 전 — 로컬 캐시 fallback. derived 프로퍼티가 이 값을 읽으므로
-    /// 관찰 대상으로 둔다(변경 시 홈 화면 자동 갱신).
-    private(set) var serverHome: HomeStateDTO?
+    @MainActor var lastCompletedSession: ChewingSessionDTO? {
+        get { mealResults.lastCompletedSession }
+        set { mealResults.lastCompletedSession = newValue }
+    }
 
-    /// "오늘의 식사 기록" 리스트 — 오늘 0시 이후 시작된 chewing_session 행들.
-    /// Tracking 탭이 관찰만 하고, fetch/append는 AppState가 single source of truth.
-    /// 세션 종료 + INSERT 성공 시 자동 append, 탭 진입 시 fetchTodaySessions로 재동기화.
-    var todaySessions: [ChewingSessionDTO] = []
+    /// 60초 미만 식사 종료 확인 다이얼로그.
+    @MainActor var showShortSessionConfirm: Bool {
+        get { mealSession.showShortSessionConfirm }
+        set { mealSession.showShortSessionConfirm = newValue }
+    }
 
-    /// 식사 종료 직후 표시할 리포트 카드의 source. INSERT 성공 시 set, 카드 dismiss 시 nil.
-    /// ContentView가 .sheet binding으로 관찰. PRD #3 — 종료 후 2초 이내 카드 표시.
-    var lastCompletedSession: ChewingSessionDTO?
-
-    /// 식사 시작 후 60초 미만에서 종료를 시도할 때 사용자에게 "더 측정할까요"를
-    /// 묻는 확인 다이얼로그 플래그. 사용자가 "그만두기"를 선택하면 세션을 discard.
-    var showShortSessionConfirm: Bool = false
-
-    /// 시작 시점에 AirPods/모션 권한이 없거나 라우트가 비어 시작을 차단했을 때 띄우는 플래그.
-    /// 종료 시 너무 짧은 세션 확인(showShortSessionConfirm)과 메시지를 분리한다.
-    var showAirPodsConnectionPrompt: Bool = false
-
-    /// 업로드 실패 시 사용자가 "다시 시도"를 누르면 재시도할 payload (finalize 결과 + 분석 통계).
-    /// in-memory 1회 retry 한정 — 영구 retry 큐는 다음 PR.
-    @ObservationIgnored private var pendingUpload: (output: IMUSessionRecorder.Output, stats: SessionStats?)?
-
-    enum SessionUploadStatus: Equatable {
-        case idle
-        case uploading
-        case success
-        case failure
-        var isTerminal: Bool { self == .success || self == .failure }
+    /// AirPods/모션 권한 문제로 시작을 차단했을 때 띄우는 플래그.
+    @MainActor var showAirPodsConnectionPrompt: Bool {
+        get { mealSession.showAirPodsConnectionPrompt }
+        set { mealSession.showAirPodsConnectionPrompt = newValue }
     }
 
     // MARK: - Init
@@ -362,14 +312,18 @@ final class AppState {
         remoteStore: RemoteStore = NoopRemoteStore(),
         authSessionManager: AuthSessionManaging = NoopAuthSessionManager(),
         authRepository: AuthRepository? = nil,
-        analytics: AnalyticsService = NoopAnalytics()
+        analytics: AnalyticsService = NoopAnalytics(),
+        authTokenStorage: any AuthTokenStorage = KeychainAuthTokenStorage(),
+        startStartupTasks: Bool = true
     ) {
         self.remoteStore = remoteStore
+        self.authTokenStorage = authTokenStorage
         self.authSessionManager = authSessionManager
         self.authRepository = authRepository
             ?? (authSessionManager as? AuthRepository)
             ?? AuthSessionManagerRepositoryAdapter(sessionManager: authSessionManager)
         self.analytics = analytics
+        isLoggedIn = authTokenStorage.isLoggedIn
         self.mealPushCoordinator = MealPushCoordinator(remoteStore: remoteStore)
         // displayName은 game state(`PersistedSnapshot`)과 다른 별도 캐시 키 — cold-start
         // 시 UserDefaults에서 즉시 read해 HomeView가 빈 이름으로 깜빡이지 않도록.
@@ -384,11 +338,10 @@ final class AppState {
             hasCompletedOnboarding = true
             UserDefaults.standard.set(true, forKey: Self.onboardingCompleteKey)
         }
-        // 즉시 표시용 fallback — DB 실패 또는 응답 전에 화면 그려도 마지막 캐시값으로.
+        // 서버 응답 전 화면을 위한 로컬 fallback 캐시.
         loadPersistedSnapshot()
+        guard startStartupTasks else { return }
         Task { [weak self] in
-            // push 경로의 authExpired를 기존 세션 만료 처리(handleRemoteError → expireSession)로 연결한다.
-            // init 시점엔 self 캡처가 불가해 생성 직후 여기서 핸들러를 건다.
             await self?.mealPushCoordinator.setAuthExpiredHandler { [weak self] in
                 Task { @MainActor in self?.handleRemoteError(RemoteStoreError.authExpired) }
             }
@@ -399,254 +352,24 @@ final class AppState {
 
     // MARK: - Eating actions
 
-    private static func normalizedAlertVolume(_ volume: Double) -> Float {
-        guard volume.isFinite else { return 0.5 }
-        return Float(max(0.0, min(1.0, volume)))
+    @MainActor func startEating() { mealSession.startEating() }
+    @MainActor func stopEating() { mealSession.stopEating() }
+    @MainActor func discardCurrentSession() { mealSession.discardCurrentSession() }
+    @MainActor func toggleEating() { mealSession.toggleEating() }
+    @MainActor func resumeMeasurement() { mealSession.resumeMeasurement() }
+    @MainActor func stopMeasurementFromNotification() { mealSession.stopMeasurementFromNotification() }
+    @MainActor func requestStartHighlight(duration: TimeInterval = 3) { mealSession.requestStartHighlight(duration: duration) }
+    @MainActor func requestMealStart() { mealSession.requestMealStart() }
+    @MainActor func handleNotificationAction(_ action: String, deepLink: String?) {
+        mealSession.handleNotificationAction(action, deepLink: deepLink)
     }
 
-    func startEating() {
-        guard !isEating else { return }
-        isEating = true
-        analytics.track(.mealSessionStarted())
-        let now = Date()
-        eatingStartedAt = now
-
-        prepareEatingSession(startedAt: now)
-        let counter = ChewCounter()
-        chewCounter = counter
-        startChewAnimationLoop()
-
-        configureCallInterruptionHandling()
-        Task { await MealNotificationService.requestAuthorizationIfNeeded() }
-        startAudioFeedback(counter: counter)
-        mealActivity.start(startedAt: now)
-
-        if !startHeadphoneMotionLoop() {
-            startDemoIMUWaveformLoop(source: imuWaveformSource)
-        }
-    }
-
-    private func prepareEatingSession(startedAt: Date) {
-        imuSampleCount = 0
-        lastIMUSampleAt = nil
-        imuSessionRecorder = IMUSessionRecorder(startedAt: startedAt)
-        interruptionWasCall = false
-        interruptionBeganAt = nil
-    }
-
-    /// 통화가 식사 측정을 끊었을 때 멈춤 카드와 이어가기 알림을 연결한다.
-    private func configureCallInterruptionHandling() {
-        callMonitor.onCallStarted = { [weak self] in
-            Task { @MainActor [weak self] in
-                await self?.pauseMeasurementForCall()
-            }
-        }
-        callMonitor.onCallEnded = { [weak self] in
-            Task { @MainActor [weak self] in
-                await self?.showResumePromptAfterCall()
-            }
-        }
-        callMonitor.start()
-    }
-
-    @MainActor
-    private func pauseMeasurementForCall() async {
-        guard isEating else { return }
-        await withMealBackgroundTask(named: "MealCallPause") {
-            interruptionWasCall = true
-            if interruptionBeganAt == nil { interruptionBeganAt = Date() }
-            stopHeadphoneMotionLoop()
-            await mealActivity.setPaused(true, callActive: true)
-        }
-    }
-
-    @MainActor
-    private func showResumePromptAfterCall() async {
-        guard isEating, interruptionWasCall else { return }
-        await withMealBackgroundTask(named: "MealCallEnded") {
-            await mealActivity.setPaused(true, callActive: false)
-            await MealNotificationService.scheduleInterruptionPrompt()
-        }
-    }
-
-    @MainActor
-    private func withMealBackgroundTask(named name: String, operation: () async -> Void) async {
-        #if canImport(UIKit)
-        let bgTask = UIApplication.shared.beginBackgroundTask(withName: name)
-        defer {
-            if bgTask != .invalid { UIApplication.shared.endBackgroundTask(bgTask) }
-        }
-        #endif
-        await operation()
-    }
-
-    /// 서버 `alertVolume`을 적용하고, 지속 씹기 이벤트를 페이스 톤으로 연결한다.
-    private func startAudioFeedback(counter: ChewCounter) {
-        backgroundKeepAlive.volume = alertVolume
-        backgroundKeepAlive.start()
-        let keepAlive = backgroundKeepAlive
-        Task {
-            await counter.setSustainedChewingHandler {
-                Task { @MainActor in
-                    let isChewing = await counter.isChewing
-                    let avgInterval = await counter.avgInterval
-                    keepAlive.playTone(for: ChewPaceSample(isChewing: isChewing, avgInterval: avgInterval))
-                }
-            }
-        }
-    }
-
-    func stopEating() {
-        guard isEating else { return }
-        isEating = false
-        let sessionDurationSec = eatingStartedAt.map { Int(Date().timeIntervalSince($0)) } ?? 0
-        eatingStartedAt = nil
-        let counter = stopEatingRuntime()
-        persistSnapshot()
-
-        chewCounter = nil
-        if let recorder = imuSessionRecorder {
-            imuSessionRecorder = nil
-            let endedAt = Date()
-            let output = recorder.finalize(endedAt: endedAt)
-            guard output.sampleCount > 0 else {
-                analytics.track(.mealSessionAborted(reason: "no_samples", durationSec: sessionDurationSec))
-                return
-            }
-            sessionUploadStatus = .uploading
-            Task { [weak self] in
-                let stats = await counter?.sessionStats(modelVersion: AppState.modelVersion)
-                await self?.performSessionUpload(output, stats: stats)
-            }
-        }
-    }
-
-    private func stopEatingRuntime() -> ChewCounter? {
-        stopHeadphoneMotionLoop()
-        stopChewAnimationLoop()
-        stopDemoIMUWaveformLoop()
-        let counter = chewCounter
-        Task { await counter?.setSustainedChewingHandler(nil) }
-        backgroundKeepAlive.stop()
-        callMonitor.onCallStarted = nil
-        callMonitor.onCallEnded = nil
-        callMonitor.stop()
-        interruptionWasCall = false
-        interruptionBeganAt = nil
-        MealNotificationService.cancelInterruptionPrompt()
-        mealActivity.end()
-        resetIMUWaveform()
-        imuWaveformSource = .idle
-        return counter
-    }
-
-    /// 너무 짧게 끝낸 세션을 사용자가 "그만두기" 선택했을 때 호출.
-    /// 측정 상태만 정리하고 DB·도토리·리포트엔 어떤 흔적도 남기지 않는다.
-    func discardCurrentSession() {
-        guard isEating else { return }
-        isEating = false
-        let sessionDurationSec = eatingStartedAt.map { Int(Date().timeIntervalSince($0)) } ?? 0
-        eatingStartedAt = nil
-        _ = stopEatingRuntime()
-        persistSnapshot()
-        chewCounter = nil
-        if let recorder = imuSessionRecorder {
-            imuSessionRecorder = nil
-            _ = recorder.finalize(endedAt: Date())
-        }
-        analytics.track(.mealSessionAborted(reason: "user_discard", durationSec: sessionDurationSec))
-    }
-
-    func toggleEating() {
-        isEating ? stopEating() : startEating()
-    }
-
-    /// 중단된 측정을 같은 세션으로 이어간다 — 중단 알림 "계속하기" 또는 `chewchew://resume`에서 호출.
-    /// 녹음 버퍼·시작 시각·추론기를 그대로 두고 갭만 기록해, 한 끼가 통화로 두 세션으로 쪼개지지 않게 한다.
-    /// 세션이 메모리에서 사라졌으면(앱 종료 등) 새로 시작하도록 시작 버튼을 강조한다.
-    @MainActor
-    func resumeMeasurement() {
-        guard isEating else {
-            requestStartHighlight()
-            return
-        }
-        if let began = interruptionBeganAt {
-            imuSessionRecorder?.recordInterruptionGap(began: began, ended: Date())
-        }
-        interruptionWasCall = false
-        interruptionBeganAt = nil
-        MealNotificationService.cancelInterruptionPrompt()
-        Task { await self.mealActivity.setPaused(false) }
-        _ = startHeadphoneMotionLoop()
-    }
-
-    /// 중단 알림 "그만하기"에서 호출 — 멈춘 세션을 정상 종료(부분 기록 업로드)한다.
-    @MainActor
-    func stopMeasurementFromNotification() {
-        MealNotificationService.cancelInterruptionPrompt()
-        guard isEating else { return }
-        if AppState.shouldConfirmShortSessionStop(startedAt: eatingStartedAt) {
-            showShortSessionConfirm = true
-            return
-        }
-        stopEating()
-    }
-
-    /// 앱 내 종료 버튼과 알림 "그만하기"가 공유하는 1분 미만 세션 확인 기준.
     static func shouldConfirmShortSessionStop(startedAt: Date?, now: Date = Date()) -> Bool {
-        guard let startedAt else { return false }
-        return now.timeIntervalSince(startedAt) < 60
+        MealSessionRuntimeRules.shouldConfirmShortSessionStop(startedAt: startedAt, now: now)
     }
 
-    /// `.ended + shouldResume` 인터럽트에서 자동 재개할지 판단하는 순수 함수.
-    /// 전화는 사용자가 중단 알림에서 직접 이어가므로 자동 재개하지 않는다.
     static func shouldAutoResume(interruptionWasCall: Bool, shouldResume: Bool) -> Bool {
-        shouldResume && !interruptionWasCall
-    }
-
-    /// 딥링크(`chewchew://start`) 수신 시 호출. 시작 버튼을 3초간 강조.
-    /// delay 파라미터는 단위테스트에서 0으로 주입 가능.
-    @MainActor
-    func requestStartHighlight(duration: TimeInterval = 3) {
-        startButtonHighlighted = true
-        Task {
-            try? await Task.sleep(for: .seconds(duration))
-            startButtonHighlighted = false
-        }
-    }
-
-    /// 끼니 리마인더 알림의 "식사 시작" 액션 진입점. 측정 중이 아니면 시작 요청 플래그를
-    /// 올려 HomeView가 시작 가드(권한·AirPods 확인)를 태우게 한다.
-    @MainActor
-    func requestMealStart() {
-        guard !isEating else { return }
-        pendingMealStartRequest = true
-    }
-
-    /// 알림 탭·액션 → 앱 동작 라우팅의 단일 진입점. NotificationDelegate는 raw `(action, deepLink)`만
-    /// 넘기고 "무엇을 할지" 결정은 여기 한 곳에 둔다(액션의 소유자와 매핑을 같은 곳에).
-    /// v1.2에서 MealSession이 분리되면 이 라우팅도 함께 이동한다.
-    @MainActor
-    func handleNotificationAction(_ action: String, deepLink: String?) {
-        switch action {
-        case MealNotificationService.startActionId:
-            requestMealStart()
-        case MealNotificationService.resumeActionId:
-            resumeMeasurement()
-        case MealNotificationService.stopActionId:
-            stopMeasurementFromNotification()
-        case UNNotificationDefaultActionIdentifier:
-            switch deepLink {
-            case MealNotificationService.deepLinkResume:
-                resumeMeasurement()
-            case MealNotificationService.deepLinkStart:
-                requestMealStart()
-            default:
-                break
-            }
-        default:
-            break
-        }
+        MealSessionRuntimeRules.shouldAutoResume(interruptionWasCall: interruptionWasCall, shouldResume: shouldResume)
     }
 
     // MARK: - Shop / Wardrobe actions
@@ -657,19 +380,19 @@ final class AppState {
         case notEnoughPoints
     }
 
-    /// ShopItem 구매. 자동 장착하지 않음 (명시적 `equip` 필요).
     @discardableResult
+    @MainActor
     func buyItem(_ item: ShopItem) -> PurchaseResult {
         if owned.contains(item.id) { return .alreadyOwned }
         guard points >= item.price else { return .notEnoughPoints }
         points -= item.price
+        home.syncLocalCache(points: points, streak: streak, freezeInventory: freezeInventory)
         owned.insert(item.id)
         persistSnapshot()
         analytics.track(.shopItemPurchased(itemId: item.id, itemType: item.type.rawValue, price: item.price))
         return .success
     }
 
-    /// 보유한 아이템을 장착. 같은 타입의 기존 장착 아이템은 자동 교체.
     func equip(_ item: ShopItem) {
         guard owned.contains(item.id) else { return }
         switch item.type {
@@ -699,79 +422,65 @@ final class AppState {
         }
     }
 
-    var equippedHatItem: ShopItem?     { ShopItem.by(id: equipped.hat) }
-    var equippedGlassesItem: ShopItem? { ShopItem.by(id: equipped.glasses) }
-    var equippedAccItem: ShopItem?     { ShopItem.by(id: equipped.acc) }
+    var equippedHatItem: ShopItem? {
+        ShopItem.by(id: equipped.hat)
+    }
+
+    var equippedGlassesItem: ShopItem? {
+        ShopItem.by(id: equipped.glasses)
+    }
+
+    var equippedAccItem: ShopItem? {
+        ShopItem.by(id: equipped.acc)
+    }
 
     // MARK: - Scene phase
 
-    /// SwiftUI `scenePhase` 변화 시 호출. background/foreground 전환 시각 기록 +
-    /// 일일 출석 보너스 적립 trigger.
     @MainActor
     func sceneDidChange(toForeground: Bool) {
         let wasInForeground = isInForeground
         isInForeground = toForeground
         if !wasInForeground && toForeground {
-            // XCUITest 안정성용 hook — `-skipAttendanceDialog` launch arg가 있으면
-            // 출석 보너스를 trigger하지 않는다. 운영 빌드는 영향 없음(인자 미전달).
-            // dialog가 MealToggle hit testing을 가리는 flaky 패턴 차단.
             if ProcessInfo.processInfo.arguments.contains("-skipAttendanceDialog") {
                 return
             }
-            // 신규 디바이스 첫 실행에선 온보딩(닉네임 입력 + 사용법 튜토리얼)이 끝나기 전까지
-            // 출석/스트릭 보상 다이얼로그를 띄우지 않는다. 보상이 온보딩 sheet 위로 먼저 떠
-            // 사용자가 보상→온보딩 순으로 마주치는 회귀를 차단. completeOnboarding()이
-            // 튜토리얼 종료 직후 동일 경로를 호출해 이어준다.
             if hasCompletedOnboarding {
                 Task { await home.grantDailyAttendanceIfNeeded() }
             }
         }
         if wasInForeground && !toForeground {
-            // 백그라운드 진입 시 안전하게 스냅샷 — 시스템 종료/메모리 회수 대비
             persistSnapshot()
         }
     }
 
     // MARK: - IMU waveform
 
-    /// 실제 AirPods motion source가 붙으면 이 진입점으로 정규화된 에너지를 전달.
-    func appendIMUWaveformSample(_ energy: Double) {
-        let sample = min(1.0, max(0.0, energy))
-        var samples = imuWaveformSamples
-        samples.append(sample)
-        if samples.count > Self.maxIMUWaveformSamples {
-            samples.removeFirst(samples.count - Self.maxIMUWaveformSamples)
-        }
-        imuWaveformSamples = samples
+    @MainActor func appendIMUWaveformSample(_ energy: Double) { mealSession.appendIMUWaveformSample(energy) }
+
+    @MainActor func recordIMUEnergy(rotationRateMagnitude: Double, userAccelerationMagnitude: Double) {
+        mealSession.recordIMUEnergy(
+            rotationRateMagnitude: rotationRateMagnitude,
+            userAccelerationMagnitude: userAccelerationMagnitude
+        )
     }
 
-    /// CMDeviceMotion의 회전/가속도 크기를 화면용 턱 움직임 에너지로 단순 합성.
-    func recordIMUEnergy(rotationRateMagnitude: Double, userAccelerationMagnitude: Double) {
-        let energy = rotationRateMagnitude * 0.12 + userAccelerationMagnitude * 0.75
-        appendIMUWaveformSample(energy)
-    }
+    // MARK: - Erase all user data
 
-    // MARK: - Erase all user data (REQ-05)
-
-    /// 설정 '계정 삭제' 확인 시 호출.
-    /// 원격: DELETE /v1/me → 계정 루트 삭제 + FK CASCADE.
-    /// 로컬: 모든 게임 상태를 초기화하고 스냅샷도 비움.
     @MainActor
     func eraseAllUserData() async {
-        // 로컬 인메모리 상태 리셋 (reset()과 동일 범위)
-        stopEating()
+        let deletionAccessToken = authTokenStorage.accessToken
+        let deletionRefreshToken = authTokenStorage.refreshToken
+
+        mealSession.resetRuntimeState()
         clearTransientRuntimeState()
         clearPendingInviteCode()
         streak = 0
         points = 0
         animKey = 0
         freezeInventory = 0
-        resetIMUWaveform()
-        imuWaveformSource = .idle
         owned = []
         equipped = Equipped()
-        todaySessions = []
-        lastCompletedSession = nil
+        mealResults.resetAll()
         displayName = nil
         loginMethod = nil
         didLoadProfile = false
@@ -782,10 +491,7 @@ final class AppState {
         MealNotificationService.cancelMealReminders()
         Task { await mealPushCoordinator.clearRegistration() }
 
-        // 삭제 요청은 현재 access token 스냅샷으로 보내고, canonical session 저장소는 즉시 비운다.
-        let deletionAccessToken = TokenManager.accessToken
-        let deletionRefreshToken = TokenManager.refreshToken
-        TokenManager.clear()
+        authTokenStorage.clear()
 
         await MainActor.run {
             home.reset()
@@ -798,42 +504,31 @@ final class AppState {
 
     @MainActor
     func reset() {
-        stopEating()
+        mealSession.resetRuntimeState()
         clearTransientRuntimeState()
         clearPendingInviteCode()
         streak = 0
         points = 0
         animKey = 0
-        resetIMUWaveform()
-        imuWaveformSource = .idle
         owned = []
         equipped = Equipped()
-        todaySessions = []
-        lastCompletedSession = nil
+        mealResults.resetAll()
         displayName = nil
         loginMethod = nil
         hasCompletedOnboarding = false
         freezeInventory = 0
-        TokenManager.clear()
+        authTokenStorage.clear()
         isLoggedIn = false
         analytics.setUserId(nil)
         SentryService.setUser(id: nil)
-        // 저장된 스냅샷도 비워서 다음 실행에서 시드값이 살아남도록
         home.reset()
         clearPersistedSnapshot()
     }
 
-    /// 로그인 + 서버 토큰 발급 성공 후 호출(LoginView). 로그인 상태로 전환하고
-    /// 로그인 계정 기준으로 홈/프로필을 다시 적재한다.
-    /// `onboardingCompleted`는 로그인 응답(`/auth/login`)의 정본 — true면 즉시 온보딩을
-    /// 스킵해, 재로그인 시 온보딩이 다시 뜨던 회귀를 막는다.
     @MainActor
     func completeLogin(onboardingCompleted: Bool, method: String) {
         clearLocalSessionCache()
-        // clearLocalSessionCache가 hasCompletedOnboarding을 false로 리셋하므로 그 뒤에 세팅한다.
-        // 서버 응답이 완료라고 하면 즉시 온보딩 sheet을 스킵 — 재로그인 시 재노출 회귀 차단.
         if onboardingCompleted { hasCompletedOnboarding = true }
-        // 로그인 provider 저장 — clearLocalSessionCache가 nil로 비운 뒤라 여기서 세팅한다.
         loginMethod = method
         isLoggedIn = true
         auth.markLoggedIn(onboardingCompleted: onboardingCompleted)
@@ -846,60 +541,35 @@ final class AppState {
         Task { [weak self] in
             await self?.refreshFromServerHome()
             await self?.fetchAndApplyDisplayName()
-            // 새 로그인(계정 전환 포함)은 항상 서버 발송 신호를 내린 뒤 시작한다 — 기기 전역 armed가 이전 계정에서
-            // 누수돼 새 계정 끼니를 오배송/누락하지 않도록(ODO-103 P1). 콜드 스타트 복원은 completeLogin을 거치지
-            // 않고 Keychain으로 isLoggedIn을 복원하므로, 같은 계정의 영속 armed(중복 푸시 수정)는 그대로 보존된다.
+            // 계정 전환 시 이전 계정의 푸시 등록이 새 계정으로 누수되지 않게 서버 발송 신호를 내린다.
             await self?.mealPushCoordinator.clearRegistration()
-            // 로그인 직후 끼니 알림 동기화 — 정본인 서버에서 이 계정 설정을 받아 화면·로컬을 맞추고 전달 경로를 정합한다.
-            // (.task는 앱 시작 시 1회뿐이라, 앱 실행 중 로그인하면 여기서 다시 걸어줘야 계정 전환이 반영된다.)
             await self?.mealPushCoordinator.syncFromServer()
-            // 미로그인 상태에서 받은 초대가 있으면 로그인/가입 완료 후 자동 수락한다.
             await self?.friends.consumePendingInviteIfNeeded()
         }
     }
 
-    /// 분석 유저 속성을 현재 상태로 동기화(코호트 분석용). 로그인·콜드스타트 복원·서버 홈 갱신 시 호출.
-    /// 가입일·총세션수는 서버 DTO에 없어 제외(서버 추가 시 후속).
+    @MainActor
     private func syncAnalyticsUserProperties() {
-        analytics.setUserProperty("current_streak", currentStreak)
+        analytics.setUserProperty("current_streak", home.currentStreak)
         analytics.setUserProperty("total_points", points)
     }
 
-    /// 업로드 실패 원인을 저카디널리티 라벨로 분류(meal_session_failed의 reason 속성용).
-    private static func uploadFailureReason(_ error: Error) -> String {
-        guard let e = error as? RemoteStoreError else { return "unknown" }
-        switch e {
-        case .authExpired: return "auth_expired"
-        case .server: return "server"
-        case .offline: return "offline"
-        case .malformed: return "malformed"
-        case .http: return "http"
-        case .invalidUploadResponse: return "invalid_upload"
-        }
-    }
-
-    /// 로그아웃 — 로컬 토큰 제거 후 로그인 게이트로 복귀. 게임 데이터는 보존('계정 삭제'와 구분).
     @MainActor
     func logout() {
         expireSession()
     }
 
-    /// 사용자가 누른 로그아웃 — 서버 refresh token 폐기 후 로컬 세션을 종료한다.
     @MainActor
     func logoutFromServer() async {
-        // 토큰이 아직 유효할 때 서버 푸시 토큰을 해제한다(만료 후엔 401이라 의미 없음).
         await mealPushCoordinator.handleLogout()
         await auth.logout()
     }
 
-    /// refresh 만료/폐기 등으로 인증 세션을 더 쓸 수 없을 때 로그인 게이트로 복귀한다.
     @MainActor
     private func expireSession() {
-        // 로컬 끼니 알림 정리 + 코디네이터의 in-memory 등록 토큰 리셋(서버 토큰 해제는 logoutFromServer에서
-        // 토큰이 유효할 때 수행. 만료 경로는 401이라 DELETE 무의미하므로 in-memory만 비운다).
         MealNotificationService.cancelMealReminders()
         Task { await mealPushCoordinator.clearRegistration() }
-        TokenManager.clear()
+        authTokenStorage.clear()
         isLoggedIn = false
         analytics.setUserId(nil)
         SentryService.setUser(id: nil)
@@ -915,237 +585,33 @@ final class AppState {
 
     // MARK: - Derived
 
-    var status: MoodStatus { MoodStatus.from(count: todayRealChewCount) }
-
-    /// 홈에 표시할 "오늘 기준" 연속 출석 일수. ODO-54 전환 후 스트릭 정본은 서버다.
-    /// 서버 홈 응답의 `streak`(이미 "현재 유효한" 값)을 그대로 쓰고, 서버 응답 전이면
-    /// 로컬 캐시(`streak`)로 fallback.
-    /// 주의: 오프라인 cold-start에선 만료 검증을 로컬에서 못 한다(`lastSuccessDate`는 서버 소유로
-    /// 제거됨). 마지막 성공 스냅샷의 스트릭을 그대로 보여주는 건 ODO-54 Done-When "서버 실패 시
-    /// 마지막 성공 상태 보존"에 따른 의도된 동작 — 다음 서버 응답에서 즉시 정정된다.
-    var currentStreak: Int {
-        serverHome?.streak ?? streak
+    @MainActor private var localTodayRealChewCount: Int {
+        mealResults.localTodayRealChewCount
     }
 
-    /// 오늘의 실제 씹기 횟수. 서버가 계산한 값(오늘 0시 이후 60초+ 세션 합)을 정본으로 쓰고,
-    /// 서버 응답 전이면 로컬 `todaySessions` 합으로 fallback. dailyGoal == 0은 "정책 없는 홈"
-    /// (InsForge 레거시 어댑터의 legacyHome)의 표지라, 그때도 로컬 합산으로 fallback —
-    /// 레거시 백엔드에서 홈 카운트/링이 0에 붙박이는 것을 막는다(todayProgress와 같은 기준).
-    var todayRealChewCount: Int {
-        if let serverHome, serverHome.dailyGoal > 0 { return serverHome.todayRealChewCount }
-        return localTodayRealChewCount
+    @MainActor var imuWaveformStatusText: String {
+        mealSession.imuWaveformStatusText
     }
 
-    private var localTodayRealChewCount: Int {
-        todaySessions.reduce(0) { $0 + ($1.estimatedTotalChews ?? 0) }
+    @MainActor var isIMUWaveformLive: Bool {
+        mealSession.isIMUWaveformLive
     }
 
-    /// 일일 목표 진행도(0~1). 서버 홈 응답의 진행도를 정본으로 쓰고(분모 dailyGoal>0일 때),
-    /// 서버 응답 전이면 로컬 계산으로 fallback. 홈 다람이 둘레 링이 사용.
-    var todayProgress: Double {
-        if let serverHome, serverHome.dailyGoal > 0 {
-            return min(1.0, max(0.0, serverHome.todayProgress))
-        }
-        return min(1.0, max(0.0, Double(todayRealChewCount) / Double(Constants.dailyGoal)))
+    // MARK: - Motion permission guard
+
+    @MainActor func requestMotionPermission(onGranted: @escaping () -> Void, onDenied: @escaping () -> Void) {
+        mealSession.requestMotionPermission(onGranted: onGranted, onDenied: onDenied)
     }
 
-    var imuWaveformStatusText: String {
-        imuWaveformSource.statusText
-    }
-
-    var isIMUWaveformLive: Bool {
-        isEating && (imuWaveformSource.usesRealMotion || imuWaveformSource == .demo)
-    }
-
-    // MARK: - Chew animation pulse (다람이 씹기 모션용 고정 주기 틱)
-
-    /// 식사 중 다람이가 자연스럽게 우물거리도록 일정 간격으로 `animKey`를 올린다.
-    /// SquirrelView가 `animKey` 변화를 받아 한 번 씹는 bounce를 재생 — 실제 씹기 검출과 무관.
-    private func startChewAnimationLoop() {
-        stopChewAnimationLoop()
-        chewPulseTimer = Timer.scheduledTimer(withTimeInterval: 0.85, repeats: true) { [weak self] _ in
-            self?.animKey &+= 1
-        }
-    }
-
-    private func stopChewAnimationLoop() {
-        chewPulseTimer?.invalidate()
-        chewPulseTimer = nil
-    }
-
-    // MARK: - Motion permission guard (REQ-01)
-
-    /// `.notDetermined`이면 즉시 측정을 시작하지 않고 권한 요청 경로로 보낸다.
-    /// CoreMotion은 명시적 request API 없이 `startDeviceMotionUpdates` 호출 시 시스템이
-    /// 프롬프트를 띄운다. 권한 부여 → `onGranted()`, 거부(에러 콜백) → `onDenied()`.
-    func requestMotionPermission(onGranted: @escaping () -> Void, onDenied: @escaping () -> Void) {
-        headphoneMotionService.start { [weak self] _ in
-            // 첫 샘플이 도착했다 = 권한이 허용됨. 업데이트를 즉시 멈추고 호출자에게 위임.
-            self?.headphoneMotionService.stop()
-            DispatchQueue.main.async {
-                self?.analytics.track(.permissionResult(type: "motion", granted: true))
-                onGranted()
-            }
-        } onError: { [weak self] _ in
-            // 에러 = 권한 거부 또는 디바이스 없음.
-            DispatchQueue.main.async {
-                self?.analytics.track(.permissionResult(type: "motion", granted: false))
-                onDenied()
-            }
-        }
-    }
-
-    /// REQ-01 가드 결정 순수 함수.
-    /// `.authorized && available`일 때만 true — `.notDetermined`는 false(권한 요청 경로로).
     static func shouldStartImmediately(status: CMAuthorizationStatus, available: Bool) -> Bool {
-        status == .authorized && available
-    }
-
-    private func startHeadphoneMotionLoop() -> Bool {
-        #if targetEnvironment(simulator)
-        imuWaveformSource = .simulator
-        return false
-        #else
-        switch headphoneMotionService.authorizationStatus {
-        case .denied:
-            imuWaveformSource = .denied
-            return false
-        case .restricted:
-            imuWaveformSource = .restricted
-            return false
-        case .notDetermined:
-            // notDetermined는 startHeadphoneMotionLoop 경로에 도달하지 않는다.
-            // HomeView.handleMealToggle()이 shouldStartImmediately=false로 먼저 걸러
-            // requestMotionPermission 경로로 보내기 때문. 안전망으로만 존재.
-            imuWaveformSource = .idle
-            return false
-        case .authorized:
-            break
-        @unknown default:
-            break
-        }
-
-        guard headphoneMotionService.isDeviceMotionAvailable else {
-            imuWaveformSource = .unavailable
-            return false
-        }
-
-        stopDemoIMUWaveformLoop()
-        imuWaveformSource = .connecting
-        headphoneMotionService.start { [weak self] sample in
-            guard let self else { return }
-            self.imuWaveformSource = .live
-            self.imuSampleCount += 1
-            self.lastIMUSampleAt = Date()
-            self.recordIMUEnergy(
-                rotationRateMagnitude: sample.rotationRateMagnitude,
-                userAccelerationMagnitude: sample.userAccelerationMagnitude
-            )
-            // raw 채널 전체(18컬럼)를 recorder에 누적. 출시 후 재학습 데이터셋으로
-            // 그대로 쓸 수 있도록 attitude/gravity/magneticField까지 보존.
-            // 같은 row를 DSP ChewCounter에도 흘려보내 세션 통계용으로 누적.
-            guard let recorder = self.imuSessionRecorder else { return }
-            let tRel = Date().timeIntervalSince(recorder.startedAt)
-            let row = IMURow(
-                tMach: sample.timestamp,
-                tRelSec: tRel,
-                attitudeRoll: sample.attitudeRoll,
-                attitudePitch: sample.attitudePitch,
-                attitudeYaw: sample.attitudeYaw,
-                rotationX: sample.rotationX,
-                rotationY: sample.rotationY,
-                rotationZ: sample.rotationZ,
-                gravityX: sample.gravityX,
-                gravityY: sample.gravityY,
-                gravityZ: sample.gravityZ,
-                userAccelX: sample.userAccelX,
-                userAccelY: sample.userAccelY,
-                userAccelZ: sample.userAccelZ,
-                magneticFieldX: sample.magneticFieldX,
-                magneticFieldY: sample.magneticFieldY,
-                magneticFieldZ: sample.magneticFieldZ,
-                sensorLocation: sample.sensorLocation
-            )
-            recorder.append(row)
-            recorder.updateSensorLocation(sample.sensorLocation)
-
-            // DSP 씹기 감지는 별도 Task로 — actor 호출이 sample 콜백 빈도(50Hz)를 막지 않도록.
-            // 결과는 세션 종료 시 통계 산출에만 쓴다.
-            if let chewCounter = self.chewCounter {
-                Task {
-                    await chewCounter.feed(
-                        rotX: row.rotationX,
-                        rotY: row.rotationY,
-                        rotZ: row.rotationZ,
-                        accelX: row.userAccelX,
-                        accelY: row.userAccelY,
-                        accelZ: row.userAccelZ
-                    )
-                }
-            }
-        } onError: { [weak self] message in
-            guard let self else { return }
-            if self.isEating {
-                self.startDemoIMUWaveformLoop(source: .error(message))
-            } else {
-                self.imuWaveformSource = .error(message)
-            }
-        }
-
-        return true
-        #endif
-    }
-
-    private func stopHeadphoneMotionLoop() {
-        #if !targetEnvironment(simulator)
-        // 시뮬레이터에선 lazy service 자체를 절대 init하지 않아 권한 다이얼로그가 안 뜸.
-        headphoneMotionService.stop()
-        #endif
-    }
-
-    private func startDemoIMUWaveformLoop(source: IMUWaveformSource = .demo) {
-        stopDemoIMUWaveformLoop()
-        if isEating, !imuWaveformSource.usesRealMotion {
-            imuWaveformSource = source
-        }
-        imuWaveformPhase = 0
-        demoIMUWaveformTimer = Timer.scheduledTimer(withTimeInterval: 0.07, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            self.imuWaveformPhase += 0.38
-
-            let bitePulse = pow(max(0, sin(self.imuWaveformPhase)), 2.8)
-            let microMotion = sin(self.imuWaveformPhase * 3.1) * 0.08
-            let energy = 0.12 + bitePulse * 0.72 + microMotion
-            self.appendIMUWaveformSample(energy)
-        }
-    }
-
-    private func stopDemoIMUWaveformLoop() {
-        demoIMUWaveformTimer?.invalidate()
-        demoIMUWaveformTimer = nil
-    }
-
-    private func resetIMUWaveform() {
-        imuWaveformPhase = 0
-        imuWaveformSamples = Self.idleIMUWaveformSamples
+        MealSessionRuntimeRules.shouldStartImmediately(status: status, available: available)
     }
 
     // MARK: - Local persistence (UserDefaults snapshot)
-    //
-    // 핵심 게임 진행 상태만 한 번에 통째로 JSON으로 직렬화해 UserDefaults에 저장한다.
-    // 의도적으로 단순하게 (SwiftData / CoreData 아님). 저장 시점은:
-    //   1) 식사 종료 시 (stopEating)
-    //   2) 앱이 background로 갈 때 (sceneDidChange)
-    //   3) 명시적 reset 시 → 저장 영역 자체를 비움
-    // 세션 한정 데이터 (isEating, IMU 진단 카운터, 파형 샘플)는 저장하지 않는다.
 
     private static let persistenceKey = "ChewChewIOS.AppState.snapshot.v1"
 
-    /// v2 — `owned`/`equipped` 추가.
-    /// v3 — `freezeInventory` 추가. 옵셔널이라 옛 스냅샷은 nil → 기본값(0)으로 초기화.
-    /// v4 — 미사용 가짜 카운터 `chewCount`/`goalAlreadyHit` 제거. 옛 스냅샷에 남아 있어도
-    /// 디코드 시 미지 키로 무시돼 하위호환 문제 없음.
-    /// v5(ODO-54) — `lastSuccessDate` 제거(스트릭 정본 서버화로 미사용). 옛 스냅샷의 잔존 키는 무시.
+    /// 옵셔널 필드는 옛 스냅샷 하위 호환용이다.
     private struct PersistedSnapshot: Codable {
         let streak: Int
         let points: Int
@@ -1155,12 +621,7 @@ final class AppState {
         var freezeInventory: Int?
     }
 
-    /// 게임 진행 상태를 로컬 UserDefaults 캐시에 스냅샷 저장.
-    ///
-    /// ODO-54 전환 후 도토리/스트릭/오늘완료의 정본은 서버다. iOS는 더 이상 `user_stats`를
-    /// 서버로 push하지 않는다 — 옛 push는 서버가 적립한 잔액을 클라 값으로 덮어써 버리기
-    /// 때문(서버 PUT /v1/me/stats가 본문을 통째로 반영). 이 스냅샷은 cold-start 시 서버 응답
-    /// 도착 전 화면을 그리기 위한 로컬 fallback 캐시 용도로만 남긴다.
+    /// 서버 홈 응답 전 화면을 위한 로컬 fallback 캐시.
     func persistSnapshot() {
         let now = Date()
         let snapshot = PersistedSnapshot(
@@ -1182,21 +643,17 @@ final class AppState {
         else { return }
         streak = snapshot.streak
         points = snapshot.points
-        // v2 옵셔널 필드 — v1 스냅샷에선 nil이라 빈 상태가 됨
         if let savedOwned = snapshot.owned {
             owned = Set(savedOwned)
         }
         if let savedEquipped = snapshot.equipped {
             equipped = savedEquipped
         }
-        // v3 옵셔널 필드 — 옛 스냅샷에선 nil이라 신규 streak 상태(0)로 시작
         if let savedFreeze = snapshot.freezeInventory {
             freezeInventory = savedFreeze
         }
     }
 
-    /// 로그아웃/계정 전환 시 iOS에 남은 계정별 화면 캐시만 제거한다.
-    /// 원격 데이터 삭제는 `eraseAllUserData` 전용이며 여기서는 호출하지 않는다.
     @MainActor
     private func clearLocalSessionCache() {
         clearTransientRuntimeState()
@@ -1205,31 +662,21 @@ final class AppState {
         freezeInventory = 0
         owned = []
         equipped = Equipped()
-        todaySessions = []
+        mealResults.resetAll()
         displayName = nil
         loginMethod = nil
         didLoadProfile = false
         hasCompletedOnboarding = false
         auth.markLoggedOut()
-        serverHome = nil
         home.reset()
         homeApplyVersion += 1
-        // 끼니 설정 로컬 캐시도 비운다 — 다음 계정이 이전 계정 알림시각을 보지 않도록(ODO-103).
-        // 정본은 서버이므로 로그인 후 syncFromServer가 이 계정 값으로 다시 채운다.
         MealReminderSettings.clear()
         UserDefaults.standard.removeObject(forKey: Self.persistenceKey)
     }
 
-    private func clearTransientRuntimeState() {
-        pendingMealStartRequest = false
-        friendsTabRequestID = 0
-        startButtonHighlighted = false
-        showShortSessionConfirm = false
-        showAirPodsConnectionPrompt = false
-        lastCompletedSession = nil
-        sessionUploadStatus = .idle
-        sessionUploadErrorMessage = nil
-        pendingUpload = nil
+    @MainActor private func clearTransientRuntimeState() {
+        mealSession.clearTransientRuntimeState()
+        mealResults.resetTransientState()
     }
 
     @MainActor
@@ -1240,13 +687,10 @@ final class AppState {
 
     func clearPersistedSnapshot() {
         UserDefaults.standard.removeObject(forKey: Self.persistenceKey)
-        // 서버 홈 캐시도 비움 — reset/erase 후 화면이 옛 도토리/스트릭을 잠깐 보여주지 않도록.
-        serverHome = nil
-        homeApplyVersion += 1   // 초기화 직전 시작된 refreshFromServerHome이 완료 후 applyHome을 실행하지 못하게.
+        homeApplyVersion += 1
     }
 
     private func scheduleRemoteUserDataDeletion(accessToken: String?, refreshToken: String?) {
-        // 같은 체인으로 — 직전 작업이 끝난 뒤 delete가 나가야 결과가 결정적.
         let store = remoteStore
         let previous = remoteSyncChain
         remoteSyncChain = Task.detached {
@@ -1255,13 +699,9 @@ final class AppState {
         }
     }
 
-    // MARK: - 서버 홈 상태 동기화 (ODO-54 thin-client)
+    // MARK: - Server home sync
 
-    /// 서버가 계산한 홈 상태를 in-memory에 반영. 도토리/스트릭/프리즈는 서버값으로 덮고,
-    /// derived 프로퍼티(currentStreak/todayRealChewCount/todayProgress)는 자동으로 따라온다.
-    /// 로컬 캐시도 write-through해 다음 cold-start의 fallback이 최신값을 갖게 한다.
-    /// applyHome이 일어날 때마다 증가 — 비행 중인 읽기(GET /home) 응답이 도착했을 때 그 사이
-    /// 다른 응답(출석/세션 저장 POST)이 홈을 갱신했는지 판별하는 버전 카운터.
+    /// 비행 중인 홈 조회가 최신 쓰기 응답을 덮지 않도록 판별하는 버전 카운터.
     @ObservationIgnored private var homeApplyVersion = 0
 
     @MainActor
@@ -1278,147 +718,51 @@ final class AppState {
     @MainActor
     private func applyHomeLocally(_ home: HomeStateDTO) {
         homeApplyVersion += 1
-        serverHome = home
         points = home.points
         streak = home.streak
         freezeInventory = home.freezeInventory
         if let name = home.displayName, !name.isEmpty, name != displayName {
             displayName = name
         }
-        // 서버가 갱신한 streak/points를 분석 유저 속성에도 반영(세션 완료·출석 후 코호트 최신화).
         syncAnalyticsUserProperties()
         persistSnapshot()
     }
 
-    /// 서버 홈 상태를 조회해 반영. 실패(네트워크 끊김 등)는 silent — loadPersistedSnapshot이
-    /// 채운 로컬 캐시를 그대로 유지한다(서버 실패 시 마지막 성공 상태 보존, ODO-54 Done-When).
     @MainActor
     func refreshFromServerHome() async {
         let versionAtRequest = homeApplyVersion
         await home.refresh { [weak self] in
-            // 이 GET이 비행하는 동안 쓰기 응답(출석/세션 저장)이 홈을 갱신했다면 이 응답은 옛
-            // 스냅샷이다 — 적용하면 방금 반영된 적립을 화면에서 되돌리므로 버린다(쓰기 응답 우선).
             guard let currentVersion = self?.homeApplyVersion else { return false }
             return versionAtRequest == currentVersion
         }
     }
 
-    /// 앱-열기 출석 멱등키 — REQ-08 형식(`app-open-<deviceId>-<yyyyMMdd Asia/Seoul>`).
-    /// iOS가 트리거 시점에 키를 만들고, 서버가 이 키로 일 1회 적립을 판정한다.
-    /// 서버(AttendanceService)가 같은 포맷으로 키를 유도하므로, 포맷 변경 시 양쪽을 함께 고쳐야
-    /// 같은 날 두 키가 갈라져 이중 적립되는 일을 막는다.
     static func attendanceKey(deviceId: String, now: Date = Date()) -> String {
         AttendanceKey.make(deviceId: deviceId, now: now)
     }
 
-    /// 식사 종료 후 IMU 세션 봉인 결과 + 분석 통계를 받아 Storage 업로드 → chewing_session INSERT.
-    /// 결과는 `sessionUploadStatus`로 publish되어 UI alert이 관찰한다. 실패 시 payload를
-    /// `pendingUpload`에 보관해 "다시 시도"가 가능하게.
-    /// `stats`는 추론이 동작한 세션에서만 비-nil (시뮬레이터/AirPods 미연결 세션은 nil).
-    @MainActor
-    private func performSessionUpload(_ output: IMUSessionRecorder.Output, stats: SessionStats?) async {
-        sessionUploadStatus = .uploading
-        do {
-            let deviceId = DeviceIdentity.shared
-            let storagePath = try await remoteStore.uploadIMUCSV(
-                sessionId: output.sessionId,
-                deviceId: deviceId,
-                csvData: output.csvData
-            )
-            let dto = ChewingSessionDTO(
-                id: output.sessionId,
-                deviceId: deviceId,
-                startedAt: output.startedAt,
-                endedAt: output.endedAt,
-                durationSec: output.durationSec,
-                sensorLocation: output.sensorLocation,
-                sampleCount: output.sampleCount,
-                sampleRateHz: 50,
-                storagePath: storagePath,
-                appVersion: Self.appVersion,
-                chewingSeconds: stats?.chewingSeconds,
-                restSeconds: stats?.restSeconds,
-                chewingFraction: stats?.chewingFraction,
-                estimatedTotalChews: stats?.estimatedTotalChews,
-                modelVersion: stats?.modelVersion,
-                chewingTimeline: stats?.chewingTimeline
-            )
-            // 정책 엔드포인트로 저장 — 서버가 적립/스트릭/오늘완료/홈을 계산해 함께 돌려준다.
-            let result = try await remoteStore.createChewingSession(dto)
-            sessionUploadStatus = .success
-            sessionUploadErrorMessage = nil
-            pendingUpload = nil
-            // 서버가 계산한 도토리/스트릭/오늘 상태를 화면에 반영(정본). iOS는 재계산하지 않는다.
-            applyHome(result.userStats)
-            let isReportable = ReportCardModel.from(dto) != nil
-            analytics.track(.mealSessionCompleted(
-                durationSec: Int(dto.durationSec),
-                sampleCount: dto.sampleCount,
-                chewingFraction: dto.chewingFraction,
-                estimatedTotalChews: dto.estimatedTotalChews,
-                reportable: isReportable
-            ))
-            // 리포트가 생성될 수 없는 세션(durationSec < 60 또는 분석 5필드 nil)은 결과·보상
-            // 다이얼로그 어디에도 반영하지 않는다 — 서버도 rewardEligible=false로 보상 0.
-            // 알림 '그만하기'로 끝낸 너무 짧은 세션도 홈 '그만두기'(discard)와 동일하게 무보상.
-            // raw IMU는 이미 업로드됐고, fetchTodaySessions가 reload 시 이런 세션을 필터한다.
-            guard isReportable else { return }
-
-            // 방금 저장한 행을 즉시 리스트에 반영 — GET 라운드트립 생략.
-            // started_at 오름차순 정렬을 유지하기 위해 append (방금 종료된 세션이 가장 최신).
-            todaySessions.append(dto)
-            // 식사 종료 직후 ReportCardView를 sheet로 띄울 trigger. 사용자가 닫으면 nil.
-            lastCompletedSession = dto
-            home.applySessionReward(from: result)
-        } catch {
-            handleRemoteError(error)
-            if case RemoteStoreError.authExpired = error { return }
-            analytics.track(.mealSessionFailed(reason: Self.uploadFailureReason(error)))
-            sessionUploadStatus = .failure
-            // 사용자에겐 부드러운 통일 카피(userMessage)만 노출 — 서버 원문은 로그(description)로만 남는다.
-            sessionUploadErrorMessage = (error as? RemoteStoreError)?.userMessage
-            pendingUpload = (output: output, stats: stats)
-        }
-    }
-
-    /// 콜드 스타트·포그라운드 진입 시 서버에서 displayName + onboardingCompleted를 가져와
-    /// in-memory + UserDefaults 갱신.
-    ///
-    /// 1) 로그인 상태면 `/auth/me`(정본 엔드포인트)로 onboardingCompleted를 권위 있게 설정.
-    ///    성공 시 true/false 모두 반영 — 서버가 완료라고 해도, 미완료라고 해도 그대로 따른다.
-    ///    me() 실패(오프라인·토큰 만료 등)면 step2의 profile 기반 레거시 폴백으로 내려간다.
-    /// 2) profiles 테이블에서 displayName 로드(표시 이름 표시용 + me() 실패 시 온보딩 폴백).
-    ///    displayName nil/빈 문자열이면 신규 사용자로 간주, profile fetch 실패도 silent 처리.
-    /// 종료 시 `didLoadProfile = true` — ContentView가 onboarding sheet 표시 여부 결정에 사용.
     @MainActor
     private func fetchAndApplyDisplayName() async {
-        // Step 1: /auth/me — onboardingCompleted 정본. 로그인 상태일 때만 시도.
         var meSucceeded = false
         if isLoggedIn {
             if let result = try? await authSessionManager.me() {
-                // 서버 값이 정본 — true/false 모두 기존 로컬 값에 우선한다.
                 hasCompletedOnboarding = result.onboardingCompleted
                 auth.updateOnboardingCompleted(result.onboardingCompleted)
-                // displayName도 함께 갱신(있을 때만).
                 if let name = result.displayName, !name.isEmpty, name != displayName {
                     displayName = name
                 }
-                // 서버 원격 알림음 볼륨(있을 때만) 반영. 식사 중이면 keep-alive에 즉시, 아니면 다음 startEating에서.
                 if let volume = result.alertVolume {
-                    alertVolume = Self.normalizedAlertVolume(volume)
-                    backgroundKeepAlive.volume = alertVolume
+                    mealSession.updateAlertVolume(volume)
                 }
                 meSucceeded = true
             }
         }
 
-        // Step 2: profiles 테이블 — displayName 로드 + me() 실패 시 온보딩 폴백.
         let profile: ProfileDTO?
         do {
             profile = try await remoteStore.fetchProfile()
         } catch {
             handleRemoteError(error)
-            // profile fetch 실패해도 me()가 성공했으면 onboarding 판정은 이미 완료.
             didLoadProfile = true
             if isInForeground && hasCompletedOnboarding {
                 await home.grantDailyAttendanceIfNeeded()
@@ -1429,19 +773,11 @@ final class AppState {
             if name != displayName {
                 displayName = name
             }
-            // me() 실패(오프라인 등) 폴백: DB에 이름이 있다 = 이전에 온보딩을 마친 기존 사용자.
-            // 재설치로 로컬 플래그가 비었어도 사용법 튜토리얼을 다시 띄우지 않도록 완료로 마크.
             if !meSucceeded && !hasCompletedOnboarding {
                 hasCompletedOnboarding = true
                 auth.updateOnboardingCompleted(true)
             }
         }
-        // displayName 먼저 set 후 마지막에 didLoadProfile = true. 둘이 같은 main-actor
-        // 동기 블록에서 순차로 갱신되면 ContentView의 onboardingBinding 평가가 한 frame에
-        // 일관된 두 값으로 수행돼, "didLoadProfile만 true + displayName 아직 nil" 중간
-        // 상태에서 sheet이 열리는 race를 피한다.
-        // 콜드스타트 기존 유저 식별 복원 — Keychain 토큰이 있어 completeLogin()을
-        // 거치지 않고 재실행된 경우 Analytics + Sentry에 ID를 등록한다.
         if isLoggedIn {
             let deviceIdForRestore = DeviceIdentity.shared
             analytics.setUserId(deviceIdForRestore)
@@ -1450,23 +786,16 @@ final class AppState {
             syncAnalyticsUserProperties()
         }
         didLoadProfile = true
-        // 재설치한 기존 사용자(위에서 hasCompletedOnboarding을 막 true로 올린 경우) 또는
-        // me()로 온보딩 완료를 확인한 경우: foreground 진입 시점엔 아직 false였을 수 있으므로,
-        // 여기서 이어서 출석 적립을 트리거한다.
         if isInForeground && hasCompletedOnboarding {
             await home.grantDailyAttendanceIfNeeded()
         }
     }
 
-    /// Onboarding sheet의 "저장" 버튼에서 호출. trim 후 in-memory + DB upsert.
     @MainActor
     func saveDisplayName(_ rawName: String) async {
         let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         displayName = trimmed
-        // 출석 보상은 여기서 트리거하지 않는다 — 이름 저장 뒤엔 사용법 튜토리얼이 이어지므로,
-        // 보상은 튜토리얼이 끝나는 completeOnboarding()에서 띄운다(보상이 튜토리얼 위로
-        // 떠버리는 회귀 방지). 이름 저장 시점엔 DB upsert만 수행.
         let deviceId = DeviceIdentity.shared
         do {
             try await remoteStore.upsertProfile(ProfileDTO(deviceId: deviceId, displayName: trimmed))
@@ -1485,8 +814,6 @@ final class AppState {
         await saveDisplayName(Self.generatedNickname(number: Int.random(in: 1000...9999)))
     }
 
-    /// 사용법 튜토리얼의 마지막 "시작하기"(또는 우상단 "건너뛰기")에서 호출. 온보딩 완료를
-    /// 마크해 sheet을 닫고, 메인 화면이 보이는 이 시점에 비로소 도토리 출석 보상을 트리거한다.
     @MainActor
     func completeOnboarding() {
         guard !hasCompletedOnboarding else { return }
@@ -1496,65 +823,26 @@ final class AppState {
         Task { await home.grantDailyAttendanceIfNeeded() }
     }
 
-    /// Tracking 탭 .task에서 호출 — 오늘 0시 이후 세션을 원격에서 가져와 리스트 동기화.
-    /// 실패는 silent (네트워크 끊김 등); 사용자에겐 빈 리스트로 보이는 게 alert보다 덜 거슬림.
     @MainActor
     func fetchTodaySessions() async {
-        let startOfDay = Calendar.current.startOfDay(for: Date())
-        let deviceId = DeviceIdentity.shared
-        let rows: [ChewingSessionDTO]
-        do {
-            rows = try await remoteStore.fetchChewingSessions(deviceId: deviceId, since: startOfDay)
-        } catch {
-            handleRemoteError(error)
-            return
-        }
-        // 리포트가 가능한 세션만 노출. DB엔 남아 있어도 앱에선 없는 것처럼 처리.
-        todaySessions = rows.filter { ReportCardModel.from($0) != nil }
-        // 오늘 씹기 수·진행도·완료 여부는 서버가 정본 — 세션 리스트 동기화와 함께 홈도 갱신한다.
-        await refreshFromServerHome()
+        await mealResults.fetchTodaySessions()
     }
 
-    /// 단일 세션 삭제 — 캘린더 DaySessionsView에서 swipe로 호출. todaySessions에서도
-    /// 즉시 제거해 UI 동기화. 실패는 silent — 다음 reload에서 서버 상태와 다시 sync.
     @MainActor
     func deleteSession(_ session: ChewingSessionDTO) async {
-        let deviceId = DeviceIdentity.shared
-        do {
-            try await remoteStore.deleteChewingSession(id: session.id, deviceId: deviceId)
-            todaySessions.removeAll { $0.id == session.id }
-            // 오늘 씹기 수·진행도가 줄었을 수 있으므로 서버 홈을 다시 받아 반영.
-            await refreshFromServerHome()
-        } catch {
-            handleRemoteError(error)
-            return
-        }
+        await mealResults.deleteSession(session)
     }
 
-    /// 모든 chewing_session 행 삭제 — MealCalendarView 도구바에서 confirm 후 호출.
-    /// profiles / user_stats(도토리 등 게임 상태)는 보존. todaySessions도 비움.
     @MainActor
     func deleteAllChewingSessions() async {
-        let deviceId = DeviceIdentity.shared
-        do {
-            try await remoteStore.deleteAllChewingSessions(deviceId: deviceId)
-            todaySessions = []
-            // 오늘 씹기 수·진행도가 0으로 바뀌므로 서버 홈을 다시 받아 반영.
-            await refreshFromServerHome()
-        } catch {
-            handleRemoteError(error)
-            return
-        }
+        await mealResults.deleteAllChewingSessions()
     }
 
-    /// 딥링크(카카오/외부 공유)로 받은 초대 코드 처리. 로그인 상태면 바로 수락하고,
-    /// 미로그인이면 보관했다가 로그인/가입(OAuth) 완료 후 자동 수락한다.
     @MainActor
     func receiveInviteCode(_ code: String) {
         friends.receiveInviteCode(code)
     }
 
-    /// 전역 토스트 표시(2.2초). 같은 메시지일 때만 정리해 새 토스트가 일찍 사라지지 않게 한다.
     @MainActor
     func flashToast(_ message: String) {
         globalToast = message
@@ -1564,27 +852,16 @@ final class AppState {
         }
     }
 
-    /// Alert "다시 시도" 버튼에서 호출 — 마지막 실패한 payload로 1회 재시도.
-    /// 영구 retry 큐는 후속 PR.
     @MainActor
     func retryLastSessionUpload() {
-        guard let pending = pendingUpload else { return }
-        Task { [weak self] in
-            await self?.performSessionUpload(pending.output, stats: pending.stats)
-        }
+        mealResults.retryLastSessionUpload()
     }
 
-    /// Alert dismiss 시 호출. 실패 상태에서 dismiss 하면 payload 폐기(= 데이터 손실 수용).
     @MainActor
     func dismissSessionUploadStatus() {
-        if sessionUploadStatus == .failure {
-            pendingUpload = nil
-        }
-        sessionUploadStatus = .idle
-        sessionUploadErrorMessage = nil
+        mealResults.dismissSessionUploadStatus()
     }
 
-    /// 표시용 앱 버전(`CFBundleShortVersionString`). 설정 화면이 "앱 버전" row에 사용.
     static let appVersion: String? = {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
     }()
