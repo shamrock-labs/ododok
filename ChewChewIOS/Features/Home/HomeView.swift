@@ -109,15 +109,7 @@ struct HomeView: View {
     /// CMHeadphoneMotionManager.isDeviceMotionAvailable이 미연결 상태에서도 true를
     /// 반환하는 케이스를 보완한다.
     private var hasHeadphoneAudioRoute: Bool {
-        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs
-        return outputs.contains { output in
-            switch output.portType {
-            case .bluetoothA2DP, .bluetoothLE, .bluetoothHFP, .headphones, .headsetMic:
-                return true
-            default:
-                return false
-            }
-        }
+        AppState.hasHeadphoneAudioRoute(outputs: AVAudioSession.sharedInstance().currentRoute.outputs)
     }
 
     // MARK: Top bar
