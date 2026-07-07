@@ -102,6 +102,10 @@ final class AppState {
     /// 전역 토스트(딥링크 친구 수락 결과 등). ContentView가 하단에 표시한다.
     var globalToast: String?
 
+    /// 초대 수락 성공 후 친구 탭으로 이동시키는 일회성 요청 카운터.
+    /// Int를 증가시켜 같은 화면에서 여러 번 성공해도 ContentView가 매번 감지하게 한다.
+    var friendsTabRequestID: Int = 0
+
     /// `fetchAndApplyDisplayName` 한 번 끝났는지. 시작 직후 DB fetch 완료 전엔 false로 두어
     /// "기존 사용자가 reinstall한 cold-start에서 sheet이 잠깐 깜빡이는" 케이스를 차단.
     /// 처음 fetch가 끝나면 true로 마크 — 그 시점에 displayName nil이면 진짜 신규 디바이스.
@@ -247,6 +251,12 @@ final class AppState {
         },
         onInviteReceived: { [weak self] loggedIn in
             self?.analytics.track(.friendInviteReceived(loggedIn: loggedIn))
+        },
+        onInviteAccepted: { [weak self] in
+            self?.friendsTabRequestID += 1
+            Task { [weak self] in
+                await self?.refreshFromServerHome()
+            }
         },
         onPendingInviteCodeChanged: { code in
             if let code {
@@ -1198,6 +1208,7 @@ final class AppState {
 
     private func clearTransientRuntimeState() {
         pendingMealStartRequest = false
+        friendsTabRequestID = 0
         startButtonHighlighted = false
         showShortSessionConfirm = false
         showAirPodsConnectionPrompt = false

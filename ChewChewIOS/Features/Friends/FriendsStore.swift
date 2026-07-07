@@ -22,6 +22,7 @@ final class FriendsStore {
     private let onToast: (String) -> Void
     private let onAuthExpired: () -> Void
     private let onInviteReceived: (Bool) -> Void
+    private let onInviteAccepted: () -> Void
     private let onPendingInviteCodeChanged: (String?) -> Void
     private let retryDelay: Duration
 
@@ -34,6 +35,7 @@ final class FriendsStore {
         onToast: @escaping (String) -> Void = { _ in },
         onAuthExpired: @escaping () -> Void = {},
         onInviteReceived: @escaping (Bool) -> Void = { _ in },
+        onInviteAccepted: @escaping () -> Void = {},
         onPendingInviteCodeChanged: @escaping (String?) -> Void = { _ in }
     ) {
         self.repository = repository
@@ -44,6 +46,7 @@ final class FriendsStore {
         self.onToast = onToast
         self.onAuthExpired = onAuthExpired
         self.onInviteReceived = onInviteReceived
+        self.onInviteAccepted = onInviteAccepted
         self.onPendingInviteCodeChanged = onPendingInviteCodeChanged
     }
 
@@ -86,6 +89,7 @@ final class FriendsStore {
             let result = try await repository.acceptInvite(code: code)
             await refresh()
             onToast(result.bonusGranted ? "친구가 됐어요! 도토리 100개 받았어요" : "이미 친구예요")
+            onInviteAccepted()
             return true
         } catch {
             if case RemoteStoreError.authExpired = error {

@@ -9,6 +9,7 @@ final class SpyRemoteStore: RemoteStore {
     private(set) var acceptedInviteCodes: [String] = []
     var fetchHomeError: Error?
     var acceptFriendInviteError: Error?
+    var home: HomeStateDTO?
 
     func upsertProfile(_ profile: ProfileDTO) async throws {}
     func fetchProfile() async throws -> ProfileDTO? { nil }
@@ -37,7 +38,7 @@ final class SpyRemoteStore: RemoteStore {
     }
     func fetchHome(deviceId: String) async throws -> HomeStateDTO {
         if let fetchHomeError { throw fetchHomeError }
-        return .empty(deviceId: deviceId)
+        return home ?? .empty(deviceId: deviceId)
     }
     func earnAttendance(deviceId: String, idempotencyKey: String) async throws -> AttendanceResultDTO {
         AttendanceResultDTO(grantedPoints: 0, capped: false, idempotentReplay: false, userStats: .empty(deviceId: deviceId))
@@ -285,5 +286,30 @@ final class EraseAllUserDataTests: XCTestCase {
             UserDefaults.standard.string(forKey: pendingInviteKey),
             "FRIEND-123"
         )
+    }
+
+    func testInviteAcceptRefreshesHomePointsImmediately() async {
+        let remote = SpyRemoteStore()
+        remote.home = HomeStateDTO(
+            deviceId: DeviceIdentity.shared,
+            displayName: nil,
+            points: 100,
+            streak: 0,
+            freezeInventory: 0,
+            todayRealChewCount: 0,
+            dailyGoal: 400,
+            todayProgress: 0,
+            todayCompleted: false
+        )
+        let state = AppState(remoteStore: remote)
+        state.isLoggedIn = true
+        state.points = 0
+
+        state.receiveInviteCode("FRIEND-123")
+
+        await waitFor(state.points == 100)
+        XCTAssertEqual(remote.acceptedInviteCodes, ["FRIEND-123"])
+        XCTAssertEqual(state.points, 100)
+        XCTAssertEqual(state.friendsTabRequestID, 1)
     }
 }

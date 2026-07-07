@@ -14,11 +14,12 @@ final class SocialLoginAndInviteConfigTests: XCTestCase {
     func testKakaoInviteFallbackURL_ignoresMissingBuildSettingPlaceholder() {
         XCTAssertNil(KakaoInviteSharer.mobileWebFallbackURL(from: "$(KAKAO_INVITE_MOBILE_WEB_URL)"))
         XCTAssertNil(KakaoInviteSharer.mobileWebFallbackURL(from: ""))
+        XCTAssertNil(KakaoInviteSharer.mobileWebFallbackURL(from: "https://apps.apple.com/app/idREPLACE"))
     }
 
     func testKakaoInviteFallbackURL_acceptsConfiguredHTTPSURL() {
-        let url = KakaoInviteSharer.mobileWebFallbackURL(from: "https://apps.apple.com/app/id1234567890")
+        let url = KakaoInviteSharer.mobileWebFallbackURL(from: "https://apps.apple.com/kr/app/ododok/id6784962920")
 
-        XCTAssertEqual(url?.absoluteString, "https://apps.apple.com/app/id1234567890")
+        XCTAssertEqual(url?.absoluteString, "https://apps.apple.com/kr/app/ododok/id6784962920")
     }
 }
