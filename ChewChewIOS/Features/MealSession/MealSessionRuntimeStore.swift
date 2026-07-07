@@ -59,6 +59,7 @@ final class MealSessionRuntimeStore {
     @ObservationIgnored private var alertVolume: Float = 0.5
     @ObservationIgnored private let mealActivity = MealActivityController()
     @ObservationIgnored private let airPodsAutoStartCoordinator = AirPodsAutoStartCoordinator()
+    @ObservationIgnored private let mealAirPodsConnectionMonitor: AirPodsConnectionMonitoring
     @ObservationIgnored private var chewCounter: ChewCounter?
     @ObservationIgnored private var imuSessionRecorder: IMUSessionRecorder?
 
@@ -66,12 +67,14 @@ final class MealSessionRuntimeStore {
         analytics: AnalyticsService,
         onChewPulse: @escaping @MainActor () -> Void,
         onPersistSnapshot: @escaping @MainActor () -> Void,
-        onSessionReadyForUpload: @escaping @MainActor (IMUSessionRecorder.Output, SessionStats?) async -> Void
+        onSessionReadyForUpload: @escaping @MainActor (IMUSessionRecorder.Output, SessionStats?) async -> Void,
+        mealAirPodsConnectionMonitor: AirPodsConnectionMonitoring = AirPodsConnectionMonitor()
     ) {
         self.analytics = analytics
         self.onChewPulse = onChewPulse
         self.onPersistSnapshot = onPersistSnapshot
         self.onSessionReadyForUpload = onSessionReadyForUpload
+        self.mealAirPodsConnectionMonitor = mealAirPodsConnectionMonitor
         airPodsAutoStartCoordinator.onPromptVisibilityChange = { [weak self] isVisible in
             self?.showAirPodsConnectionPrompt = isVisible
         }
@@ -105,6 +108,7 @@ final class MealSessionRuntimeStore {
         startChewAnimationLoop()
 
         configureCallInterruptionHandling()
+        configureMealAirPodsConnectionHandling()
         Task { await MealNotificationService.requestAuthorizationIfNeeded() }
         startAudioFeedback(counter: counter)
         mealActivity.start(startedAt: now)
@@ -370,6 +374,13 @@ final class MealSessionRuntimeStore {
         callMonitor.start()
     }
 
+    private func configureMealAirPodsConnectionHandling() {
+        mealAirPodsConnectionMonitor.start { [weak self] connected in
+            guard let self, self.isEating, !connected else { return }
+            self.stopEating()
+        }
+    }
+
     private func pauseMeasurementForCall() async {
         guard isEating else { return }
         await withMealBackgroundTask(named: "MealCallPause") {
@@ -423,6 +434,7 @@ final class MealSessionRuntimeStore {
         callMonitor.onCallStarted = nil
         callMonitor.onCallEnded = nil
         callMonitor.stop()
+        mealAirPodsConnectionMonitor.stop()
         interruptionWasCall = false
         interruptionBeganAt = nil
         MealNotificationService.cancelInterruptionPrompt()

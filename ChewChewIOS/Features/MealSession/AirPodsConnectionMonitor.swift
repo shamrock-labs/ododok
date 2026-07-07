@@ -1,8 +1,14 @@
 import AVFoundation
 import Foundation
 
+protocol AirPodsConnectionMonitoring: AnyObject {
+    var isConnected: Bool { get }
+    func start(onRouteConnectionChanged: @escaping (Bool) -> Void)
+    func stop()
+}
+
 /// AVAudioSession 라우트 변경을 관찰하는 Feature 전용 외부 효과 어댑터.
-final class AirPodsConnectionMonitor {
+final class AirPodsConnectionMonitor: AirPodsConnectionMonitoring {
     private let notificationCenter: NotificationCenter
     private let currentOutputs: () -> [AVAudioSessionPortDescription]
     private var observer: NSObjectProtocol?
