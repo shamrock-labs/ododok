@@ -306,6 +306,10 @@ final class AppState {
         set { mealSession.showAirPodsConnectionPrompt = newValue }
     }
 
+    @MainActor var startCountdownValue: Int? {
+        mealSession.startCountdownValue
+    }
+
     // MARK: - Init
 
     init(
@@ -601,6 +605,22 @@ final class AppState {
 
     @MainActor func requestMotionPermission(onGranted: @escaping () -> Void, onDenied: @escaping () -> Void) {
         mealSession.requestMotionPermission(onGranted: onGranted, onDenied: onDenied)
+    }
+
+    @MainActor var hasHeadphoneAudioRoute: Bool {
+        mealSession.hasHeadphoneAudioRoute
+    }
+
+    @MainActor func waitForAirPodsConnectionThenStart(onFinished: @escaping () -> Void) {
+        mealSession.waitForAirPodsConnectionThenStart(onFinished: onFinished)
+    }
+
+    @MainActor func beginAirPodsStartCountdown(onFinished: @escaping () -> Void) {
+        mealSession.beginAirPodsStartCountdown(onFinished: onFinished)
+    }
+
+    @MainActor func dismissAirPodsConnectionPrompt() {
+        mealSession.dismissAirPodsConnectionPrompt()
     }
 
     static func shouldStartImmediately(status: CMAuthorizationStatus, available: Bool) -> Bool {

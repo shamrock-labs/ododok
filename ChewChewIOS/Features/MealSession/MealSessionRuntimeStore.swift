@@ -41,6 +41,7 @@ final class MealSessionRuntimeStore {
     var pendingMealStartRequest: Bool = false
     var showShortSessionConfirm: Bool = false
     var showAirPodsConnectionPrompt: Bool = false
+    var startCountdownValue: Int?
 
     private let analytics: AnalyticsService
     private let onChewPulse: @MainActor () -> Void
@@ -57,6 +58,7 @@ final class MealSessionRuntimeStore {
     @ObservationIgnored private let backgroundKeepAlive = BackgroundAudioKeepAlive()
     @ObservationIgnored private var alertVolume: Float = 0.5
     @ObservationIgnored private let mealActivity = MealActivityController()
+    @ObservationIgnored private let airPodsAutoStartCoordinator = AirPodsAutoStartCoordinator()
     @ObservationIgnored private var chewCounter: ChewCounter?
     @ObservationIgnored private var imuSessionRecorder: IMUSessionRecorder?
 
@@ -70,6 +72,12 @@ final class MealSessionRuntimeStore {
         self.onChewPulse = onChewPulse
         self.onPersistSnapshot = onPersistSnapshot
         self.onSessionReadyForUpload = onSessionReadyForUpload
+        airPodsAutoStartCoordinator.onPromptVisibilityChange = { [weak self] isVisible in
+            self?.showAirPodsConnectionPrompt = isVisible
+        }
+        airPodsAutoStartCoordinator.onCountdownValueChange = { [weak self] value in
+            self?.startCountdownValue = value
+        }
     }
 
     var imuWaveformStatusText: String {
@@ -228,6 +236,22 @@ final class MealSessionRuntimeStore {
         }
     }
 
+    var hasHeadphoneAudioRoute: Bool {
+        airPodsAutoStartCoordinator.isHeadphoneConnected
+    }
+
+    func waitForAirPodsConnectionThenStart(onFinished: @escaping () -> Void) {
+        airPodsAutoStartCoordinator.waitForConnectionThenStart(onFinished: onFinished)
+    }
+
+    func beginAirPodsStartCountdown(onFinished: @escaping () -> Void) {
+        airPodsAutoStartCoordinator.startCountdownWithDisconnectMonitoring(onFinished: onFinished)
+    }
+
+    func dismissAirPodsConnectionPrompt() {
+        airPodsAutoStartCoordinator.dismissPromptAndStop()
+    }
+
     func appendIMUWaveformSample(_ energy: Double) {
         let sample = min(1.0, max(0.0, energy))
         var samples = imuWaveformSamples
@@ -248,6 +272,8 @@ final class MealSessionRuntimeStore {
         startButtonHighlighted = false
         showShortSessionConfirm = false
         showAirPodsConnectionPrompt = false
+        startCountdownValue = nil
+        airPodsAutoStartCoordinator.dismissPromptAndStop()
     }
 
     func resetRuntimeState() {

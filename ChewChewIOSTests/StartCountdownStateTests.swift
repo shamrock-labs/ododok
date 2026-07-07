@@ -5,14 +5,14 @@ import XCTest
 final class StartCountdownStateTests: XCTestCase {
 
     func testFromThree_returnsTwo() {
-        XCTAssertEqual(AppState.nextCountdownValue(from: 3), 2)
+        XCTAssertEqual(StartCountdownController.nextCountdownValue(from: 3), 2)
     }
 
     func testFromTwo_returnsOne() {
-        XCTAssertEqual(AppState.nextCountdownValue(from: 2), 1)
+        XCTAssertEqual(StartCountdownController.nextCountdownValue(from: 2), 1)
     }
 
     func testFromOne_returnsNil_meaningFinished() {
-        XCTAssertNil(AppState.nextCountdownValue(from: 1))
+        XCTAssertNil(StartCountdownController.nextCountdownValue(from: 1))
     }
 }

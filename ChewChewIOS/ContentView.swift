@@ -117,12 +117,6 @@ struct ContentView: View {
             secondary: .init("취소", role: .cancel) { state.dismissSessionUploadStatus() }
         )
         .appDialog(
-            isPresented: airPodsPromptBinding,
-            title: "AirPods를 연결해 주세요",
-            message: "AirPods Pro · 3·4세대 중 하나를 연결하고 착용해 주세요.",
-            primary: .init("확인") {}
-        )
-        .appDialog(
             isPresented: shortSessionBinding,
             title: "측정이 너무 짧아요",
             message: "1분 미만은 분석할 수 없어요. 더 씹을까요?",
@@ -156,19 +150,40 @@ struct ContentView: View {
                 .animation(.spring(response: 0.35, dampingFraction: 0.85), value: state.home.pendingRewardGrant)
             }
         }
+        .overlay(alignment: .center) {
+            if state.showAirPodsConnectionPrompt {
+                ZStack {
+                    Color.black.opacity(0.28).ignoresSafeArea()
+                    AirPodsPromptDialogView {
+                        state.dismissAirPodsConnectionPrompt()
+                    }
+                    .padding(.horizontal, AppSpacing.overlayH)
+                }
+                .transition(.opacity.combined(with: .scale(scale: 0.92)))
+                .zIndex(10)
+            }
+        }
+        .overlay(alignment: .center) {
+            if let countdownValue = state.startCountdownValue {
+                ZStack {
+                    Color.black.opacity(0.28).ignoresSafeArea()
+                    StartCountdownView(value: countdownValue)
+                }
+                .transition(.opacity)
+                .zIndex(11)
+            }
+        }
+        .animation(
+            .spring(response: AppMotion.springFastResponse, dampingFraction: AppMotion.springDampingFraction),
+            value: state.showAirPodsConnectionPrompt
+        )
+        .animation(.easeInOut(duration: AppMotion.durationStateChange), value: state.startCountdownValue)
     }
 
     private var shortSessionBinding: Binding<Bool> {
         Binding(
             get: { state.showShortSessionConfirm },
             set: { newValue in if !newValue { state.showShortSessionConfirm = false } }
-        )
-    }
-
-    private var airPodsPromptBinding: Binding<Bool> {
-        Binding(
-            get: { state.showAirPodsConnectionPrompt },
-            set: { newValue in if !newValue { state.showAirPodsConnectionPrompt = false } }
         )
     }
 
