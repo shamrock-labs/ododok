@@ -116,6 +116,8 @@ final class AppState {
 
     // MARK: - Eating session
 
+    @MainActor var mealSessionPhase: MealSessionPhase { mealSession.phase }
+
     @MainActor var isEating: Bool { mealSession.isEating }
 
     @MainActor var eatingStartedAt: Date? { mealSession.eatingStartedAt }
