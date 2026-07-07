@@ -55,11 +55,12 @@ final class MealSessionRuntimeStore {
     @ObservationIgnored private let callMonitor = CallInterruptionMonitor()
     @ObservationIgnored private var interruptionWasCall = false
     @ObservationIgnored private var interruptionBeganAt: Date?
-    @ObservationIgnored private let backgroundKeepAlive = BackgroundAudioKeepAlive()
+    @ObservationIgnored private let backgroundKeepAlive: MealAudioFeedbackKeeping
     @ObservationIgnored private var alertVolume: Float = 0.5
     @ObservationIgnored private let mealActivity = MealActivityController()
     @ObservationIgnored private let airPodsAutoStartCoordinator = AirPodsAutoStartCoordinator()
     @ObservationIgnored private let mealAirPodsConnectionMonitor: AirPodsConnectionMonitoring
+    @ObservationIgnored private let dateProvider: () -> Date
     @ObservationIgnored private var chewCounter: ChewCounter?
     @ObservationIgnored private var imuSessionRecorder: IMUSessionRecorder?
 
@@ -68,13 +69,17 @@ final class MealSessionRuntimeStore {
         onChewPulse: @escaping @MainActor () -> Void,
         onPersistSnapshot: @escaping @MainActor () -> Void,
         onSessionReadyForUpload: @escaping @MainActor (IMUSessionRecorder.Output, SessionStats?) async -> Void,
-        mealAirPodsConnectionMonitor: AirPodsConnectionMonitoring = AirPodsConnectionMonitor()
+        backgroundKeepAlive: MealAudioFeedbackKeeping = BackgroundAudioKeepAlive(),
+        mealAirPodsConnectionMonitor: AirPodsConnectionMonitoring = AirPodsConnectionMonitor(),
+        dateProvider: @escaping () -> Date = Date.init
     ) {
         self.analytics = analytics
         self.onChewPulse = onChewPulse
         self.onPersistSnapshot = onPersistSnapshot
         self.onSessionReadyForUpload = onSessionReadyForUpload
+        self.backgroundKeepAlive = backgroundKeepAlive
         self.mealAirPodsConnectionMonitor = mealAirPodsConnectionMonitor
+        self.dateProvider = dateProvider
         airPodsAutoStartCoordinator.onPromptVisibilityChange = { [weak self] isVisible in
             self?.showAirPodsConnectionPrompt = isVisible
         }
@@ -93,13 +98,14 @@ final class MealSessionRuntimeStore {
 
     func updateAlertVolume(_ volume: Double) {
         alertVolume = Self.normalizedAlertVolume(volume)
+        backgroundKeepAlive.volume = alertVolume
     }
 
     func startEating() {
         guard !isEating else { return }
         isEating = true
         analytics.track(.mealSessionStarted())
-        let now = Date()
+        let now = dateProvider()
         eatingStartedAt = now
 
         prepareEatingSession(startedAt: now)
@@ -121,7 +127,7 @@ final class MealSessionRuntimeStore {
     func stopEating() {
         guard isEating else { return }
         isEating = false
-        let sessionDurationSec = eatingStartedAt.map { Int(Date().timeIntervalSince($0)) } ?? 0
+        let sessionDurationSec = eatingStartedAt.map { Int(dateProvider().timeIntervalSince($0)) } ?? 0
         eatingStartedAt = nil
         let counter = stopEatingRuntime()
         onPersistSnapshot()
@@ -129,7 +135,7 @@ final class MealSessionRuntimeStore {
         chewCounter = nil
         if let recorder = imuSessionRecorder {
             imuSessionRecorder = nil
-            let endedAt = Date()
+            let endedAt = dateProvider()
             let output = recorder.finalize(endedAt: endedAt)
             guard output.sampleCount > 0 else {
                 analytics.track(.mealSessionAborted(reason: "no_samples", durationSec: sessionDurationSec))
@@ -145,14 +151,14 @@ final class MealSessionRuntimeStore {
     func discardCurrentSession() {
         guard isEating else { return }
         isEating = false
-        let sessionDurationSec = eatingStartedAt.map { Int(Date().timeIntervalSince($0)) } ?? 0
+        let sessionDurationSec = eatingStartedAt.map { Int(dateProvider().timeIntervalSince($0)) } ?? 0
         eatingStartedAt = nil
         _ = stopEatingRuntime()
         onPersistSnapshot()
         chewCounter = nil
         if let recorder = imuSessionRecorder {
             imuSessionRecorder = nil
-            _ = recorder.finalize(endedAt: Date())
+            _ = recorder.finalize(endedAt: dateProvider())
         }
         analytics.track(.mealSessionAborted(reason: "user_discard", durationSec: sessionDurationSec))
     }
@@ -171,7 +177,7 @@ final class MealSessionRuntimeStore {
             return
         }
         if let began = interruptionBeganAt {
-            imuSessionRecorder?.recordInterruptionGap(began: began, ended: Date())
+            imuSessionRecorder?.recordInterruptionGap(began: began, ended: dateProvider())
         }
         interruptionWasCall = false
         interruptionBeganAt = nil
@@ -183,7 +189,7 @@ final class MealSessionRuntimeStore {
     func stopMeasurementFromNotification() {
         MealNotificationService.cancelInterruptionPrompt()
         guard isEating else { return }
-        if MealSessionRuntimeRules.shouldConfirmShortSessionStop(startedAt: eatingStartedAt) {
+        if MealSessionRuntimeRules.shouldConfirmShortSessionStop(startedAt: eatingStartedAt, now: dateProvider()) {
             showShortSessionConfirm = true
             return
         }
@@ -377,6 +383,10 @@ final class MealSessionRuntimeStore {
     private func configureMealAirPodsConnectionHandling() {
         mealAirPodsConnectionMonitor.start { [weak self] connected in
             guard let self, self.isEating, !connected else { return }
+            if MealSessionRuntimeRules.shouldConfirmShortSessionStop(startedAt: self.eatingStartedAt, now: self.dateProvider()) {
+                self.showShortSessionConfirm = true
+                return
+            }
             self.stopEating()
         }
     }
@@ -385,7 +395,7 @@ final class MealSessionRuntimeStore {
         guard isEating else { return }
         await withMealBackgroundTask(named: "MealCallPause") {
             interruptionWasCall = true
-            if interruptionBeganAt == nil { interruptionBeganAt = Date() }
+            if interruptionBeganAt == nil { interruptionBeganAt = dateProvider() }
             stopHeadphoneMotionLoop()
             await mealActivity.setPaused(true, callActive: true)
         }

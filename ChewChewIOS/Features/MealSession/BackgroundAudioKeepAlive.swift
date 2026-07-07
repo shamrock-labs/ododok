@@ -6,7 +6,14 @@ import Foundation
 /// iOS 실기기에서는 `.playback + .mixWithOthers` 오디오 세션을 열어 백그라운드에서도
 /// AirPods IMU 수집이 끊기지 않게 하고, 3초 지속 씹기 이벤트마다 현재 페이스에 맞는
 /// 짧은 톤을 낸다. 시뮬레이터에서는 하드웨어 수집 의미가 없어 lifecycle API를 노옵으로 둔다.
-final class BackgroundAudioKeepAlive {
+protocol MealAudioFeedbackKeeping: AnyObject {
+    var volume: Float { get set }
+    func start()
+    func stop()
+    func playTone(for pace: ChewPaceSample)
+}
+
+final class BackgroundAudioKeepAlive: MealAudioFeedbackKeeping {
 
     // MARK: - Public state (플랫폼 공통)
 
