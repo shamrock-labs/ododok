@@ -56,17 +56,18 @@ final class MealSessionRuntimeStore {
     private let onChewPulse: @MainActor () -> Void
     private let onPersistSnapshot: @MainActor () -> Void
     private let onSessionReadyForUpload: @MainActor (IMUSessionRecorder.Output, SessionStats?) async -> Void
+    @ObservationIgnored private let runtimeServices: MealSessionRuntimeServices
 
-    @ObservationIgnored private lazy var headphoneMotionService = HeadphoneMotionService()
+    @ObservationIgnored private lazy var headphoneMotionService = runtimeServices.makeMotionService()
     @ObservationIgnored private var chewPulseTimer: Timer?
     @ObservationIgnored private var demoIMUWaveformTimer: Timer?
     @ObservationIgnored private var imuWaveformPhase: Double = 0
-    @ObservationIgnored private let callMonitor = CallInterruptionMonitor()
+    @ObservationIgnored private lazy var callMonitor = runtimeServices.makeCallInterruptionMonitor()
     @ObservationIgnored private var interruptionWasCall = false
     @ObservationIgnored private var interruptionBeganAt: Date?
-    @ObservationIgnored private let backgroundKeepAlive = BackgroundAudioKeepAlive()
+    @ObservationIgnored private lazy var backgroundKeepAlive = runtimeServices.makeAudioFeedbackService()
     @ObservationIgnored private var alertVolume: Float = 0.5
-    @ObservationIgnored private let mealActivity = MealActivityController()
+    @ObservationIgnored private lazy var mealActivity = runtimeServices.makeActivityController()
     @ObservationIgnored private var chewCounter: ChewCounter?
     @ObservationIgnored private var imuSessionRecorder: IMUSessionRecorder?
 
@@ -74,12 +75,14 @@ final class MealSessionRuntimeStore {
         analytics: AnalyticsService,
         onChewPulse: @escaping @MainActor () -> Void,
         onPersistSnapshot: @escaping @MainActor () -> Void,
-        onSessionReadyForUpload: @escaping @MainActor (IMUSessionRecorder.Output, SessionStats?) async -> Void
+        onSessionReadyForUpload: @escaping @MainActor (IMUSessionRecorder.Output, SessionStats?) async -> Void,
+        runtimeServices: MealSessionRuntimeServices = .live
     ) {
         self.analytics = analytics
         self.onChewPulse = onChewPulse
         self.onPersistSnapshot = onPersistSnapshot
         self.onSessionReadyForUpload = onSessionReadyForUpload
+        self.runtimeServices = runtimeServices
     }
 
     var imuWaveformStatusText: String {
@@ -106,7 +109,9 @@ final class MealSessionRuntimeStore {
         startChewAnimationLoop()
 
         configureCallInterruptionHandling()
-        Task { await MealNotificationService.requestAuthorizationIfNeeded() }
+        Task { [notificationScheduler = runtimeServices.notificationScheduler] in
+            await notificationScheduler.requestAuthorizationIfNeeded()
+        }
         startAudioFeedback(counter: counter)
         mealActivity.start(startedAt: now)
 
@@ -180,7 +185,7 @@ final class MealSessionRuntimeStore {
         }
         interruptionWasCall = false
         interruptionBeganAt = nil
-        MealNotificationService.cancelInterruptionPrompt()
+        runtimeServices.notificationScheduler.cancelInterruptionPrompt()
         if let startedAt = eatingStartedAt {
             phase = .measuring(MealSessionMeasurementContext(startedAt: startedAt))
         }
@@ -189,7 +194,7 @@ final class MealSessionRuntimeStore {
     }
 
     func stopMeasurementFromNotification() {
-        MealNotificationService.cancelInterruptionPrompt()
+        runtimeServices.notificationScheduler.cancelInterruptionPrompt()
         guard isEating else { return }
         if MealSessionRuntimeRules.shouldConfirmShortSessionStop(startedAt: eatingStartedAt) {
             showShortSessionConfirm = true
@@ -378,7 +383,7 @@ private extension MealSessionRuntimeStore {
         callMonitor.stop()
         interruptionWasCall = false
         interruptionBeganAt = nil
-        MealNotificationService.cancelInterruptionPrompt()
+        runtimeServices.notificationScheduler.cancelInterruptionPrompt()
         mealActivity.end()
         resetIMUWaveform()
         imuWaveformSource = .idle
@@ -398,10 +403,11 @@ private extension MealSessionRuntimeStore {
     }
 
     func startHeadphoneMotionLoop() -> Bool {
-        #if targetEnvironment(simulator)
-        imuWaveformSource = .simulator
-        return false
-        #else
+        if let unavailableSource = headphoneMotionService.liveMotionUnavailableSource {
+            imuWaveformSource = unavailableSource
+            return false
+        }
+
         switch headphoneMotionService.authorizationStatus {
         case .denied:
             imuWaveformSource = .denied
@@ -437,7 +443,6 @@ private extension MealSessionRuntimeStore {
         }
 
         return true
-        #endif
     }
 
     func handleMotionSample(_ sample: HeadphoneMotionSample) {
@@ -470,9 +475,7 @@ private extension MealSessionRuntimeStore {
     }
 
     func stopHeadphoneMotionLoop() {
-        #if !targetEnvironment(simulator)
         headphoneMotionService.stop()
-        #endif
     }
 
     func startDemoIMUWaveformLoop(source: IMUWaveformSource = .demo) {
