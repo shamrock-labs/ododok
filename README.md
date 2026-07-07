@@ -67,6 +67,8 @@ ChewChewIOS/
 
 ## 앱 구조 규칙
 
+상세 구현 기준은 `docs/ios-architecture.md`를 따른다. 이 README는 프로젝트 진입점과 요약만 제공한다.
+
 새 코드는 먼저 어느 레이어에 속하는지 정한 뒤 배치한다. 기존 파일에 붙여 넣는 것을 기본값으로 삼지 않는다.
 
 - `Features/<Feature>/`: 기능 단위 화면, Store, 포트, Feature 전용 어댑터를 함께 둔다. 새 기능의 기본 위치다.
@@ -93,9 +95,11 @@ AI나 사람이 새 기능을 추가할 때는 아래 순서를 따른다.
 - Store 기반 새 기능은 `Features/<Feature>/`에서 태어난다. `Models/`·`Views/`에 흩지 않는다.
 - 공유 코드(`RemoteStore` 프로토콜, `DesignSystem/`·`Analytics/`·`SignalProcessing/`·`Utils/`)와 어댑터 구현은 기능 폴더에 넣지 않고 레이어 폴더에 둔다.
 - 기존 코드는 한 번에 옮기지 않는다. 리팩터 PR마다 그 기능만 `Features/`로 co-locate한다(전환 중 하이브리드 허용).
-- 설계 정본은 Obsidian `Projects/ododok/24 ios-domain-architecture-refactor.md`.
+- 설계 기준은 Obsidian `Projects/ododok/24 ios-domain-architecture-refactor.md`.
 
 ## AppState 경계 규칙
+
+상세 기준은 `docs/ios-architecture.md`의 "AppState 경계"를 따른다.
 
 `AppState`는 SwiftUI 화면이 관찰하는 앱 상태 facade다. 스프링으로 치면 Controller, Service, Session State를 전부 합친 클래스가 아니라, 화면에 필요한 상태를 들고 작은 coordinator/service를 호출하는 얇은 진입점에 가깝게 유지한다.
 
@@ -105,11 +109,13 @@ AI나 사람이 새 기능을 추가할 때는 아래 순서를 따른다.
 - 네트워크, 오디오, 알림, 파일, Sentry/Analytics처럼 외부 효과가 있는 로직은 공유는 `Infra/`, Feature 전용은 해당 `Features/`의 어댑터로 뺀다.
 - 식사 측정, 온보딩, 친구 초대처럼 여러 서비스를 묶는 절차는 `AppState`에 길게 쓰지 말고 작은 private method나 별도 coordinator로 분리한다.
 - 알고리즘 판단은 `SignalProcessing/` 또는 순수 함수로 두고, `AppState`는 입력과 결과 연결만 맡는다.
-- 서버가 정본인 정책값은 앱에 매직넘버로 박지 않는다. 앱은 서버 값을 주입받고, 범위 정규화·fallback 같은 안전 처리만 한다.
+- 서버가 소유하는 정책값은 앱에 매직넘버로 박지 않는다. 앱은 서버 값을 주입받고, 범위 정규화·fallback 같은 안전 처리만 한다.
 
 줄 수 기준은 절대 규칙이 아니라 냄새 감지용이다. 300줄을 넘으면 역할을 한 번 점검하고, 600줄을 넘는 새 기능은 별도 타입 분리를 먼저 고려한다. 1000줄 이상 파일에 새 도메인 로직을 바로 추가하지 않는다.
 
 ## 코드 작성 원칙
+
+상세 예시와 새 코드 체크리스트는 `docs/ios-architecture.md`를 따른다.
 
 관통하는 하나: 한 조각을 이해하거나 바꾸는 데 머릿속에 올려야 하는 맥락이 작아야 한다. 아래 원칙은 전부 "필요한 맥락을 줄인다"는 같은 목표의 다른 각도다. 예시는 실제 코드 감사에서 나온 사례다.
 
@@ -122,7 +128,7 @@ AI나 사람이 새 기능을 추가할 때는 아래 순서를 따른다.
 func applyHome(_ home: HomeStateDTO) { points = home.points }   // 서버가 씀
 func buyItem(_ item: ShopItem) { points -= item.price }         // 로컬이 씀
 
-// Do — 정본은 서버 하나. 구매도 서버 왕복으로 새 잔액을 받아온다.
+// Do — 잔액은 서버 응답이 소유한다. 구매도 서버 왕복으로 새 잔액을 받아온다.
 func buyItem(_ item: ShopItem) async throws {
     let updated = try await repository.purchase(item.id)  // 서버가 차감·검증
     apply(updated)                                        // 주인은 여전히 서버 응답
@@ -148,7 +154,7 @@ func deleteAllSessions() async throws {
 // HomeView: .task { await home.refresh() }
 ```
 
-### 정본이 서버면 클라이언트는 재계산하지 않는다
+### 서버가 소유하는 값은 클라이언트가 재계산하지 않는다
 
 서버가 계산한 값을 앱이 다시 만들면 규칙이 두 곳으로 갈린다. 서버 값은 반영만 한다.
 
