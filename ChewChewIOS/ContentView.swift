@@ -161,7 +161,7 @@ struct ContentView: View {
     private var shortSessionBinding: Binding<Bool> {
         Binding(
             get: { state.showShortSessionConfirm },
-            set: { newValue in if !newValue { state.showShortSessionConfirm = false } }
+            set: { newValue in if !newValue { state.dismissShortSessionConfirmation() } }
         )
     }
 
@@ -207,10 +207,7 @@ struct ContentView: View {
     }
 
     private func closeResultSheet() {
-        state.lastCompletedSession = nil
-        if state.sessionUploadStatus == .success {
-            state.dismissSessionUploadStatus()
-        }
+        state.closeResultPresentation()
     }
 
     /// 첫 실행 onboarding sheet binding — DB fetch 한 번 끝났고(`didLoadProfile`) 온보딩을

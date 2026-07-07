@@ -292,14 +292,12 @@ final class AppState {
     }
 
     @MainActor var lastCompletedSession: ChewingSessionDTO? {
-        get { mealResults.lastCompletedSession }
-        set { mealResults.lastCompletedSession = newValue }
+        mealResults.lastCompletedSession
     }
 
     /// 60초 미만 식사 종료 확인 다이얼로그.
     @MainActor var showShortSessionConfirm: Bool {
-        get { mealSession.showShortSessionConfirm }
-        set { mealSession.showShortSessionConfirm = newValue }
+        mealSession.showShortSessionConfirm
     }
 
     /// AirPods/모션 권한 문제로 시작을 차단했을 때 띄우는 플래그.
@@ -362,7 +360,10 @@ final class AppState {
     @MainActor func stopMeasurementFromNotification() { mealSession.stopMeasurementFromNotification() }
     @MainActor func requestStartHighlight(duration: TimeInterval = 3) { mealSession.requestStartHighlight(duration: duration) }
     @MainActor func requestMealStart() { mealSession.requestMealStart() }
-    @MainActor func handleNotificationAction(_ action: String, deepLink: String?) {
+    @MainActor func consumePendingMealStartRequest() -> Bool { mealSession.consumePendingMealStartRequest() }
+    @MainActor func requestShortSessionConfirmation() { mealSession.requestShortSessionConfirmation() }
+    @MainActor func dismissShortSessionConfirmation() { mealSession.dismissShortSessionConfirmation() }
+    @MainActor func handleMealNotificationAction(_ action: String, deepLink: String?) {
         mealSession.handleNotificationAction(action, deepLink: deepLink)
     }
 
@@ -862,6 +863,11 @@ final class AppState {
     @MainActor
     func dismissSessionUploadStatus() {
         mealResults.dismissSessionUploadStatus()
+    }
+
+    @MainActor
+    func closeResultPresentation() {
+        mealResults.closeResultPresentation()
     }
 
     static let appVersion: String? = {

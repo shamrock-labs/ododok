@@ -131,6 +131,13 @@ final class MealSessionResultStore {
         sessionUploadErrorMessage = nil
     }
 
+    func closeResultPresentation() {
+        lastCompletedSession = nil
+        if sessionUploadStatus == .success {
+            dismissSessionUploadStatus()
+        }
+    }
+
     func resetTransientState() {
         lastCompletedSession = nil
         sessionUploadStatus = .idle

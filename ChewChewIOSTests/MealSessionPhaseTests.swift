@@ -31,7 +31,7 @@ final class MealSessionPhaseTests: XCTestCase {
         let store = makeStore()
         store.startEating()
 
-        store.showShortSessionConfirm = true
+        store.requestShortSessionConfirmation()
 
         guard case let .confirmingShortStop(context) = store.phase else {
             return XCTFail("Expected confirmingShortStop phase, got \(store.phase)")
@@ -40,7 +40,7 @@ final class MealSessionPhaseTests: XCTestCase {
         XCTAssertEqual(store.eatingStartedAt, context.startedAt)
         XCTAssertTrue(store.showShortSessionConfirm)
 
-        store.showShortSessionConfirm = false
+        store.dismissShortSessionConfirmation()
 
         XCTAssertFalse(store.showShortSessionConfirm)
         guard case let .measuring(measuringContext) = store.phase else {
@@ -69,7 +69,7 @@ final class MealSessionPhaseTests: XCTestCase {
     func testDiscardCurrentSessionReturnsToIdle() {
         let store = makeStore()
         store.startEating()
-        store.showShortSessionConfirm = true
+        store.requestShortSessionConfirmation()
 
         store.discardCurrentSession()
 
