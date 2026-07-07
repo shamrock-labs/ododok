@@ -216,6 +216,12 @@ final class MealSessionRuntimeStore {
         pendingMealStartRequest = true
     }
 
+    func consumePendingMealStartRequest() -> Bool {
+        guard pendingMealStartRequest else { return false }
+        pendingMealStartRequest = false
+        return true
+    }
+
     func handleNotificationAction(_ action: String, deepLink: String?) {
         switch action {
         case MealNotificationService.startActionId:
@@ -290,7 +296,7 @@ final class MealSessionRuntimeStore {
         phase = .confirmingShortStop(MealSessionMeasurementContext(startedAt: startedAt))
     }
 
-    private func dismissShortSessionConfirmation() {
+    func dismissShortSessionConfirmation() {
         guard case let .confirmingShortStop(context) = phase else { return }
         phase = .measuring(context)
     }

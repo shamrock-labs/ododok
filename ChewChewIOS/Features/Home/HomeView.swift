@@ -36,13 +36,12 @@ struct HomeView: View {
         .onChange(of: state.pendingMealStartRequest) { _, requested in
             // 끼니 리마인더 알림의 "식사 시작" 액션 — 시작 가드를 그대로 태운다.
             guard requested else { return }
-            state.pendingMealStartRequest = false
+            _ = state.consumePendingMealStartRequest()
             if !state.isEating { handleMealToggle() }
         }
         .onAppear {
             // 콜드스타트로 열려 onChange를 놓친 경우 보완.
-            if state.pendingMealStartRequest {
-                state.pendingMealStartRequest = false
+            if state.consumePendingMealStartRequest() {
                 if !state.isEating { handleMealToggle() }
             }
         }
@@ -66,7 +65,7 @@ struct HomeView: View {
             // 60초 미만이면 분석 불가 — 사용자에게 "더 측정할까요?" 확인 후 처리.
             let duration = Date().timeIntervalSince(state.eatingStartedAt ?? Date())
             if duration < 60 {
-                state.showShortSessionConfirm = true
+                state.requestShortSessionConfirmation()
                 return
             }
             state.toggleEating()
