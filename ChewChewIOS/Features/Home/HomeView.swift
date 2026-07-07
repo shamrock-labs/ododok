@@ -5,6 +5,8 @@ import AVFoundation
 struct HomeView: View {
     @Environment(AppState.self) private var state
 
+    private var home: HomeStore { state.home }
+
     // MARK: - 측정 시작 햅틱 trigger
     @State private var hapticTrigger = false
 
@@ -123,11 +125,11 @@ struct HomeView: View {
     private var topBar: some View {
         AppHeaderView(eyebrow: todayLabel, title: "오도독", subtitle: homeHeaderSubtitle) {
             HStack(spacing: 7) {
-                HeaderMetricPill(icon: .flame, value: "\(state.currentStreak)", tint: .statusWarning)
+                HeaderMetricPill(icon: .flame, value: "\(home.currentStreak)", tint: .statusWarning)
                 Button {
                     showRewardHistory = true
                 } label: {
-                    HeaderMetricPill(icon: .acorn, value: state.points.koLocale, tint: .rewardAcorn)
+                    HeaderMetricPill(icon: .acorn, value: home.points.koLocale, tint: .rewardAcorn)
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("RewardHistoryButton")
@@ -151,10 +153,10 @@ struct HomeView: View {
     }
 
     private var todayLabel: String {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "ko_KR")
-        f.dateFormat = "오늘 · M월 d일"
-        return f.string(from: Date())
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "ko_KR")
+        formatter.dateFormat = "오늘 · M월 d일"
+        return formatter.string(from: Date())
     }
 
     private func circleButton(_ symbol: String, action: @escaping () -> Void = {}) -> some View {
@@ -173,8 +175,8 @@ struct HomeView: View {
     private var statRow: some View {
         HStack(spacing: 14) {
             statCard(
-                label: state.freezeInventory > 0 ? "연속 출석 · 🛡️\(state.freezeInventory)" : "연속 출석",
-                value: "\(state.currentStreak)일째",
+                label: home.freezeInventory > 0 ? "연속 출석 · 🛡️\(home.freezeInventory)" : "연속 출석",
+                value: "\(home.currentStreak)일째",
                 iconBG: Color.statusDangerMuted
             ) {
                 OpenIconView(icon: .flame, color: .statusDanger, lineWidth: 2.2)
@@ -183,7 +185,7 @@ struct HomeView: View {
 
             statCard(
                 label: "보유 도토리",
-                value: state.points.koLocale,
+                value: home.points.koLocale,
                 iconBG: Color.statusWarningMuted
             ) {
                 OpenIconView(icon: .acorn, color: .rewardAcorn, lineWidth: 2.1)
@@ -235,7 +237,7 @@ struct HomeView: View {
                         .stroke(Color.borderDefault, lineWidth: 5)
                         .frame(width: Metrics.progressRing, height: Metrics.progressRing)
                     Circle()
-                        .trim(from: 0, to: state.todayProgress)
+                        .trim(from: 0, to: home.todayProgress)
                         .stroke(
                             Color.dataChew,
                             style: StrokeStyle(lineWidth: 5, lineCap: .round)
@@ -260,11 +262,11 @@ struct HomeView: View {
             .frame(height: Metrics.squirrelAreaHeight)
 
             VStack(spacing: 4) {
-                Text(state.isEating ? "맛있게 먹는 중이에요" : state.status.title)
+                Text(state.isEating ? "맛있게 먹는 중이에요" : home.status.title)
                     .font(.appFont(.boldTitleCompact))
                     .foregroundStyle(Color.textDefault)
                 if !state.isEating {
-                    Text("오늘 \(state.todayRealChewCount.koLocale) / \(Constants.dailyGoal.koLocale)회")
+                    Text("오늘 \(home.todayRealChewCount.koLocale) / \(Constants.dailyGoal.koLocale)회")
                         .font(.appFont(.semiboldCallout))
                         .foregroundStyle(Color.textMuted)
                         .monospacedDigit()
@@ -317,7 +319,10 @@ struct HomeView: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: Metrics.mealButtonRadius)
-                    .strokeBorder(Color.controlOnAccent.opacity(state.startButtonHighlighted ? 0.9 : 0), lineWidth: Metrics.mealButtonHighlightBorder)
+                    .strokeBorder(
+                        Color.controlOnAccent.opacity(state.startButtonHighlighted ? 0.9 : 0),
+                        lineWidth: Metrics.mealButtonHighlightBorder
+                    )
             )
         }
         .accessibilityIdentifier("MealToggle")
@@ -326,7 +331,10 @@ struct HomeView: View {
         .scaleEffect(state.startButtonHighlighted ? 1.04 : 1.0)
         .shadow(color: Color.highlightShadow.opacity(state.startButtonHighlighted ? 0.55 : 0), radius: 14, x: 0, y: 4)
         .animation(.easeInOut(duration: AppMotion.durationStateChange), value: state.isEating)
-        .animation(.spring(response: AppMotion.springPlayfulResponse, dampingFraction: AppMotion.springPlayfulDamping), value: state.startButtonHighlighted)
+        .animation(
+            .spring(response: AppMotion.springPlayfulResponse, dampingFraction: AppMotion.springPlayfulDamping),
+            value: state.startButtonHighlighted
+        )
     }
 }
 
