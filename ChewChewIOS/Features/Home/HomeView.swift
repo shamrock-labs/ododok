@@ -342,6 +342,8 @@ private struct RewardHistorySheet: View {
     @Environment(AppState.self) private var state
     @Environment(\.dismiss) private var dismiss
 
+    private var home: HomeStore { state.home }
+
     var body: some View {
         VStack(spacing: AppSpacing.five) {
             sheetHeader
@@ -353,7 +355,7 @@ private struct RewardHistorySheet: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color.bgPage.ignoresSafeArea())
         .task {
-            await state.fetchRewardHistory()
+            await home.fetchRewardHistory()
         }
     }
 
@@ -365,7 +367,7 @@ private struct RewardHistorySheet: View {
 
     @ViewBuilder
     private var content: some View {
-        switch state.rewardHistoryLoadState {
+        switch home.rewardHistoryLoadState {
         case .idle, .loading:
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -375,7 +377,7 @@ private struct RewardHistorySheet: View {
                     .font(.appFont(.boldHeadline))
                     .foregroundStyle(Color.textDefault)
                 Button("다시 시도") {
-                    Task { await state.fetchRewardHistory() }
+                    Task { await home.fetchRewardHistory() }
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, AppSpacing.four)
@@ -386,7 +388,7 @@ private struct RewardHistorySheet: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         case .loaded:
-            if state.rewardHistory.isEmpty {
+            if home.rewardHistory.isEmpty {
                 VStack(spacing: AppSpacing.two) {
                     OpenIconView(icon: .acorn, color: .rewardAcorn, lineWidth: 2.2)
                         .frame(width: AppSize.iconXXLarge, height: AppSize.iconXXLarge)
@@ -398,9 +400,9 @@ private struct RewardHistorySheet: View {
             } else {
                 ScrollView {
                     LazyVStack(spacing: AppSpacing.none) {
-                        ForEach(Array(state.rewardHistory.enumerated()), id: \.element.id) { index, entry in
+                        ForEach(Array(home.rewardHistory.enumerated()), id: \.element.id) { index, entry in
                             RewardHistoryRow(entry: entry)
-                            if index < state.rewardHistory.count - 1 {
+                            if index < home.rewardHistory.count - 1 {
                                 Color.borderDefault
                                     .frame(height: AppSize.hairline)
                                     .padding(.leading, Metrics.rewardSheetSeparatorInset)

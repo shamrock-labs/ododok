@@ -143,17 +143,17 @@ struct ContentView: View {
         // 그리지 않고 대기 — sheet 닫히는 순간 자연스럽게 등장하고 그때부터 2.5s 자동 dismiss
         // 타이머가 시작되어, 세션 종료 보상 다이얼로그가 가려진 채 사라지는 회귀를 차단.
         .overlay(alignment: .center) {
-            if state.lastCompletedSession == nil, let grant = state.pendingRewardGrant {
+            if state.lastCompletedSession == nil, let grant = state.home.pendingRewardGrant {
                 ZStack {
                     Color.black.opacity(0.28).ignoresSafeArea()
                     RewardDialogView(grant: grant) {
-                        state.dismissPendingRewardGrant()
+                        state.home.dismissPendingRewardGrant()
                     }
                     .padding(.horizontal, 32)
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.92)))
                 .zIndex(10)
-                .animation(.spring(response: 0.35, dampingFraction: 0.85), value: state.pendingRewardGrant)
+                .animation(.spring(response: 0.35, dampingFraction: 0.85), value: state.home.pendingRewardGrant)
             }
         }
     }

@@ -233,6 +233,12 @@ final class AppState {
         },
         onRemoteError: { [weak self] error in
             self?.handleRemoteError(error)
+        },
+        onRewardEarned: { [weak self] amount, kind in
+            self?.analytics.track(.rewardEarned(amount: amount, kind: kind))
+        },
+        onStreakEvent: { [weak self] type, amount in
+            self?.analytics.track(.streakEvent(type: type, amount: amount))
         }
     )
 
@@ -337,22 +343,6 @@ final class AppState {
     /// 시작 시점에 AirPods/모션 권한이 없거나 라우트가 비어 시작을 차단했을 때 띄우는 플래그.
     /// 종료 시 너무 짧은 세션 확인(showShortSessionConfirm)과 메시지를 분리한다.
     var showAirPodsConnectionPrompt: Bool = false
-
-    /// 도토리/스트릭 보상 시 ContentView가 overlay로 보여줄 RewardDialogView trigger.
-    /// 서버 응답(세션 적립·스트릭 이벤트·출석 적립)을 받아 set, 다이얼로그 dismiss 시 nil.
-    /// 출석(`.attendance`) + 세션 적립(`.sessionComplete`) + 스트릭 이벤트(`.streak*`) trigger.
-    /// 세션 적립 trigger는 `SessionResultSheet`와 동시 표시되지 않도록 ContentView
-    /// overlay가 `lastCompletedSession == nil`(=sheet 닫힘)일 때만 그려진다.
-    var pendingRewardGrant: RewardGrant?
-    var rewardHistory: [RewardHistoryDTO] = []
-    var rewardHistoryLoadState: RewardHistoryLoadState = .idle
-
-    enum RewardHistoryLoadState: Equatable {
-        case idle
-        case loading
-        case loaded
-        case failed
-    }
 
     /// 업로드 실패 시 사용자가 "다시 시도"를 누르면 재시도할 payload (finalize 결과 + 분석 통계).
     /// in-memory 1회 retry 한정 — 영구 retry 큐는 다음 PR.
@@ -733,7 +723,7 @@ final class AppState {
             // 사용자가 보상→온보딩 순으로 마주치는 회귀를 차단. completeOnboarding()이
             // 튜토리얼 종료 직후 동일 경로를 호출해 이어준다.
             if hasCompletedOnboarding {
-                Task { await grantDailyAttendanceIfNeeded() }
+                Task { await home.grantDailyAttendanceIfNeeded() }
             }
         }
         if wasInForeground && !toForeground {
@@ -1216,8 +1206,6 @@ final class AppState {
         owned = []
         equipped = Equipped()
         todaySessions = []
-        rewardHistory = []
-        rewardHistoryLoadState = .idle
         displayName = nil
         loginMethod = nil
         didLoadProfile = false
@@ -1239,7 +1227,6 @@ final class AppState {
         showShortSessionConfirm = false
         showAirPodsConnectionPrompt = false
         lastCompletedSession = nil
-        pendingRewardGrant = nil
         sessionUploadStatus = .idle
         sessionUploadErrorMessage = nil
         pendingUpload = nil
@@ -1316,35 +1303,13 @@ final class AppState {
         }
     }
 
-    /// 서버 스트릭 이벤트 → 보상 다이얼로그 매핑. 계산은 서버가 끝냈고 iOS는 표시만 한다.
-    /// NONE/INCREMENTED는 알림 없음(nil). 서버가 한 번에 한 이벤트만 주므로 단순 매핑으로 충분.
-    private func rewardGrant(forStreak streak: SessionStreakDTO) -> RewardGrant? {
-        switch streak.event {
-        case "MILESTONE":       return RewardGrant(amount: 1, kind: .streakMilestone(streakCount: streak.current))
-        case "SAVED_BY_FREEZE": return RewardGrant(amount: streak.freezeInventory, kind: .streakSaved)
-        case "RESET":           return RewardGrant(amount: 0, kind: .streakReset)
-        case "FIRST_DAY":       return RewardGrant(amount: 0, kind: .streakFirstDay)
-        default:                return nil
-        }
-    }
-
     /// 앱-열기 출석 멱등키 — REQ-08 형식(`app-open-<deviceId>-<yyyyMMdd Asia/Seoul>`).
     /// iOS가 트리거 시점에 키를 만들고, 서버가 이 키로 일 1회 적립을 판정한다.
     /// 서버(AttendanceService)가 같은 포맷으로 키를 유도하므로, 포맷 변경 시 양쪽을 함께 고쳐야
     /// 같은 날 두 키가 갈라져 이중 적립되는 일을 막는다.
     static func attendanceKey(deviceId: String, now: Date = Date()) -> String {
-        "app-open-\(deviceId)-\(attendanceKeyFormatter.string(from: now))"
+        AttendanceKey.make(deviceId: deviceId, now: now)
     }
-
-    /// DateFormatter의 포맷팅은 iOS 7+에서 thread-safe지만, 현재 호출 경로는 모두 MainActor다.
-    /// 비-메인 호출자를 추가한다면 그 점을 인지하고 쓸 것.
-    private static let attendanceKeyFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.timeZone = TimeZone(identifier: "Asia/Seoul")
-        f.dateFormat = "yyyyMMdd"
-        return f
-    }()
 
     /// 식사 종료 후 IMU 세션 봉인 결과 + 분석 통계를 받아 Storage 업로드 → chewing_session INSERT.
     /// 결과는 `sessionUploadStatus`로 publish되어 UI alert이 관찰한다. 실패 시 payload를
@@ -1404,24 +1369,7 @@ final class AppState {
             todaySessions.append(dto)
             // 식사 종료 직후 ReportCardView를 sheet로 띄울 trigger. 사용자가 닫으면 nil.
             lastCompletedSession = dto
-            // 우선순위: 스트릭 이벤트(마일스톤/프리즈/리셋/첫날) > 세션 적립 도토리. 둘 다
-            // 발생해도 다이얼로그는 1개만 — milestone이 더 임팩트. 모두 서버 응답값으로 표시만 한다.
-            // 멱등 재전송(idempotentReplay)이면 적립 0이므로 도토리 다이얼로그를 띄우지 않는다.
-            // 다이얼로그는 우선순위 1개만 표시(스트릭 > 세션 적립). UI 정책.
-            if let streakGrant = rewardGrant(forStreak: result.streak) {
-                pendingRewardGrant = streakGrant
-                analytics.track(.streakEvent(type: streakGrant.kind.analyticsType, amount: streakGrant.amount))
-            } else if result.reward.grantedPoints > 0 && !result.reward.idempotentReplay {
-                // SessionResultSheet가 먼저 떠 있는 상태 — ContentView overlay는
-                // sheet 닫힌 후(`lastCompletedSession == nil`)에만 그려져, 다이얼로그가
-                // sheet에 가려지지 않고 순차로 등장한다.
-                pendingRewardGrant = RewardGrant(amount: result.reward.grantedPoints, kind: .sessionComplete)
-            }
-            // 적립 도토리 트래킹은 다이얼로그 우선순위와 분리한다 — 스트릭 마일스톤과 세션 적립이
-            // 동시에 발생해도 reward_earned가 누락되지 않도록(과소집계 방지). streak_event와는 별도 이벤트.
-            if result.reward.grantedPoints > 0 && !result.reward.idempotentReplay {
-                analytics.track(.rewardEarned(amount: result.reward.grantedPoints, kind: "session_complete"))
-            }
+            home.applySessionReward(from: result)
         } catch {
             handleRemoteError(error)
             if case RemoteStoreError.authExpired = error { return }
@@ -1473,7 +1421,7 @@ final class AppState {
             // profile fetch 실패해도 me()가 성공했으면 onboarding 판정은 이미 완료.
             didLoadProfile = true
             if isInForeground && hasCompletedOnboarding {
-                await grantDailyAttendanceIfNeeded()
+                await home.grantDailyAttendanceIfNeeded()
             }
             return
         }
@@ -1506,7 +1454,7 @@ final class AppState {
         // me()로 온보딩 완료를 확인한 경우: foreground 진입 시점엔 아직 false였을 수 있으므로,
         // 여기서 이어서 출석 적립을 트리거한다.
         if isInForeground && hasCompletedOnboarding {
-            await grantDailyAttendanceIfNeeded()
+            await home.grantDailyAttendanceIfNeeded()
         }
     }
 
@@ -1545,33 +1493,7 @@ final class AppState {
         hasCompletedOnboarding = true
         auth.updateOnboardingCompleted(true)
         analytics.track(.onboardingCompleted())
-        Task { await grantDailyAttendanceIfNeeded() }
-    }
-
-    /// 앱-열기 출석 적립을 서버에 요청한다. iOS는 멱등키로 트리거만 하고, 일 1회 적립 판정과
-    /// 잔액은 서버가 정본으로 정한다. 같은 날 이미 받았으면 서버가 idempotentReplay=true(적립 0)로
-    /// 응답해 다이얼로그가 뜨지 않는다(여러 진입점에서 중복 호출해도 안전). 응답으로 홈 상태를
-    /// 갱신해 foreground 진입 때 화면도 최신화된다. 실패(네트워크 등)는 silent — 다음 진입에서 재시도.
-    ///
-    /// foreground 스트릭 자동 방어는 ODO-54에서 드롭했다. 방어는 다음 세션 저장 응답의
-    /// SAVED_BY_FREEZE 이벤트로 흡수되며, 서버 홈 조회(GET /v1/me/home)는 readOnly라 스트릭을
-    /// 건드리지 않는다.
-    @MainActor
-    private func grantDailyAttendanceIfNeeded() async {
-        let deviceId = DeviceIdentity.shared
-        let key = Self.attendanceKey(deviceId: deviceId)
-        let result: AttendanceResultDTO
-        do {
-            result = try await remoteStore.earnAttendance(deviceId: deviceId, idempotencyKey: key)
-        } catch {
-            handleRemoteError(error)
-            return
-        }
-        applyHome(result.userStats)
-        if result.grantedPoints > 0 && !result.idempotentReplay {
-            pendingRewardGrant = RewardGrant(amount: result.grantedPoints, kind: .attendance)
-            analytics.track(.rewardEarned(amount: result.grantedPoints, kind: "attendance"))
-        }
+        Task { await home.grantDailyAttendanceIfNeeded() }
     }
 
     /// Tracking 탭 .task에서 호출 — 오늘 0시 이후 세션을 원격에서 가져와 리스트 동기화.
@@ -1591,18 +1513,6 @@ final class AppState {
         todaySessions = rows.filter { ReportCardModel.from($0) != nil }
         // 오늘 씹기 수·진행도·완료 여부는 서버가 정본 — 세션 리스트 동기화와 함께 홈도 갱신한다.
         await refreshFromServerHome()
-    }
-
-    @MainActor
-    func fetchRewardHistory() async {
-        rewardHistoryLoadState = .loading
-        do {
-            rewardHistory = try await remoteStore.fetchRewardHistory()
-            rewardHistoryLoadState = .loaded
-        } catch {
-            handleRemoteError(error)
-            rewardHistoryLoadState = .failed
-        }
     }
 
     /// 단일 세션 삭제 — 캘린더 DaySessionsView에서 swipe로 호출. todaySessions에서도
@@ -1665,12 +1575,6 @@ final class AppState {
     }
 
     /// Alert dismiss 시 호출. 실패 상태에서 dismiss 하면 payload 폐기(= 데이터 손실 수용).
-    /// RewardDialogView가 자동(2.5s) 또는 탭으로 dismiss 시 호출.
-    @MainActor
-    func dismissPendingRewardGrant() {
-        pendingRewardGrant = nil
-    }
-
     @MainActor
     func dismissSessionUploadStatus() {
         if sessionUploadStatus == .failure {
