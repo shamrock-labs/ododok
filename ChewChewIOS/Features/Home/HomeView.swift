@@ -82,36 +82,40 @@ struct HomeView: View {
         let status = CMHeadphoneMotionManager.authorizationStatus()
         let available = service.isDeviceMotionAvailable
 
-        // 모션 권한·기기 호환·실제 오디오 라우트(에어팟/헤드폰 등) 셋 다 확인.
-        // isDeviceMotionAvailable이 기기 호환만 보고 연결을 확신하지 못하는 케이스를
-        // 라우트 체크로 보완 — 시작 자체를 막아 silent 빈 세션을 차단한다.
-        if status == .denied || status == .restricted || !available || !hasHeadphoneAudioRoute {
+        switch AirPodsAutoStartGate.decision(
+            status: status,
+            available: available,
+            hasHeadphoneAudioRoute: hasHeadphoneAudioRoute
+        ) {
+        case .block:
+            state.showAirPodsConnectionPrompt = true
+            return
+        case .requestPermission:
+            state.requestMotionPermission {
+                if hasHeadphoneAudioRoute {
+                    hapticTrigger.toggle()
+                    state.beginAirPodsStartCountdown { [weak state] in
+                        state?.toggleEating()
+                    }
+                } else {
+                    state.waitForAirPodsConnectionThenStart { [weak state] in
+                        state?.toggleEating()
+                    }
+                }
+            } onDenied: {
+                state.showAirPodsConnectionPrompt = true
+            }
+            return
+        case .waitForAirPodsConnection:
             state.waitForAirPodsConnectionThenStart { [weak state] in
                 state?.toggleEating()
             }
             return
-        }
-
-        // REQ-01: notDetermined이면 즉시 시작하지 않고 권한 요청 → 결과에 따라 분기.
-        if !AppState.shouldStartImmediately(status: status, available: available) {
-            state.requestMotionPermission {
-                // 권한 허용됨 — 햅틱 + 카운트다운 후 측정 시작
-                hapticTrigger.toggle()
-                state.beginAirPodsStartCountdown { [weak state] in
-                    state?.toggleEating()
-                }
-            } onDenied: {
-                state.waitForAirPodsConnectionThenStart { [weak state] in
-                    state?.toggleEating()
-                }
+        case .startCountdown:
+            hapticTrigger.toggle()
+            state.beginAirPodsStartCountdown { [weak state] in
+                state?.toggleEating()
             }
-            return
-        }
-
-        // 이미 연결·권한 OK — 팝업 없이 바로 카운트다운.
-        hapticTrigger.toggle()
-        state.beginAirPodsStartCountdown { [weak state] in
-            state?.toggleEating()
         }
         #endif
     }
