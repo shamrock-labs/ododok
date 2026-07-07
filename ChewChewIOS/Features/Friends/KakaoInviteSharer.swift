@@ -51,7 +51,10 @@ enum KakaoInviteSharer {
     static func mobileWebFallbackURL(from rawValue: String?) -> URL? {
         guard let rawValue else { return nil }
         let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !trimmed.contains("$(") else { return nil }
+        guard !trimmed.isEmpty,
+              !trimmed.contains("$("),
+              !trimmed.localizedCaseInsensitiveContains("REPLACE")
+        else { return nil }
 
         guard let url = URL(string: trimmed), url.scheme == "https" else { return nil }
         return url

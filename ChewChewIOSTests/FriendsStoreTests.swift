@@ -108,7 +108,12 @@ final class FriendsStoreTests: XCTestCase {
     func testAcceptInviteSuccessRefreshesAndShowsSuccessToast() async {
         let repository = FakeFriendRepository(rankings: [ranking(name: "친구", points: 80)])
         var toasts: [String] = []
-        let store = makeStore(repository: repository, onToast: { toasts.append($0) })
+        var acceptedCallbackCount = 0
+        let store = makeStore(
+            repository: repository,
+            onToast: { toasts.append($0) },
+            onInviteAccepted: { acceptedCallbackCount += 1 }
+        )
 
         let accepted = await store.acceptInvite(code: "FRIEND-123")
 
@@ -116,17 +121,24 @@ final class FriendsStoreTests: XCTestCase {
         XCTAssertEqual(repository.acceptedCodes, ["FRIEND-123"])
         XCTAssertEqual(store.rankings.count, 1)
         XCTAssertEqual(toasts, ["친구가 됐어요! 도토리 100개 받았어요"])
+        XCTAssertEqual(acceptedCallbackCount, 1)
     }
 
     func testAcceptInviteAlreadyFriendShowsExistingFriendToast() async {
         let repository = FakeFriendRepository(acceptResult: FriendAcceptResultDTO(accepted: true, bonusGranted: false))
         var toasts: [String] = []
-        let store = makeStore(repository: repository, onToast: { toasts.append($0) })
+        var acceptedCallbackCount = 0
+        let store = makeStore(
+            repository: repository,
+            onToast: { toasts.append($0) },
+            onInviteAccepted: { acceptedCallbackCount += 1 }
+        )
 
         let accepted = await store.acceptInvite(code: "FRIEND-123")
 
         XCTAssertTrue(accepted)
         XCTAssertEqual(toasts, ["이미 친구예요"])
+        XCTAssertEqual(acceptedCallbackCount, 1)
     }
 
     func testAcceptInviteFailureKeepsStateAndShowsMappedError() async {
@@ -135,7 +147,12 @@ final class FriendsStoreTests: XCTestCase {
             acceptError: RemoteStoreError.server(status: 400, code: 4012, message: "self invite")
         )
         var toasts: [String] = []
-        let store = makeStore(repository: repository, onToast: { toasts.append($0) })
+        var acceptedCallbackCount = 0
+        let store = makeStore(
+            repository: repository,
+            onToast: { toasts.append($0) },
+            onInviteAccepted: { acceptedCallbackCount += 1 }
+        )
         await store.load()
 
         let accepted = await store.acceptInvite(code: "SELF")
@@ -143,6 +160,7 @@ final class FriendsStoreTests: XCTestCase {
         XCTAssertFalse(accepted)
         XCTAssertEqual(store.rankings.map(\.name), ["기존친구"])
         XCTAssertEqual(toasts, ["본인 초대 코드는 수락할 수 없어요"])
+        XCTAssertEqual(acceptedCallbackCount, 0)
     }
 
     func testDisplayNameUsesCurrentUserNameForMeRow() {
@@ -160,6 +178,7 @@ final class FriendsStoreTests: XCTestCase {
         onToast: @escaping (String) -> Void = { _ in },
         onAuthExpired: @escaping () -> Void = {},
         onInviteReceived: @escaping (Bool) -> Void = { _ in },
+        onInviteAccepted: @escaping () -> Void = {},
         onPendingInviteCodeChanged: @escaping (String?) -> Void = { _ in }
     ) -> FriendsStore {
         FriendsStore(
@@ -171,6 +190,7 @@ final class FriendsStoreTests: XCTestCase {
             onToast: onToast,
             onAuthExpired: onAuthExpired,
             onInviteReceived: onInviteReceived,
+            onInviteAccepted: onInviteAccepted,
             onPendingInviteCodeChanged: onPendingInviteCodeChanged
         )
     }

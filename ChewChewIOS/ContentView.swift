@@ -62,6 +62,10 @@ struct ContentView: View {
         .onChange(of: state.globalToast) { _, toast in
             presentedGlobalToast = toast.map { AppToastMessage($0, kind: .info) }
         }
+        .onChange(of: state.friendsTabRequestID) { _, requestID in
+            guard requestID > 0 else { return }
+            tab = .friends
+        }
     }
 
     private var mainTabs: some View {
