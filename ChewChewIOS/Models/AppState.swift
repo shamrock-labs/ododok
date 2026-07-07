@@ -246,7 +246,7 @@ final class AppState {
     )
 
     @MainActor @ObservationIgnored lazy var mealResults: MealSessionResultStore = MealSessionResultStore(
-        remoteStore: remoteStore,
+        repository: RemoteStoreMealSessionUploadRepository(remoteStore: remoteStore),
         analytics: analytics,
         appVersion: Self.appVersion,
         onHomeReceived: { [weak self] home in
