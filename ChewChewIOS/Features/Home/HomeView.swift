@@ -1,5 +1,4 @@
 import SwiftUI
-import CoreMotion
 
 struct HomeView: View {
     @Environment(AppState.self) private var state
@@ -78,53 +77,12 @@ struct HomeView: View {
         state.toggleEating()
         return
         #else
-        let service = CMHeadphoneMotionManager()
-        let status = CMHeadphoneMotionManager.authorizationStatus()
-        let available = service.isDeviceMotionAvailable
-
-        switch AirPodsAutoStartGate.decision(
-            status: status,
-            available: available,
-            hasHeadphoneAudioRoute: hasHeadphoneAudioRoute
-        ) {
-        case .block:
-            state.showAirPodsConnectionPrompt = true
-            return
-        case .requestPermission:
-            state.requestMotionPermission {
-                if hasHeadphoneAudioRoute {
-                    hapticTrigger.toggle()
-                    state.beginAirPodsStartCountdown { [weak state] in
-                        state?.toggleEating()
-                    }
-                } else {
-                    state.waitForAirPodsConnectionThenStart { [weak state] in
-                        state?.toggleEating()
-                    }
-                }
-            } onDenied: {
-                state.showAirPodsConnectionPrompt = true
-            }
-            return
-        case .waitForAirPodsConnection:
-            state.waitForAirPodsConnectionThenStart { [weak state] in
-                state?.toggleEating()
-            }
-            return
-        case .startCountdown:
+        state.beginMealStartAfterAirPodsReadiness {
             hapticTrigger.toggle()
-            state.beginAirPodsStartCountdown { [weak state] in
-                state?.toggleEating()
-            }
+        } onFinished: { [weak state] in
+            state?.toggleEating()
         }
         #endif
-    }
-
-    /// 현재 오디오 출력 라우트에 AirPods/Bluetooth/유선 헤드폰이 포함되어 있는지.
-    /// CMHeadphoneMotionManager.isDeviceMotionAvailable이 미연결 상태에서도 true를
-    /// 반환하는 케이스를 보완한다.
-    private var hasHeadphoneAudioRoute: Bool {
-        state.hasHeadphoneAudioRoute
     }
 
     // MARK: Top bar

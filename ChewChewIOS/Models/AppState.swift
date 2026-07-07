@@ -603,20 +603,14 @@ final class AppState {
 
     // MARK: - Motion permission guard
 
-    @MainActor func requestMotionPermission(onGranted: @escaping () -> Void, onDenied: @escaping () -> Void) {
-        mealSession.requestMotionPermission(onGranted: onGranted, onDenied: onDenied)
-    }
-
-    @MainActor var hasHeadphoneAudioRoute: Bool {
-        mealSession.hasHeadphoneAudioRoute
-    }
-
-    @MainActor func waitForAirPodsConnectionThenStart(onFinished: @escaping () -> Void) {
-        mealSession.waitForAirPodsConnectionThenStart(onFinished: onFinished)
-    }
-
-    @MainActor func beginAirPodsStartCountdown(onFinished: @escaping () -> Void) {
-        mealSession.beginAirPodsStartCountdown(onFinished: onFinished)
+    @MainActor func beginMealStartAfterAirPodsReadiness(
+        onCountdownStarted: @escaping () -> Void,
+        onFinished: @escaping () -> Void
+    ) {
+        mealSession.beginMealStartAfterAirPodsReadiness(
+            onCountdownStarted: onCountdownStarted,
+            onFinished: onFinished
+        )
     }
 
     @MainActor func dismissAirPodsConnectionPrompt() {

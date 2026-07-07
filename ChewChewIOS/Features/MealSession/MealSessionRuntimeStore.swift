@@ -221,7 +221,71 @@ final class MealSessionRuntimeStore {
         }
     }
 
-    func requestMotionPermission(onGranted: @escaping () -> Void, onDenied: @escaping () -> Void) {
+    func beginMealStartAfterAirPodsReadiness(
+        onCountdownStarted: @escaping () -> Void,
+        onFinished: @escaping () -> Void
+    ) {
+        let service = CMHeadphoneMotionManager()
+        let decision = AirPodsAutoStartGate.decision(
+            status: CMHeadphoneMotionManager.authorizationStatus(),
+            available: service.isDeviceMotionAvailable,
+            hasHeadphoneAudioRoute: hasHeadphoneAudioRoute
+        )
+        continueMealStartAfterAirPodsDecision(
+            decision,
+            onCountdownStarted: onCountdownStarted,
+            onFinished: onFinished
+        )
+    }
+
+    private var hasHeadphoneAudioRoute: Bool {
+        airPodsAutoStartCoordinator.isHeadphoneConnected
+    }
+
+    private func waitForAirPodsConnectionThenStart(onFinished: @escaping () -> Void) {
+        airPodsAutoStartCoordinator.waitForConnectionThenStart(onFinished: onFinished)
+    }
+
+    private func beginAirPodsStartCountdown(onFinished: @escaping () -> Void) {
+        airPodsAutoStartCoordinator.startCountdownWithDisconnectMonitoring(onFinished: onFinished)
+    }
+
+    func dismissAirPodsConnectionPrompt() {
+        airPodsAutoStartCoordinator.dismissPromptAndStop()
+    }
+
+    private func continueMealStartAfterAirPodsDecision(
+        _ decision: AirPodsAutoStartDecision,
+        onCountdownStarted: @escaping () -> Void,
+        onFinished: @escaping () -> Void
+    ) {
+        switch decision {
+        case .block:
+            showAirPodsConnectionPrompt = true
+        case .requestPermission:
+            requestMotionPermission {
+                if self.hasHeadphoneAudioRoute {
+                    self.beginMealStartCountdown(
+                        onCountdownStarted: onCountdownStarted,
+                        onFinished: onFinished
+                    )
+                } else {
+                    self.waitForAirPodsConnectionThenStart(onFinished: onFinished)
+                }
+            } onDenied: {
+                self.showAirPodsConnectionPrompt = true
+            }
+        case .waitForAirPodsConnection:
+            waitForAirPodsConnectionThenStart(onFinished: onFinished)
+        case .startCountdown:
+            beginMealStartCountdown(
+                onCountdownStarted: onCountdownStarted,
+                onFinished: onFinished
+            )
+        }
+    }
+
+    private func requestMotionPermission(onGranted: @escaping () -> Void, onDenied: @escaping () -> Void) {
         headphoneMotionService.start { [weak self] _ in
             self?.headphoneMotionService.stop()
             DispatchQueue.main.async {
@@ -236,20 +300,12 @@ final class MealSessionRuntimeStore {
         }
     }
 
-    var hasHeadphoneAudioRoute: Bool {
-        airPodsAutoStartCoordinator.isHeadphoneConnected
-    }
-
-    func waitForAirPodsConnectionThenStart(onFinished: @escaping () -> Void) {
-        airPodsAutoStartCoordinator.waitForConnectionThenStart(onFinished: onFinished)
-    }
-
-    func beginAirPodsStartCountdown(onFinished: @escaping () -> Void) {
-        airPodsAutoStartCoordinator.startCountdownWithDisconnectMonitoring(onFinished: onFinished)
-    }
-
-    func dismissAirPodsConnectionPrompt() {
-        airPodsAutoStartCoordinator.dismissPromptAndStop()
+    private func beginMealStartCountdown(
+        onCountdownStarted: @escaping () -> Void,
+        onFinished: @escaping () -> Void
+    ) {
+        onCountdownStarted()
+        beginAirPodsStartCountdown(onFinished: onFinished)
     }
 
     func appendIMUWaveformSample(_ energy: Double) {
