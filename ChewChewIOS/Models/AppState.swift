@@ -1,10 +1,6 @@
 import Foundation
 import Observation
 import CoreMotion
-import UserNotifications
-#if canImport(UIKit)
-import UIKit
-#endif
 
 enum IMUWaveformSource: Equatable {
     case idle
@@ -53,11 +49,6 @@ enum IMUWaveformSource: Equatable {
 /// 실제 씹기 검출과는 무관한 화면 연출이다.
 @Observable
 final class AppState {
-    private static let maxIMUWaveformSamples = 54
-    private static let idleIMUWaveformSamples: [Double] = (0..<maxIMUWaveformSamples).map { i in
-        0.05 + sin(Double(i) * 0.42) * 0.015
-    }
-
     // MARK: - Persisted-ish state (현재는 인메모리)
     //
     // 신규 디바이스 첫 실행은 모두 0/빈 상태에서 시작. 시드값을 더미로 박아 두면
@@ -148,71 +139,45 @@ final class AppState {
     // MARK: - Eating session
 
     /// 현재 식사 중인지 여부. 홈의 "식사 시작/종료" 버튼이 토글, 트래킹 탭이 관찰.
-    var isEating: Bool = false
+    @MainActor var isEating: Bool { mealSession.isEating }
 
     /// 식사 시작 시각. 통계/지속시간 표시 등에 사용.
-    @ObservationIgnored private(set) var eatingStartedAt: Date?
+    @MainActor var eatingStartedAt: Date? { mealSession.eatingStartedAt }
 
     /// 화면 표시용 최근 IMU 에너지 샘플. 원시 IMU 데이터는 저장하지 않음.
-    var imuWaveformSamples: [Double] = AppState.idleIMUWaveformSamples
-    var imuWaveformSource: IMUWaveformSource = .idle
+    @MainActor var imuWaveformSamples: [Double] { mealSession.imuWaveformSamples }
+    @MainActor var imuWaveformSource: IMUWaveformSource {
+        get { mealSession.imuWaveformSource }
+        set { mealSession.imuWaveformSource = newValue }
+    }
 
     // MARK: - IMU diagnostics (원시 데이터는 저장 안 함, 진단 지표만)
 
     /// 현재 식사 세션에서 받은 실제 IMU 샘플 개수 (데모/페이크 timer는 카운트 X).
-    var imuSampleCount: Int = 0
+    @MainActor var imuSampleCount: Int { mealSession.imuSampleCount }
 
     /// 마지막으로 실제 IMU 샘플이 들어온 시각. 백그라운드 수집 검증용.
-    var lastIMUSampleAt: Date?
+    @MainActor var lastIMUSampleAt: Date? { mealSession.lastIMUSampleAt }
 
     /// 알림 딥링크(`chewchew://start`) 수신 시 true. 3초 후 자동 false.
     /// HomeView의 MealToggle 강조 스타일 트리거.
-    var startButtonHighlighted: Bool = false
+    @MainActor var startButtonHighlighted: Bool {
+        get { mealSession.startButtonHighlighted }
+        set { mealSession.startButtonHighlighted = newValue }
+    }
 
     /// 끼니 리마인더 알림의 "식사 시작" 액션에서 set. HomeView가 관찰해 시작 가드를
     /// 그대로 태운다(모션 권한·AirPods 체크 재사용). 한 번 처리하면 false로 되돌린다.
-    var pendingMealStartRequest: Bool = false
+    @MainActor var pendingMealStartRequest: Bool {
+        get { mealSession.pendingMealStartRequest }
+        set { mealSession.pendingMealStartRequest = newValue }
+    }
 
     /// 앱 foreground 여부. scenePhase 관찰자가 갱신.
     /// 초기값 false — 앱 launch 시점엔 아직 .active phase가 아니므로, scenePhase가
     /// `.active`로 처음 도달할 때 `sceneDidChange(toForeground:true)`의 전이
     /// 조건(`!wasInForeground && toForeground`)이 성립해 일일 출석 보너스가 트리거된다.
     var isInForeground: Bool = false
-
-    /// 시뮬레이터에선 첫 접근을 막아 CoreMotion 권한 다이얼로그가 안 뜨도록 lazy.
-    /// 실기기에선 식사 시작 시 최초 1회 init.
-    @ObservationIgnored private lazy var headphoneMotionService = HeadphoneMotionService()
-    @ObservationIgnored private var chewPulseTimer: Timer?
-    @ObservationIgnored private var demoIMUWaveformTimer: Timer?
-    @ObservationIgnored private var imuWaveformPhase: Double = 0
-
-    /// 식사 세션 동안 전화 통화 시작을 관찰해, 측정을 멈추고 통화 종료 시 이어가기를 유도한다.
-    @ObservationIgnored private let callMonitor = CallInterruptionMonitor()
-
-    /// 직전 인터럽트가 전화였는지 표시. 전화면 자동 재개하지 않고,
-    /// 중단 알림의 "계속하기"를 누를 때까지 기다린다.
-    @ObservationIgnored private var interruptionWasCall = false
-
-    /// 통화 등으로 측정이 멈춘 시각. 이어가기 시 이 구간을 IMU 세션 갭으로 기록해
-    /// 한 끼가 통화로 두 세션으로 쪼개지지 않게 한다.
-    @ObservationIgnored private var interruptionBeganAt: Date?
-
-    /// 식사 세션 동안 오디오 세션을 유지하고 씹기 페이스 톤을 낸다.
-    @ObservationIgnored private let backgroundKeepAlive = BackgroundAudioKeepAlive()
-
-    /// `/auth/me`의 `alertVolume`으로 갱신하고 식사 시작 시 keep-alive에 주입한다.
-    @ObservationIgnored private var alertVolume: Float = 0.5
-
-    /// 식사 측정 Live Activity(잠금화면·다이내믹 아일랜드) 관리자. 설정에서 꺼져 있으면 노옵.
-    @ObservationIgnored private let mealActivity = MealActivityController()
-
-    // MARK: - 씹기 감지 (DSP)
-
-    /// 식사 세션 동안 활성. IMU 샘플을 받아 DSP로 씹기 피크를 세고, 종료 시 세션 통계 산출.
-    @ObservationIgnored private var chewCounter: ChewCounter?
-
-    /// 현재 사용 중인 감지 알고리즘 식별자. DB의 `model_version` 컬럼에 저장.
-    private static let modelVersion = "dsp-chewcounter-1"
 
     // MARK: - Remote persistence
 
@@ -300,6 +265,20 @@ final class AppState {
     /// 제품·리텐션 분석 포트(ODO-79). Amplitude·(후속) Firebase로 fan-out. 테스트/미설정 시 Noop.
     @ObservationIgnored let analytics: AnalyticsService
 
+    @MainActor @ObservationIgnored lazy var mealSession: MealSessionRuntimeStore = MealSessionRuntimeStore(
+        analytics: analytics,
+        onChewPulse: { [weak self] in
+            self?.animKey &+= 1
+        },
+        onPersistSnapshot: { [weak self] in
+            self?.persistSnapshot()
+        },
+        onSessionReadyForUpload: { [weak self] output, stats in
+            self?.sessionUploadStatus = .uploading
+            await self?.performSessionUpload(output, stats: stats)
+        }
+    )
+
     /// 서버 기반 식사 푸시 조정자(ODO-56) — APNs 토큰 등록 + 서버/로컬 알림 전환을 관리.
     @ObservationIgnored let mealPushCoordinator: MealPushCoordinator
 
@@ -311,15 +290,16 @@ final class AppState {
     /// 중간 상태가 winner로 굳을 수 있어, 각 작업이 이전 작업 종료를 await하는 체인으로 직렬화한다.
     @ObservationIgnored private var remoteSyncChain: Task<Void, Never> = Task {}
 
-    /// 한 끼 식사의 raw IMU 6채널을 메모리에 모으는 버퍼. 식사 종료 시 봉인 + 업로드.
-    @ObservationIgnored private var imuSessionRecorder: IMUSessionRecorder?
-
     /// 식사 종료 직후 IMU 세션 업로드 결과. 화면이 alert 표시할 때 binding으로 관찰.
     var sessionUploadStatus: SessionUploadStatus = .idle
 
     /// 업로드 실패 시 사용자에게 보여줄 사유(서버가 준 메시지 / 오프라인 안내 등).
     /// nil이면 화면이 기본 카피를 쓴다. 성공·dismiss 시 비운다.
     var sessionUploadErrorMessage: String?
+
+    /// 업로드 실패 시 사용자가 "다시 시도"를 누르면 재시도할 payload (finalize 결과 + 분석 통계).
+    /// in-memory 1회 retry 한정 — 영구 retry 큐는 다음 PR.
+    @ObservationIgnored private var pendingUpload: (output: IMUSessionRecorder.Output, stats: SessionStats?)?
 
     /// "오늘의 식사 기록" 리스트 — 오늘 0시 이후 시작된 chewing_session 행들.
     /// Tracking 탭이 관찰만 하고, fetch/append는 AppState가 single source of truth.
@@ -332,15 +312,17 @@ final class AppState {
 
     /// 식사 시작 후 60초 미만에서 종료를 시도할 때 사용자에게 "더 측정할까요"를
     /// 묻는 확인 다이얼로그 플래그. 사용자가 "그만두기"를 선택하면 세션을 discard.
-    var showShortSessionConfirm: Bool = false
+    @MainActor var showShortSessionConfirm: Bool {
+        get { mealSession.showShortSessionConfirm }
+        set { mealSession.showShortSessionConfirm = newValue }
+    }
 
     /// 시작 시점에 AirPods/모션 권한이 없거나 라우트가 비어 시작을 차단했을 때 띄우는 플래그.
     /// 종료 시 너무 짧은 세션 확인(showShortSessionConfirm)과 메시지를 분리한다.
-    var showAirPodsConnectionPrompt: Bool = false
-
-    /// 업로드 실패 시 사용자가 "다시 시도"를 누르면 재시도할 payload (finalize 결과 + 분석 통계).
-    /// in-memory 1회 retry 한정 — 영구 retry 큐는 다음 PR.
-    @ObservationIgnored private var pendingUpload: (output: IMUSessionRecorder.Output, stats: SessionStats?)?
+    @MainActor var showAirPodsConnectionPrompt: Bool {
+        get { mealSession.showAirPodsConnectionPrompt }
+        set { mealSession.showAirPodsConnectionPrompt = newValue }
+    }
 
     enum SessionUploadStatus: Equatable {
         case idle
@@ -398,254 +380,24 @@ final class AppState {
 
     // MARK: - Eating actions
 
-    private static func normalizedAlertVolume(_ volume: Double) -> Float {
-        guard volume.isFinite else { return 0.5 }
-        return Float(max(0.0, min(1.0, volume)))
+    @MainActor func startEating() { mealSession.startEating() }
+    @MainActor func stopEating() { mealSession.stopEating() }
+    @MainActor func discardCurrentSession() { mealSession.discardCurrentSession() }
+    @MainActor func toggleEating() { mealSession.toggleEating() }
+    @MainActor func resumeMeasurement() { mealSession.resumeMeasurement() }
+    @MainActor func stopMeasurementFromNotification() { mealSession.stopMeasurementFromNotification() }
+    @MainActor func requestStartHighlight(duration: TimeInterval = 3) { mealSession.requestStartHighlight(duration: duration) }
+    @MainActor func requestMealStart() { mealSession.requestMealStart() }
+    @MainActor func handleNotificationAction(_ action: String, deepLink: String?) {
+        mealSession.handleNotificationAction(action, deepLink: deepLink)
     }
 
-    func startEating() {
-        guard !isEating else { return }
-        isEating = true
-        analytics.track(.mealSessionStarted())
-        let now = Date()
-        eatingStartedAt = now
-
-        prepareEatingSession(startedAt: now)
-        let counter = ChewCounter()
-        chewCounter = counter
-        startChewAnimationLoop()
-
-        configureCallInterruptionHandling()
-        Task { await MealNotificationService.requestAuthorizationIfNeeded() }
-        startAudioFeedback(counter: counter)
-        mealActivity.start(startedAt: now)
-
-        if !startHeadphoneMotionLoop() {
-            startDemoIMUWaveformLoop(source: imuWaveformSource)
-        }
-    }
-
-    private func prepareEatingSession(startedAt: Date) {
-        imuSampleCount = 0
-        lastIMUSampleAt = nil
-        imuSessionRecorder = IMUSessionRecorder(startedAt: startedAt)
-        interruptionWasCall = false
-        interruptionBeganAt = nil
-    }
-
-    /// 통화가 식사 측정을 끊었을 때 멈춤 카드와 이어가기 알림을 연결한다.
-    private func configureCallInterruptionHandling() {
-        callMonitor.onCallStarted = { [weak self] in
-            Task { @MainActor [weak self] in
-                await self?.pauseMeasurementForCall()
-            }
-        }
-        callMonitor.onCallEnded = { [weak self] in
-            Task { @MainActor [weak self] in
-                await self?.showResumePromptAfterCall()
-            }
-        }
-        callMonitor.start()
-    }
-
-    @MainActor
-    private func pauseMeasurementForCall() async {
-        guard isEating else { return }
-        await withMealBackgroundTask(named: "MealCallPause") {
-            interruptionWasCall = true
-            if interruptionBeganAt == nil { interruptionBeganAt = Date() }
-            stopHeadphoneMotionLoop()
-            await mealActivity.setPaused(true, callActive: true)
-        }
-    }
-
-    @MainActor
-    private func showResumePromptAfterCall() async {
-        guard isEating, interruptionWasCall else { return }
-        await withMealBackgroundTask(named: "MealCallEnded") {
-            await mealActivity.setPaused(true, callActive: false)
-            await MealNotificationService.scheduleInterruptionPrompt()
-        }
-    }
-
-    @MainActor
-    private func withMealBackgroundTask(named name: String, operation: () async -> Void) async {
-        #if canImport(UIKit)
-        let bgTask = UIApplication.shared.beginBackgroundTask(withName: name)
-        defer {
-            if bgTask != .invalid { UIApplication.shared.endBackgroundTask(bgTask) }
-        }
-        #endif
-        await operation()
-    }
-
-    /// 서버 `alertVolume`을 적용하고, 지속 씹기 이벤트를 페이스 톤으로 연결한다.
-    private func startAudioFeedback(counter: ChewCounter) {
-        backgroundKeepAlive.volume = alertVolume
-        backgroundKeepAlive.start()
-        let keepAlive = backgroundKeepAlive
-        Task {
-            await counter.setSustainedChewingHandler {
-                Task { @MainActor in
-                    let isChewing = await counter.isChewing
-                    let avgInterval = await counter.avgInterval
-                    keepAlive.playTone(for: ChewPaceSample(isChewing: isChewing, avgInterval: avgInterval))
-                }
-            }
-        }
-    }
-
-    func stopEating() {
-        guard isEating else { return }
-        isEating = false
-        let sessionDurationSec = eatingStartedAt.map { Int(Date().timeIntervalSince($0)) } ?? 0
-        eatingStartedAt = nil
-        let counter = stopEatingRuntime()
-        persistSnapshot()
-
-        chewCounter = nil
-        if let recorder = imuSessionRecorder {
-            imuSessionRecorder = nil
-            let endedAt = Date()
-            let output = recorder.finalize(endedAt: endedAt)
-            guard output.sampleCount > 0 else {
-                analytics.track(.mealSessionAborted(reason: "no_samples", durationSec: sessionDurationSec))
-                return
-            }
-            sessionUploadStatus = .uploading
-            Task { [weak self] in
-                let stats = await counter?.sessionStats(modelVersion: AppState.modelVersion)
-                await self?.performSessionUpload(output, stats: stats)
-            }
-        }
-    }
-
-    private func stopEatingRuntime() -> ChewCounter? {
-        stopHeadphoneMotionLoop()
-        stopChewAnimationLoop()
-        stopDemoIMUWaveformLoop()
-        let counter = chewCounter
-        Task { await counter?.setSustainedChewingHandler(nil) }
-        backgroundKeepAlive.stop()
-        callMonitor.onCallStarted = nil
-        callMonitor.onCallEnded = nil
-        callMonitor.stop()
-        interruptionWasCall = false
-        interruptionBeganAt = nil
-        MealNotificationService.cancelInterruptionPrompt()
-        mealActivity.end()
-        resetIMUWaveform()
-        imuWaveformSource = .idle
-        return counter
-    }
-
-    /// 너무 짧게 끝낸 세션을 사용자가 "그만두기" 선택했을 때 호출.
-    /// 측정 상태만 정리하고 DB·도토리·리포트엔 어떤 흔적도 남기지 않는다.
-    func discardCurrentSession() {
-        guard isEating else { return }
-        isEating = false
-        let sessionDurationSec = eatingStartedAt.map { Int(Date().timeIntervalSince($0)) } ?? 0
-        eatingStartedAt = nil
-        _ = stopEatingRuntime()
-        persistSnapshot()
-        chewCounter = nil
-        if let recorder = imuSessionRecorder {
-            imuSessionRecorder = nil
-            _ = recorder.finalize(endedAt: Date())
-        }
-        analytics.track(.mealSessionAborted(reason: "user_discard", durationSec: sessionDurationSec))
-    }
-
-    func toggleEating() {
-        isEating ? stopEating() : startEating()
-    }
-
-    /// 중단된 측정을 같은 세션으로 이어간다 — 중단 알림 "계속하기" 또는 `chewchew://resume`에서 호출.
-    /// 녹음 버퍼·시작 시각·추론기를 그대로 두고 갭만 기록해, 한 끼가 통화로 두 세션으로 쪼개지지 않게 한다.
-    /// 세션이 메모리에서 사라졌으면(앱 종료 등) 새로 시작하도록 시작 버튼을 강조한다.
-    @MainActor
-    func resumeMeasurement() {
-        guard isEating else {
-            requestStartHighlight()
-            return
-        }
-        if let began = interruptionBeganAt {
-            imuSessionRecorder?.recordInterruptionGap(began: began, ended: Date())
-        }
-        interruptionWasCall = false
-        interruptionBeganAt = nil
-        MealNotificationService.cancelInterruptionPrompt()
-        Task { await self.mealActivity.setPaused(false) }
-        _ = startHeadphoneMotionLoop()
-    }
-
-    /// 중단 알림 "그만하기"에서 호출 — 멈춘 세션을 정상 종료(부분 기록 업로드)한다.
-    @MainActor
-    func stopMeasurementFromNotification() {
-        MealNotificationService.cancelInterruptionPrompt()
-        guard isEating else { return }
-        if AppState.shouldConfirmShortSessionStop(startedAt: eatingStartedAt) {
-            showShortSessionConfirm = true
-            return
-        }
-        stopEating()
-    }
-
-    /// 앱 내 종료 버튼과 알림 "그만하기"가 공유하는 1분 미만 세션 확인 기준.
     static func shouldConfirmShortSessionStop(startedAt: Date?, now: Date = Date()) -> Bool {
-        guard let startedAt else { return false }
-        return now.timeIntervalSince(startedAt) < 60
+        MealSessionRuntimeRules.shouldConfirmShortSessionStop(startedAt: startedAt, now: now)
     }
 
-    /// `.ended + shouldResume` 인터럽트에서 자동 재개할지 판단하는 순수 함수.
-    /// 전화는 사용자가 중단 알림에서 직접 이어가므로 자동 재개하지 않는다.
     static func shouldAutoResume(interruptionWasCall: Bool, shouldResume: Bool) -> Bool {
-        shouldResume && !interruptionWasCall
-    }
-
-    /// 딥링크(`chewchew://start`) 수신 시 호출. 시작 버튼을 3초간 강조.
-    /// delay 파라미터는 단위테스트에서 0으로 주입 가능.
-    @MainActor
-    func requestStartHighlight(duration: TimeInterval = 3) {
-        startButtonHighlighted = true
-        Task {
-            try? await Task.sleep(for: .seconds(duration))
-            startButtonHighlighted = false
-        }
-    }
-
-    /// 끼니 리마인더 알림의 "식사 시작" 액션 진입점. 측정 중이 아니면 시작 요청 플래그를
-    /// 올려 HomeView가 시작 가드(권한·AirPods 확인)를 태우게 한다.
-    @MainActor
-    func requestMealStart() {
-        guard !isEating else { return }
-        pendingMealStartRequest = true
-    }
-
-    /// 알림 탭·액션 → 앱 동작 라우팅의 단일 진입점. NotificationDelegate는 raw `(action, deepLink)`만
-    /// 넘기고 "무엇을 할지" 결정은 여기 한 곳에 둔다(액션의 소유자와 매핑을 같은 곳에).
-    /// v1.2에서 MealSession이 분리되면 이 라우팅도 함께 이동한다.
-    @MainActor
-    func handleNotificationAction(_ action: String, deepLink: String?) {
-        switch action {
-        case MealNotificationService.startActionId:
-            requestMealStart()
-        case MealNotificationService.resumeActionId:
-            resumeMeasurement()
-        case MealNotificationService.stopActionId:
-            stopMeasurementFromNotification()
-        case UNNotificationDefaultActionIdentifier:
-            switch deepLink {
-            case MealNotificationService.deepLinkResume:
-                resumeMeasurement()
-            case MealNotificationService.deepLinkStart:
-                requestMealStart()
-            default:
-                break
-            }
-        default:
-            break
-        }
+        MealSessionRuntimeRules.shouldAutoResume(interruptionWasCall: interruptionWasCall, shouldResume: shouldResume)
     }
 
     // MARK: - Shop / Wardrobe actions
@@ -700,9 +452,17 @@ final class AppState {
         }
     }
 
-    var equippedHatItem: ShopItem?     { ShopItem.by(id: equipped.hat) }
-    var equippedGlassesItem: ShopItem? { ShopItem.by(id: equipped.glasses) }
-    var equippedAccItem: ShopItem?     { ShopItem.by(id: equipped.acc) }
+    var equippedHatItem: ShopItem? {
+        ShopItem.by(id: equipped.hat)
+    }
+
+    var equippedGlassesItem: ShopItem? {
+        ShopItem.by(id: equipped.glasses)
+    }
+
+    var equippedAccItem: ShopItem? {
+        ShopItem.by(id: equipped.acc)
+    }
 
     // MARK: - Scene phase
 
@@ -735,21 +495,13 @@ final class AppState {
 
     // MARK: - IMU waveform
 
-    /// 실제 AirPods motion source가 붙으면 이 진입점으로 정규화된 에너지를 전달.
-    func appendIMUWaveformSample(_ energy: Double) {
-        let sample = min(1.0, max(0.0, energy))
-        var samples = imuWaveformSamples
-        samples.append(sample)
-        if samples.count > Self.maxIMUWaveformSamples {
-            samples.removeFirst(samples.count - Self.maxIMUWaveformSamples)
-        }
-        imuWaveformSamples = samples
-    }
+    @MainActor func appendIMUWaveformSample(_ energy: Double) { mealSession.appendIMUWaveformSample(energy) }
 
-    /// CMDeviceMotion의 회전/가속도 크기를 화면용 턱 움직임 에너지로 단순 합성.
-    func recordIMUEnergy(rotationRateMagnitude: Double, userAccelerationMagnitude: Double) {
-        let energy = rotationRateMagnitude * 0.12 + userAccelerationMagnitude * 0.75
-        appendIMUWaveformSample(energy)
+    @MainActor func recordIMUEnergy(rotationRateMagnitude: Double, userAccelerationMagnitude: Double) {
+        mealSession.recordIMUEnergy(
+            rotationRateMagnitude: rotationRateMagnitude,
+            userAccelerationMagnitude: userAccelerationMagnitude
+        )
     }
 
     // MARK: - Erase all user data (REQ-05)
@@ -764,15 +516,13 @@ final class AppState {
         let deletionRefreshToken = authTokenStorage.refreshToken
 
         // 로컬 인메모리 상태 리셋 (reset()과 동일 범위)
-        stopEating()
+        mealSession.resetRuntimeState()
         clearTransientRuntimeState()
         clearPendingInviteCode()
         streak = 0
         points = 0
         animKey = 0
         freezeInventory = 0
-        resetIMUWaveform()
-        imuWaveformSource = .idle
         owned = []
         equipped = Equipped()
         todaySessions = []
@@ -800,14 +550,12 @@ final class AppState {
 
     @MainActor
     func reset() {
-        stopEating()
+        mealSession.resetRuntimeState()
         clearTransientRuntimeState()
         clearPendingInviteCode()
         streak = 0
         points = 0
         animKey = 0
-        resetIMUWaveform()
-        imuWaveformSource = .idle
         owned = []
         equipped = Equipped()
         todaySessions = []
@@ -870,8 +618,8 @@ final class AppState {
 
     /// 업로드 실패 원인을 저카디널리티 라벨로 분류(meal_session_failed의 reason 속성용).
     private static func uploadFailureReason(_ error: Error) -> String {
-        guard let e = error as? RemoteStoreError else { return "unknown" }
-        switch e {
+        guard let remoteError = error as? RemoteStoreError else { return "unknown" }
+        switch remoteError {
         case .authExpired: return "auth_expired"
         case .server: return "server"
         case .offline: return "offline"
@@ -922,28 +670,12 @@ final class AppState {
         todaySessions.reduce(0) { $0 + ($1.estimatedTotalChews ?? 0) }
     }
 
-    var imuWaveformStatusText: String {
-        imuWaveformSource.statusText
+    @MainActor var imuWaveformStatusText: String {
+        mealSession.imuWaveformStatusText
     }
 
-    var isIMUWaveformLive: Bool {
-        isEating && (imuWaveformSource.usesRealMotion || imuWaveformSource == .demo)
-    }
-
-    // MARK: - Chew animation pulse (다람이 씹기 모션용 고정 주기 틱)
-
-    /// 식사 중 다람이가 자연스럽게 우물거리도록 일정 간격으로 `animKey`를 올린다.
-    /// SquirrelView가 `animKey` 변화를 받아 한 번 씹는 bounce를 재생 — 실제 씹기 검출과 무관.
-    private func startChewAnimationLoop() {
-        stopChewAnimationLoop()
-        chewPulseTimer = Timer.scheduledTimer(withTimeInterval: 0.85, repeats: true) { [weak self] _ in
-            self?.animKey &+= 1
-        }
-    }
-
-    private func stopChewAnimationLoop() {
-        chewPulseTimer?.invalidate()
-        chewPulseTimer = nil
+    @MainActor var isIMUWaveformLive: Bool {
+        mealSession.isIMUWaveformLive
     }
 
     // MARK: - Motion permission guard (REQ-01)
@@ -951,156 +683,14 @@ final class AppState {
     /// `.notDetermined`이면 즉시 측정을 시작하지 않고 권한 요청 경로로 보낸다.
     /// CoreMotion은 명시적 request API 없이 `startDeviceMotionUpdates` 호출 시 시스템이
     /// 프롬프트를 띄운다. 권한 부여 → `onGranted()`, 거부(에러 콜백) → `onDenied()`.
-    func requestMotionPermission(onGranted: @escaping () -> Void, onDenied: @escaping () -> Void) {
-        headphoneMotionService.start { [weak self] _ in
-            // 첫 샘플이 도착했다 = 권한이 허용됨. 업데이트를 즉시 멈추고 호출자에게 위임.
-            self?.headphoneMotionService.stop()
-            DispatchQueue.main.async {
-                self?.analytics.track(.permissionResult(type: "motion", granted: true))
-                onGranted()
-            }
-        } onError: { [weak self] _ in
-            // 에러 = 권한 거부 또는 디바이스 없음.
-            DispatchQueue.main.async {
-                self?.analytics.track(.permissionResult(type: "motion", granted: false))
-                onDenied()
-            }
-        }
+    @MainActor func requestMotionPermission(onGranted: @escaping () -> Void, onDenied: @escaping () -> Void) {
+        mealSession.requestMotionPermission(onGranted: onGranted, onDenied: onDenied)
     }
 
     /// REQ-01 가드 결정 순수 함수.
     /// `.authorized && available`일 때만 true — `.notDetermined`는 false(권한 요청 경로로).
     static func shouldStartImmediately(status: CMAuthorizationStatus, available: Bool) -> Bool {
-        status == .authorized && available
-    }
-
-    private func startHeadphoneMotionLoop() -> Bool {
-        #if targetEnvironment(simulator)
-        imuWaveformSource = .simulator
-        return false
-        #else
-        switch headphoneMotionService.authorizationStatus {
-        case .denied:
-            imuWaveformSource = .denied
-            return false
-        case .restricted:
-            imuWaveformSource = .restricted
-            return false
-        case .notDetermined:
-            // notDetermined는 startHeadphoneMotionLoop 경로에 도달하지 않는다.
-            // HomeView.handleMealToggle()이 shouldStartImmediately=false로 먼저 걸러
-            // requestMotionPermission 경로로 보내기 때문. 안전망으로만 존재.
-            imuWaveformSource = .idle
-            return false
-        case .authorized:
-            break
-        @unknown default:
-            break
-        }
-
-        guard headphoneMotionService.isDeviceMotionAvailable else {
-            imuWaveformSource = .unavailable
-            return false
-        }
-
-        stopDemoIMUWaveformLoop()
-        imuWaveformSource = .connecting
-        headphoneMotionService.start { [weak self] sample in
-            guard let self else { return }
-            self.imuWaveformSource = .live
-            self.imuSampleCount += 1
-            self.lastIMUSampleAt = Date()
-            self.recordIMUEnergy(
-                rotationRateMagnitude: sample.rotationRateMagnitude,
-                userAccelerationMagnitude: sample.userAccelerationMagnitude
-            )
-            // raw 채널 전체(18컬럼)를 recorder에 누적. 출시 후 재학습 데이터셋으로
-            // 그대로 쓸 수 있도록 attitude/gravity/magneticField까지 보존.
-            // 같은 row를 DSP ChewCounter에도 흘려보내 세션 통계용으로 누적.
-            guard let recorder = self.imuSessionRecorder else { return }
-            let tRel = Date().timeIntervalSince(recorder.startedAt)
-            let row = IMURow(
-                tMach: sample.timestamp,
-                tRelSec: tRel,
-                attitudeRoll: sample.attitudeRoll,
-                attitudePitch: sample.attitudePitch,
-                attitudeYaw: sample.attitudeYaw,
-                rotationX: sample.rotationX,
-                rotationY: sample.rotationY,
-                rotationZ: sample.rotationZ,
-                gravityX: sample.gravityX,
-                gravityY: sample.gravityY,
-                gravityZ: sample.gravityZ,
-                userAccelX: sample.userAccelX,
-                userAccelY: sample.userAccelY,
-                userAccelZ: sample.userAccelZ,
-                magneticFieldX: sample.magneticFieldX,
-                magneticFieldY: sample.magneticFieldY,
-                magneticFieldZ: sample.magneticFieldZ,
-                sensorLocation: sample.sensorLocation
-            )
-            recorder.append(row)
-            recorder.updateSensorLocation(sample.sensorLocation)
-
-            // DSP 씹기 감지는 별도 Task로 — actor 호출이 sample 콜백 빈도(50Hz)를 막지 않도록.
-            // 결과는 세션 종료 시 통계 산출에만 쓴다.
-            if let chewCounter = self.chewCounter {
-                Task {
-                    await chewCounter.feed(
-                        rotX: row.rotationX,
-                        rotY: row.rotationY,
-                        rotZ: row.rotationZ,
-                        accelX: row.userAccelX,
-                        accelY: row.userAccelY,
-                        accelZ: row.userAccelZ
-                    )
-                }
-            }
-        } onError: { [weak self] message in
-            guard let self else { return }
-            if self.isEating {
-                self.startDemoIMUWaveformLoop(source: .error(message))
-            } else {
-                self.imuWaveformSource = .error(message)
-            }
-        }
-
-        return true
-        #endif
-    }
-
-    private func stopHeadphoneMotionLoop() {
-        #if !targetEnvironment(simulator)
-        // 시뮬레이터에선 lazy service 자체를 절대 init하지 않아 권한 다이얼로그가 안 뜸.
-        headphoneMotionService.stop()
-        #endif
-    }
-
-    private func startDemoIMUWaveformLoop(source: IMUWaveformSource = .demo) {
-        stopDemoIMUWaveformLoop()
-        if isEating, !imuWaveformSource.usesRealMotion {
-            imuWaveformSource = source
-        }
-        imuWaveformPhase = 0
-        demoIMUWaveformTimer = Timer.scheduledTimer(withTimeInterval: 0.07, repeats: true) { [weak self] _ in
-            guard let self else { return }
-            self.imuWaveformPhase += 0.38
-
-            let bitePulse = pow(max(0, sin(self.imuWaveformPhase)), 2.8)
-            let microMotion = sin(self.imuWaveformPhase * 3.1) * 0.08
-            let energy = 0.12 + bitePulse * 0.72 + microMotion
-            self.appendIMUWaveformSample(energy)
-        }
-    }
-
-    private func stopDemoIMUWaveformLoop() {
-        demoIMUWaveformTimer?.invalidate()
-        demoIMUWaveformTimer = nil
-    }
-
-    private func resetIMUWaveform() {
-        imuWaveformPhase = 0
-        imuWaveformSamples = Self.idleIMUWaveformSamples
+        MealSessionRuntimeRules.shouldStartImmediately(status: status, available: available)
     }
 
     // MARK: - Local persistence (UserDefaults snapshot)
@@ -1192,12 +782,8 @@ final class AppState {
         UserDefaults.standard.removeObject(forKey: Self.persistenceKey)
     }
 
-    private func clearTransientRuntimeState() {
-        pendingMealStartRequest = false
-        friendsTabRequestID = 0
-        startButtonHighlighted = false
-        showShortSessionConfirm = false
-        showAirPodsConnectionPrompt = false
+    @MainActor private func clearTransientRuntimeState() {
+        mealSession.clearTransientRuntimeState()
         lastCompletedSession = nil
         sessionUploadStatus = .idle
         sessionUploadErrorMessage = nil
@@ -1374,8 +960,7 @@ final class AppState {
                 }
                 // 서버 원격 알림음 볼륨(있을 때만) 반영. 식사 중이면 keep-alive에 즉시, 아니면 다음 startEating에서.
                 if let volume = result.alertVolume {
-                    alertVolume = Self.normalizedAlertVolume(volume)
-                    backgroundKeepAlive.volume = alertVolume
+                    mealSession.updateAlertVolume(volume)
                 }
                 meSucceeded = true
             }
