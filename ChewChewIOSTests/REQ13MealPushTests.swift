@@ -99,28 +99,34 @@ final class REQ13MealPushTests: XCTestCase {
 
     func testRequestStartHighlight_immediatelyTrue() {
         let state = AppState(remoteStore: NoopRemoteStore())
-        XCTAssertFalse(state.startButtonHighlighted)
-        state.requestStartHighlight(duration: 60) // 長 duration → 테스트 중 false로 안 바뀜
-        XCTAssertTrue(state.startButtonHighlighted)
+        XCTAssertFalse(state.mealSession.startButtonHighlighted)
+        state.mealSession.requestStartHighlight(duration: 60) // 長 duration → 테스트 중 false로 안 바뀜
+        XCTAssertTrue(state.mealSession.startButtonHighlighted)
     }
 
     // MARK: - Notification stop routing
 
     func testNotificationStop_usesShortSessionConfirmationForSubMinuteMeal() {
         let state = AppState(remoteStore: NoopRemoteStore())
-        state.startEating()
+        state.mealSession.startEating()
 
-        state.stopMeasurementFromNotification()
+        state.mealSession.stopMeasurementFromNotification()
 
-        XCTAssertTrue(state.isEating)
-        XCTAssertTrue(state.showShortSessionConfirm)
+        XCTAssertTrue(state.mealSession.isEating)
+        XCTAssertTrue(state.mealSession.showShortSessionConfirm)
     }
 
     func testShouldConfirmStopForShortSession_matchesInAppStopThreshold() {
         let startedAt = Date(timeIntervalSinceReferenceDate: 1_000)
 
-        XCTAssertTrue(AppState.shouldConfirmShortSessionStop(startedAt: startedAt, now: startedAt.addingTimeInterval(59)))
-        XCTAssertFalse(AppState.shouldConfirmShortSessionStop(startedAt: startedAt, now: startedAt.addingTimeInterval(60)))
-        XCTAssertFalse(AppState.shouldConfirmShortSessionStop(startedAt: nil, now: startedAt))
+        XCTAssertTrue(MealSessionRuntimeRules.shouldConfirmShortSessionStop(
+            startedAt: startedAt,
+            now: startedAt.addingTimeInterval(59)
+        ))
+        XCTAssertFalse(MealSessionRuntimeRules.shouldConfirmShortSessionStop(
+            startedAt: startedAt,
+            now: startedAt.addingTimeInterval(60)
+        ))
+        XCTAssertFalse(MealSessionRuntimeRules.shouldConfirmShortSessionStop(startedAt: nil, now: startedAt))
     }
 }

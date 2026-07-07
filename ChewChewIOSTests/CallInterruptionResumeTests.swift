@@ -8,20 +8,20 @@ final class CallInterruptionResumeTests: XCTestCase {
     @MainActor
     func testShouldAutoResume_nonCallInterruptionResumes() {
         // 재난문자 등 통화가 아닌 인터럽트 + shouldResume → 자동 재개
-        XCTAssertTrue(AppState.shouldAutoResume(interruptionWasCall: false, shouldResume: true))
+        XCTAssertTrue(MealSessionRuntimeRules.shouldAutoResume(interruptionWasCall: false, shouldResume: true))
     }
 
     @MainActor
     func testShouldAutoResume_callInterruptionDoesNotAutoResume() {
         // 전화 + shouldResume → 자동 재개하지 않고 알림 "계속하기"를 기다린다
-        XCTAssertFalse(AppState.shouldAutoResume(interruptionWasCall: true, shouldResume: true))
+        XCTAssertFalse(MealSessionRuntimeRules.shouldAutoResume(interruptionWasCall: true, shouldResume: true))
     }
 
     @MainActor
     func testShouldAutoResume_withoutShouldResumeNeverResumes() {
         // shouldResume이 없으면 통화 여부와 무관하게 재개 안 함
-        XCTAssertFalse(AppState.shouldAutoResume(interruptionWasCall: false, shouldResume: false))
-        XCTAssertFalse(AppState.shouldAutoResume(interruptionWasCall: true, shouldResume: false))
+        XCTAssertFalse(MealSessionRuntimeRules.shouldAutoResume(interruptionWasCall: false, shouldResume: false))
+        XCTAssertFalse(MealSessionRuntimeRules.shouldAutoResume(interruptionWasCall: true, shouldResume: false))
     }
 
     func testCallMonitor_startStop_doesNotCrash() {

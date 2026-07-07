@@ -6,6 +6,7 @@ struct HomeView: View {
     @Environment(AppState.self) private var state
 
     private var home: HomeStore { state.home }
+    private var mealSession: MealSessionRuntimeStore { state.mealSession }
 
     // MARK: - 측정 시작 햅틱 trigger
     @State private var hapticTrigger = false
@@ -33,16 +34,16 @@ struct HomeView: View {
             nowTick = newDate
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .onChange(of: state.pendingMealStartRequest) { _, requested in
+        .onChange(of: mealSession.pendingMealStartRequest) { _, requested in
             // 끼니 리마인더 알림의 "식사 시작" 액션 — 시작 가드를 그대로 태운다.
             guard requested else { return }
-            _ = state.consumePendingMealStartRequest()
-            if !state.isEating { handleMealToggle() }
+            _ = mealSession.consumePendingMealStartRequest()
+            if !mealSession.isEating { handleMealToggle() }
         }
         .onAppear {
             // 콜드스타트로 열려 onChange를 놓친 경우 보완.
-            if state.consumePendingMealStartRequest() {
-                if !state.isEating { handleMealToggle() }
+            if mealSession.consumePendingMealStartRequest() {
+                if !mealSession.isEating { handleMealToggle() }
             }
         }
         .sensoryFeedback(.impact(weight: .medium), trigger: hapticTrigger)
@@ -61,14 +62,14 @@ struct HomeView: View {
     // MARK: - 식사 시작 가드
 
     private func handleMealToggle() {
-        if state.isEating {
+        if mealSession.isEating {
             // 60초 미만이면 분석 불가 — 사용자에게 "더 측정할까요?" 확인 후 처리.
-            let duration = Date().timeIntervalSince(state.eatingStartedAt ?? Date())
+            let duration = Date().timeIntervalSince(mealSession.eatingStartedAt ?? Date())
             if duration < 60 {
-                state.requestShortSessionConfirmation()
+                mealSession.requestShortSessionConfirmation()
                 return
             }
-            state.toggleEating()
+            mealSession.toggleEating()
             return
         }
 
@@ -82,18 +83,18 @@ struct HomeView: View {
         // isDeviceMotionAvailable이 기기 호환만 보고 연결을 확신하지 못하는 케이스를
         // 라우트 체크로 보완 — 시작 자체를 막아 silent 빈 세션을 차단한다.
         if status == .denied || status == .restricted || !available || !hasHeadphoneAudioRoute {
-            state.showAirPodsConnectionPrompt = true
+            mealSession.showAirPodsConnectionPrompt = true
             return
         }
 
         // REQ-01: notDetermined이면 즉시 시작하지 않고 권한 요청 → 결과에 따라 분기.
-        if !AppState.shouldStartImmediately(status: status, available: available) {
-            state.requestMotionPermission {
+        if !MealSessionRuntimeRules.shouldStartImmediately(status: status, available: available) {
+            mealSession.requestMotionPermission {
                 // 권한 허용됨 — 햅틱 + 측정 시작
                 hapticTrigger.toggle()
-                state.startEating()
+                mealSession.startEating()
             } onDenied: {
-                state.showAirPodsConnectionPrompt = true
+                mealSession.showAirPodsConnectionPrompt = true
             }
             return
         }
@@ -101,7 +102,7 @@ struct HomeView: View {
 
         // 차단 안 됐을 때만 햅틱 + 시작
         hapticTrigger.toggle()
-        state.toggleEating()
+        mealSession.toggleEating()
     }
 
     /// 현재 오디오 출력 라우트에 AirPods/Bluetooth/유선 헤드폰이 포함되어 있는지.
@@ -144,8 +145,8 @@ struct HomeView: View {
     }
 
     private var homeHeaderSubtitle: String? {
-        if state.isEating {
-            return state.imuWaveformSource.usesRealMotion ? "식사 중 · AirPods LIVE" : "식사 중 · MVP 모드"
+        if mealSession.isEating {
+            return mealSession.imuWaveformSource.usesRealMotion ? "식사 중 · AirPods LIVE" : "식사 중 · MVP 모드"
         }
         // 오늘 저작 횟수는 화면 중앙 표시와 중복이라 헤더 서브타이틀에서 제외.
         return nil
@@ -231,7 +232,7 @@ struct HomeView: View {
             Spacer(minLength: 0)
 
             ZStack {
-                if !state.isEating {
+                if !mealSession.isEating {
                     Circle()
                         .stroke(Color.borderDefault, lineWidth: 5)
                         .frame(width: Metrics.progressRing, height: Metrics.progressRing)
@@ -253,7 +254,7 @@ struct HomeView: View {
                     glasses: state.equippedGlassesItem,
                     acc: state.equippedAccItem,
                     animKey: state.animKey,
-                    isEating: state.isEating,
+                    isEating: mealSession.isEating,
                     isNight: isNightTime
                 )
                 .scaleEffect(1.5)
@@ -261,10 +262,10 @@ struct HomeView: View {
             .frame(height: Metrics.squirrelAreaHeight)
 
             VStack(spacing: 4) {
-                Text(state.isEating ? "맛있게 먹는 중이에요" : home.status.title)
+                Text(mealSession.isEating ? "맛있게 먹는 중이에요" : home.status.title)
                     .font(.appFont(.boldTitleCompact))
                     .foregroundStyle(Color.textDefault)
-                if !state.isEating {
+                if !mealSession.isEating {
                     Text("오늘 \(home.todayRealChewCount.koLocale) / \(Constants.dailyGoal.koLocale)회")
                         .font(.appFont(.semiboldCallout))
                         .foregroundStyle(Color.textMuted)
@@ -286,7 +287,7 @@ struct HomeView: View {
     }
 
     private var imuWaveformCard: some View {
-        IMUWaveformView(samples: state.imuWaveformSamples, isLive: state.isIMUWaveformLive)
+        IMUWaveformView(samples: mealSession.imuWaveformSamples, isLive: mealSession.isIMUWaveformLive)
             .frame(height: Metrics.imuWaveformHeight)
             .padding(AppSpacing.gap)
             .background(Color.controlOnSurface, in: RoundedRectangle(cornerRadius: AppRadius.elementLarge))
@@ -299,9 +300,9 @@ struct HomeView: View {
             handleMealToggle()
         } label: {
             HStack(spacing: AppSpacing.gap) {
-                Image(systemName: state.isEating ? "stop.fill" : "fork.knife")
+                Image(systemName: mealSession.isEating ? "stop.fill" : "fork.knife")
                     .font(.appFont(.boldTitleLarge))
-                Text(state.isEating ? "식사 종료" : "식사 시작")
+                Text(mealSession.isEating ? "식사 종료" : "식사 시작")
                     .font(.appFont(.boldTitle))
             }
             .foregroundStyle(Color.controlOnAccent)
@@ -309,7 +310,7 @@ struct HomeView: View {
             .padding(.vertical, AppSpacing.actionV)
             .background(
                 LinearGradient(
-                    colors: state.isEating
+                    colors: mealSession.isEating
                         ? Color.mealStopGradient
                         : Color.mealStartGradient,
                     startPoint: .topLeading, endPoint: .bottomTrailing
@@ -319,20 +320,20 @@ struct HomeView: View {
             .overlay(
                 RoundedRectangle(cornerRadius: Metrics.mealButtonRadius)
                     .strokeBorder(
-                        Color.controlOnAccent.opacity(state.startButtonHighlighted ? 0.9 : 0),
+                        Color.controlOnAccent.opacity(mealSession.startButtonHighlighted ? 0.9 : 0),
                         lineWidth: Metrics.mealButtonHighlightBorder
                     )
             )
         }
         .accessibilityIdentifier("MealToggle")
-        .accessibilityLabel(state.isEating ? "식사 종료" : "식사 시작")
+        .accessibilityLabel(mealSession.isEating ? "식사 종료" : "식사 시작")
         .buttonStyle(PressableButtonStyle())
-        .scaleEffect(state.startButtonHighlighted ? 1.04 : 1.0)
-        .shadow(color: Color.highlightShadow.opacity(state.startButtonHighlighted ? 0.55 : 0), radius: 14, x: 0, y: 4)
-        .animation(.easeInOut(duration: AppMotion.durationStateChange), value: state.isEating)
+        .scaleEffect(mealSession.startButtonHighlighted ? 1.04 : 1.0)
+        .shadow(color: Color.highlightShadow.opacity(mealSession.startButtonHighlighted ? 0.55 : 0), radius: 14, x: 0, y: 4)
+        .animation(.easeInOut(duration: AppMotion.durationStateChange), value: mealSession.isEating)
         .animation(
             .spring(response: AppMotion.springPlayfulResponse, dampingFraction: AppMotion.springPlayfulDamping),
-            value: state.startButtonHighlighted
+            value: mealSession.startButtonHighlighted
         )
     }
 }
