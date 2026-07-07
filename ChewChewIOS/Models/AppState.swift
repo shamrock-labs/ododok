@@ -1,6 +1,5 @@
 import Foundation
 import Observation
-import CoreMotion
 
 enum IMUWaveformSource: Equatable {
     case idle
@@ -112,36 +111,6 @@ final class AppState {
         var hat: String?
         var glasses: String?
         var acc: String?
-    }
-
-    // MARK: - Eating session
-
-    @MainActor var mealSessionPhase: MealSessionPhase { mealSession.phase }
-
-    @MainActor var isEating: Bool { mealSession.isEating }
-
-    @MainActor var eatingStartedAt: Date? { mealSession.eatingStartedAt }
-
-    @MainActor var imuWaveformSamples: [Double] { mealSession.imuWaveformSamples }
-    @MainActor var imuWaveformSource: IMUWaveformSource {
-        get { mealSession.imuWaveformSource }
-        set { mealSession.imuWaveformSource = newValue }
-    }
-
-    // MARK: - IMU diagnostics (원시 데이터는 저장 안 함, 진단 지표만)
-
-    @MainActor var imuSampleCount: Int { mealSession.imuSampleCount }
-
-    @MainActor var lastIMUSampleAt: Date? { mealSession.lastIMUSampleAt }
-
-    @MainActor var startButtonHighlighted: Bool {
-        get { mealSession.startButtonHighlighted }
-        set { mealSession.startButtonHighlighted = newValue }
-    }
-
-    @MainActor var pendingMealStartRequest: Bool {
-        get { mealSession.pendingMealStartRequest }
-        set { mealSession.pendingMealStartRequest = newValue }
     }
 
     var isInForeground: Bool = false
@@ -274,38 +243,6 @@ final class AppState {
     /// 중간 상태가 winner로 굳을 수 있어, 각 작업이 이전 작업 종료를 await하는 체인으로 직렬화한다.
     @ObservationIgnored private var remoteSyncChain: Task<Void, Never> = Task {}
 
-    /// 측정 결과 업로드 상태 facade. 실제 소유권은 `MealSessionResultStore`에 둔다.
-    @MainActor var sessionUploadStatus: MealSessionUploadStatus {
-        get { mealResults.sessionUploadStatus }
-        set { mealResults.sessionUploadStatus = newValue }
-    }
-
-    @MainActor var sessionUploadErrorMessage: String? {
-        get { mealResults.sessionUploadErrorMessage }
-        set { mealResults.sessionUploadErrorMessage = newValue }
-    }
-
-    /// 오늘 기록/result sheet facade. 실제 소유권은 `MealSessionResultStore`에 둔다.
-    @MainActor var todaySessions: [ChewingSessionDTO] {
-        get { mealResults.todaySessions }
-        set { mealResults.todaySessions = newValue }
-    }
-
-    @MainActor var lastCompletedSession: ChewingSessionDTO? {
-        mealResults.lastCompletedSession
-    }
-
-    /// 60초 미만 식사 종료 확인 다이얼로그.
-    @MainActor var showShortSessionConfirm: Bool {
-        mealSession.showShortSessionConfirm
-    }
-
-    /// AirPods/모션 권한 문제로 시작을 차단했을 때 띄우는 플래그.
-    @MainActor var showAirPodsConnectionPrompt: Bool {
-        get { mealSession.showAirPodsConnectionPrompt }
-        set { mealSession.showAirPodsConnectionPrompt = newValue }
-    }
-
     // MARK: - Init
 
     init(
@@ -348,31 +285,6 @@ final class AppState {
             await self?.refreshFromServerHome()
             await self?.fetchAndApplyDisplayName()
         }
-    }
-
-    // MARK: - Eating actions
-
-    @MainActor func startEating() { mealSession.startEating() }
-    @MainActor func stopEating() { mealSession.stopEating() }
-    @MainActor func discardCurrentSession() { mealSession.discardCurrentSession() }
-    @MainActor func toggleEating() { mealSession.toggleEating() }
-    @MainActor func resumeMeasurement() { mealSession.resumeMeasurement() }
-    @MainActor func stopMeasurementFromNotification() { mealSession.stopMeasurementFromNotification() }
-    @MainActor func requestStartHighlight(duration: TimeInterval = 3) { mealSession.requestStartHighlight(duration: duration) }
-    @MainActor func requestMealStart() { mealSession.requestMealStart() }
-    @MainActor func consumePendingMealStartRequest() -> Bool { mealSession.consumePendingMealStartRequest() }
-    @MainActor func requestShortSessionConfirmation() { mealSession.requestShortSessionConfirmation() }
-    @MainActor func dismissShortSessionConfirmation() { mealSession.dismissShortSessionConfirmation() }
-    @MainActor func handleMealNotificationAction(_ action: String, deepLink: String?) {
-        mealSession.handleNotificationAction(action, deepLink: deepLink)
-    }
-
-    static func shouldConfirmShortSessionStop(startedAt: Date?, now: Date = Date()) -> Bool {
-        MealSessionRuntimeRules.shouldConfirmShortSessionStop(startedAt: startedAt, now: now)
-    }
-
-    static func shouldAutoResume(interruptionWasCall: Bool, shouldResume: Bool) -> Bool {
-        MealSessionRuntimeRules.shouldAutoResume(interruptionWasCall: interruptionWasCall, shouldResume: shouldResume)
     }
 
     // MARK: - Shop / Wardrobe actions
@@ -592,24 +504,6 @@ final class AppState {
         mealResults.localTodayRealChewCount
     }
 
-    @MainActor var imuWaveformStatusText: String {
-        mealSession.imuWaveformStatusText
-    }
-
-    @MainActor var isIMUWaveformLive: Bool {
-        mealSession.isIMUWaveformLive
-    }
-
-    // MARK: - Motion permission guard
-
-    @MainActor func requestMotionPermission(onGranted: @escaping () -> Void, onDenied: @escaping () -> Void) {
-        mealSession.requestMotionPermission(onGranted: onGranted, onDenied: onDenied)
-    }
-
-    static func shouldStartImmediately(status: CMAuthorizationStatus, available: Bool) -> Bool {
-        MealSessionRuntimeRules.shouldStartImmediately(status: status, available: available)
-    }
-
     // MARK: - Local persistence (UserDefaults snapshot)
 
     private static let persistenceKey = "ChewChewIOS.AppState.snapshot.v1"
@@ -827,21 +721,6 @@ final class AppState {
     }
 
     @MainActor
-    func fetchTodaySessions() async {
-        await mealResults.fetchTodaySessions()
-    }
-
-    @MainActor
-    func deleteSession(_ session: ChewingSessionDTO) async {
-        await mealResults.deleteSession(session)
-    }
-
-    @MainActor
-    func deleteAllChewingSessions() async {
-        await mealResults.deleteAllChewingSessions()
-    }
-
-    @MainActor
     func receiveInviteCode(_ code: String) {
         friends.receiveInviteCode(code)
     }
@@ -853,21 +732,6 @@ final class AppState {
             try? await Task.sleep(for: .seconds(2.2))
             if self?.globalToast == message { self?.globalToast = nil }
         }
-    }
-
-    @MainActor
-    func retryLastSessionUpload() {
-        mealResults.retryLastSessionUpload()
-    }
-
-    @MainActor
-    func dismissSessionUploadStatus() {
-        mealResults.dismissSessionUploadStatus()
-    }
-
-    @MainActor
-    func closeResultPresentation() {
-        mealResults.closeResultPresentation()
     }
 
     static let appVersion: String? = {

@@ -6,8 +6,10 @@ struct TrackingView: View {
     @State private var feedback: FeedbackLine?
     @State private var fbTimer: Timer?
 
+    private var mealSession: MealSessionRuntimeStore { state.mealSession }
+
     /// 식사 중 여부 — 식사 세션은 AppState가 관리하고 이 화면은 관찰만.
-    private var isEating: Bool { state.isEating }
+    private var isEating: Bool { mealSession.isEating }
 
     var body: some View {
         VStack(spacing: AppSpacing.gap) {
@@ -53,7 +55,7 @@ struct TrackingView: View {
                 Text("AirPods 센서")
                     .font(.appFont(.semiboldCallout))
                     .foregroundStyle(Color.textMuted)
-                Text(state.imuWaveformStatusText)
+                Text(mealSession.imuWaveformStatusText)
                     .font(.appFont(.boldBody))
                     .foregroundStyle(Color.textDefault)
                     .lineLimit(1)
@@ -66,9 +68,9 @@ struct TrackingView: View {
                 Text("모드")
                     .font(.appFont(.semiboldCallout))
                     .foregroundStyle(Color.textMuted)
-                Text(state.imuWaveformSource.usesRealMotion ? "LIVE" : "MVP")
+                Text(mealSession.imuWaveformSource.usesRealMotion ? "LIVE" : "MVP")
                     .font(.appFont(.boldCallout))
-                    .foregroundStyle(state.imuWaveformSource.usesRealMotion ? Color.statusSuccess : Color.textSubtle)
+                    .foregroundStyle(mealSession.imuWaveformSource.usesRealMotion ? Color.statusSuccess : Color.textSubtle)
             }
         }
         .padding(AppSpacing.cardContent)
@@ -84,10 +86,10 @@ struct TrackingView: View {
             Text(state.isInForeground ? "FG" : "BG")
                 .fontWeight(.semibold)
             dotSeparator
-            Text("샘플 \(state.imuSampleCount.koLocale)")
+            Text("샘플 \(mealSession.imuSampleCount.koLocale)")
                 .monospacedDigit()
             dotSeparator
-            if let last = state.lastIMUSampleAt {
+            if let last = mealSession.lastIMUSampleAt {
                 Text(last, style: .relative)
                     .monospacedDigit()
             } else {
@@ -110,8 +112,8 @@ struct TrackingView: View {
 
     private var imuDebugAccessibilityLabel: String {
         let phase = state.isInForeground ? "foreground" : "background"
-        if state.lastIMUSampleAt != nil {
-            return "센서 진단: \(phase), 샘플 \(state.imuSampleCount)개 수신"
+        if mealSession.lastIMUSampleAt != nil {
+            return "센서 진단: \(phase), 샘플 \(mealSession.imuSampleCount)개 수신"
         }
         return "센서 진단: \(phase), 샘플 수신 안 됨"
     }

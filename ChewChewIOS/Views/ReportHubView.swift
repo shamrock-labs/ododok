@@ -670,7 +670,7 @@ struct ReportHubView: View {
 
     @MainActor
     private func reloadRecentSessions() async {
-        await state.fetchTodaySessions()
+        await state.mealResults.fetchTodaySessions()
         // 주간 카드(21일) + 현재 타임라인 윈도우를 모두 덮는 초기 범위.
         let weeklyStart = mealCalendarCalendar.date(byAdding: .day, value: -(weeklyWindowDays - 1), to: today) ?? today
         let start = min(weeklyStart, windowStart)

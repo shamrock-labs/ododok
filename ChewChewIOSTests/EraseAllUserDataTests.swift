@@ -141,7 +141,7 @@ final class EraseAllUserDataTests: XCTestCase {
     func testEraseAllUserData_resetsTodaySessionsToEmpty() async {
         let spy = SpyRemoteStore()
         let state = AppState(remoteStore: spy, startStartupTasks: false)
-        state.todaySessions = [
+        state.mealResults.todaySessions = [
             ChewingSessionDTO(
                 id: UUID(),
                 deviceId: "test-device",
@@ -163,22 +163,22 @@ final class EraseAllUserDataTests: XCTestCase {
 
         await state.eraseAllUserData()
 
-        XCTAssertTrue(state.todaySessions.isEmpty, "삭제 후 todaySessions는 빈 배열이어야 한다")
+        XCTAssertTrue(state.mealResults.todaySessions.isEmpty, "삭제 후 todaySessions는 빈 배열이어야 한다")
     }
 
     func testEraseAllUserDataClearsPendingRuntimeState() async {
         let spy = SpyRemoteStore()
         let state = AppState(remoteStore: spy, startStartupTasks: false)
-        state.pendingMealStartRequest = true
-        state.sessionUploadStatus = .failure
-        state.sessionUploadErrorMessage = "offline"
+        state.mealSession.pendingMealStartRequest = true
+        state.mealResults.sessionUploadStatus = .failure
+        state.mealResults.sessionUploadErrorMessage = "offline"
         state.receiveInviteCode("FRIEND-123")
 
         await state.eraseAllUserData()
 
-        XCTAssertFalse(state.pendingMealStartRequest)
-        XCTAssertEqual(state.sessionUploadStatus, .idle)
-        XCTAssertNil(state.sessionUploadErrorMessage)
+        XCTAssertFalse(state.mealSession.pendingMealStartRequest)
+        XCTAssertEqual(state.mealResults.sessionUploadStatus, .idle)
+        XCTAssertNil(state.mealResults.sessionUploadErrorMessage)
         XCTAssertNil(state.friends.pendingInviteCode)
     }
 

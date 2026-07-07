@@ -106,7 +106,7 @@ struct ChewChewIOSApp: App {
                 }
                 .task {
                     // 홈 진행도/마스코트 mood가 첫 진입부터 정확히 보이도록 오늘 세션을 미리 적재.
-                    await appState.fetchTodaySessions()
+                    await appState.mealResults.fetchTodaySessions()
                     // 끼니 알림(ODO-56, ODO-103): 정본인 서버에서 받아 화면·로컬 캐시를 맞추고 전달 경로를 정합한다.
                     // 로그인·권한·APNs 토큰 등록 상태에 따라 서버(APNs) 또는 로컬 알림으로 갈린다.
                     await appState.mealPushCoordinator.syncFromServer()
@@ -136,11 +136,11 @@ struct ChewChewIOSApp: App {
         guard url.scheme == "chewchew" else { return }
         switch url.host {
         case "start":
-            appState.requestStartHighlight()
+            appState.mealSession.requestStartHighlight()
         case "resume":
-            appState.resumeMeasurement()
+            appState.mealSession.resumeMeasurement()
         case "stop":
-            appState.stopMeasurementFromNotification()
+            appState.mealSession.stopMeasurementFromNotification()
         case "invite":
             // 외부 공유 링크(chewchew://invite?code=...) 수신 → 자동 수락.
             if let code = URLComponents(url: url, resolvingAgainstBaseURL: false)?
@@ -186,7 +186,7 @@ struct ChewChewIOSApp: App {
         }
 
         if args.contains("-highlightStart") {
-            appState.startButtonHighlighted = true
+            appState.mealSession.startButtonHighlighted = true
         }
 
         if args.contains("-equipShowcase") {
@@ -203,14 +203,14 @@ struct ChewChewIOSApp: App {
         guard args.contains("-autoStartEating") else { return }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-            appState.startEating()
+            appState.mealSession.startEating()
         }
 
         if let idx = args.firstIndex(of: "-autoStopAfter"),
            idx + 1 < args.count,
            let seconds = Double(args[idx + 1]) {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.25 + seconds) {
-                appState.stopEating()
+                appState.mealSession.stopEating()
             }
         }
     }
