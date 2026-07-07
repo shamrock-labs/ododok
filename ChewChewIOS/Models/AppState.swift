@@ -215,6 +215,23 @@ final class AppState {
     /// 원격 백엔드(InsForge)에 대한 추상화. 테스트/시뮬레이터에선 NoopRemoteStore 주입 가능.
     @ObservationIgnored let remoteStore: RemoteStore
 
+    @MainActor @ObservationIgnored lazy var home: HomeStore = HomeStore(
+        repository: RemoteStoreHomeRepository(remoteStore: remoteStore),
+        initialHome: serverHome,
+        initialPoints: points,
+        initialStreak: streak,
+        initialFreezeInventory: freezeInventory,
+        localTodayRealChewCount: { [weak self] in
+            self?.localTodayRealChewCount ?? 0
+        },
+        onHomeApplied: { [weak self] home in
+            self?.applyHomeFromStore(home)
+        },
+        onRemoteError: { [weak self] error in
+            self?.handleRemoteError(error)
+        }
+    )
+
     @MainActor @ObservationIgnored lazy var records: RecordsStore = RecordsStore(
         repository: RemoteStoreMealSessionRepository(remoteStore: remoteStore)
     )
@@ -770,6 +787,9 @@ final class AppState {
         let deletionRefreshToken = TokenManager.refreshToken
         TokenManager.clear()
 
+        await MainActor.run {
+            home.reset()
+        }
         clearPersistedSnapshot()
         scheduleRemoteUserDataDeletion(accessToken: deletionAccessToken, refreshToken: deletionRefreshToken)
     }
@@ -799,6 +819,7 @@ final class AppState {
         analytics.setUserId(nil)
         SentryService.setUser(id: nil)
         // 저장된 스냅샷도 비워서 다음 실행에서 시드값이 살아남도록
+        home.reset()
         clearPersistedSnapshot()
     }
 
@@ -912,7 +933,11 @@ final class AppState {
     /// 레거시 백엔드에서 홈 카운트/링이 0에 붙박이는 것을 막는다(todayProgress와 같은 기준).
     var todayRealChewCount: Int {
         if let serverHome, serverHome.dailyGoal > 0 { return serverHome.todayRealChewCount }
-        return todaySessions.reduce(0) { $0 + ($1.estimatedTotalChews ?? 0) }
+        return localTodayRealChewCount
+    }
+
+    private var localTodayRealChewCount: Int {
+        todaySessions.reduce(0) { $0 + ($1.estimatedTotalChews ?? 0) }
     }
 
     /// 일일 목표 진행도(0~1). 서버 홈 응답의 진행도를 정본으로 쓰고(분모 dailyGoal>0일 때),
@@ -1189,6 +1214,7 @@ final class AppState {
         hasCompletedOnboarding = false
         auth.markLoggedOut()
         serverHome = nil
+        home.reset()
         homeApplyVersion += 1
         // 끼니 설정 로컬 캐시도 비운다 — 다음 계정이 이전 계정 알림시각을 보지 않도록(ODO-103).
         // 정본은 서버이므로 로그인 후 syncFromServer가 이 계정 값으로 다시 채운다.
@@ -1242,6 +1268,17 @@ final class AppState {
 
     @MainActor
     private func applyHome(_ home: HomeStateDTO) {
+        applyHomeLocally(home)
+        self.home.applyExternal(home)
+    }
+
+    @MainActor
+    private func applyHomeFromStore(_ home: HomeStateDTO) {
+        applyHomeLocally(home)
+    }
+
+    @MainActor
+    private func applyHomeLocally(_ home: HomeStateDTO) {
         homeApplyVersion += 1
         serverHome = home
         points = home.points
@@ -1259,16 +1296,12 @@ final class AppState {
     /// 채운 로컬 캐시를 그대로 유지한다(서버 실패 시 마지막 성공 상태 보존, ODO-54 Done-When).
     @MainActor
     func refreshFromServerHome() async {
-        let deviceId = DeviceIdentity.shared
         let versionAtRequest = homeApplyVersion
-        do {
-            let home = try await remoteStore.fetchHome(deviceId: deviceId)
+        await home.refresh { [weak self] in
             // 이 GET이 비행하는 동안 쓰기 응답(출석/세션 저장)이 홈을 갱신했다면 이 응답은 옛
             // 스냅샷이다 — 적용하면 방금 반영된 적립을 화면에서 되돌리므로 버린다(쓰기 응답 우선).
-            guard versionAtRequest == homeApplyVersion else { return }
-            applyHome(home)
-        } catch {
-            handleRemoteError(error)
+            guard let currentVersion = self?.homeApplyVersion else { return false }
+            return versionAtRequest == currentVersion
         }
     }
 
