@@ -5,6 +5,9 @@ struct ContentView: View {
     @State private var tab: Tab = Tab.initial
     @State private var presentedGlobalToast: AppToastMessage?
 
+    private var mealSession: MealSessionRuntimeStore { state.mealSession }
+    private var mealResults: MealSessionResultStore { state.mealResults }
+
     enum Tab: String, CaseIterable {
         case home, track, friends, shop
 
@@ -113,20 +116,20 @@ struct ContentView: View {
             isPresented: failureAlertBinding,
             title: "업로드에 실패했어요",
             message: uploadFailureMessage,
-            primary: .init("다시 시도") { state.retryLastSessionUpload() },
-            secondary: .init("취소", role: .cancel) { state.dismissSessionUploadStatus() }
+            primary: .init("다시 시도") { mealResults.retryLastSessionUpload() },
+            secondary: .init("취소", role: .cancel) { mealResults.dismissSessionUploadStatus() }
         )
         .appDialog(
             isPresented: shortSessionBinding,
             title: "측정이 너무 짧아요",
             message: "1분 미만은 분석할 수 없어요. 더 씹을까요?",
             primary: .init("더 측정") {},
-            secondary: .init("그만두기", role: .destructive) { state.discardCurrentSession() }
+            secondary: .init("그만두기", role: .destructive) { mealSession.discardCurrentSession() }
         )
         .sheet(isPresented: resultSheetBinding) {
             SessionResultSheet(
-                dto: state.lastCompletedSession,
-                isAnalyzing: state.sessionUploadStatus == .uploading,
+                dto: mealResults.lastCompletedSession,
+                isAnalyzing: mealResults.sessionUploadStatus == .uploading,
                 onClose: closeResultSheet
             )
         }
@@ -137,7 +140,7 @@ struct ContentView: View {
         // 그리지 않고 대기 — sheet 닫히는 순간 자연스럽게 등장하고 그때부터 2.5s 자동 dismiss
         // 타이머가 시작되어, 세션 종료 보상 다이얼로그가 가려진 채 사라지는 회귀를 차단.
         .overlay(alignment: .center) {
-            if state.lastCompletedSession == nil, let grant = state.home.pendingRewardGrant {
+            if mealResults.lastCompletedSession == nil, let grant = state.home.pendingRewardGrant {
                 ZStack {
                     Color.black.opacity(0.28).ignoresSafeArea()
                     RewardDialogView(grant: grant) {
@@ -158,18 +161,18 @@ struct ContentView: View {
         }
         .animation(
             .spring(response: AppMotion.springFastResponse, dampingFraction: AppMotion.springDampingFraction),
-            value: state.showAirPodsConnectionPrompt
+            value: mealSession.showAirPodsConnectionPrompt
         )
-        .animation(.easeInOut(duration: AppMotion.durationStateChange), value: state.startCountdownValue)
+        .animation(.easeInOut(duration: AppMotion.durationStateChange), value: mealSession.startCountdownValue)
     }
 
     @ViewBuilder
     private var airPodsPromptOverlay: some View {
-        if state.showAirPodsConnectionPrompt {
+        if mealSession.showAirPodsConnectionPrompt {
             ZStack {
                 Color.black.opacity(0.28).ignoresSafeArea()
                 AirPodsPromptDialogView {
-                    state.dismissAirPodsConnectionPrompt()
+                    mealSession.dismissAirPodsConnectionPrompt()
                 }
                 .padding(.horizontal, AppSpacing.overlayH)
             }
@@ -180,7 +183,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private var startCountdownOverlay: some View {
-        if let countdownValue = state.startCountdownValue {
+        if let countdownValue = mealSession.startCountdownValue {
             ZStack {
                 Color.black.opacity(0.28).ignoresSafeArea()
                 StartCountdownView(value: countdownValue)
@@ -192,23 +195,23 @@ struct ContentView: View {
 
     private var shortSessionBinding: Binding<Bool> {
         Binding(
-            get: { state.showShortSessionConfirm },
-            set: { newValue in if !newValue { state.showShortSessionConfirm = false } }
+            get: { mealSession.showShortSessionConfirm },
+            set: { newValue in if !newValue { mealSession.dismissShortSessionConfirmation() } }
         )
     }
 
     /// 업로드 실패 다이얼로그 본문 — 친화적 사유(서버/오프라인 카피) + 데이터 손실 경고.
     private var uploadFailureMessage: String {
-        let reason = state.sessionUploadErrorMessage ?? "잠시 후 다시 시도해 주세요."
+        let reason = mealResults.sessionUploadErrorMessage ?? "잠시 후 다시 시도해 주세요."
         return "\(reason)\n지금 닫으면 이번 기록이 사라져요."
     }
 
     private var failureAlertBinding: Binding<Bool> {
         Binding(
-            get: { state.sessionUploadStatus == .failure },
+            get: { mealResults.sessionUploadStatus == .failure },
             set: { presented in
-                if !presented && state.sessionUploadStatus == .failure {
-                    state.dismissSessionUploadStatus()
+                if !presented && mealResults.sessionUploadStatus == .failure {
+                    mealResults.dismissSessionUploadStatus()
                 }
             }
         )
@@ -222,8 +225,8 @@ struct ContentView: View {
     private var resultSheetBinding: Binding<Bool> {
         Binding(
             get: {
-                state.lastCompletedSession != nil
-                    || state.sessionUploadStatus == .uploading
+                mealResults.lastCompletedSession != nil
+                    || mealResults.sessionUploadStatus == .uploading
             },
             set: { presented in
                 if !presented { closeResultSheet() }
@@ -232,10 +235,7 @@ struct ContentView: View {
     }
 
     private func closeResultSheet() {
-        state.lastCompletedSession = nil
-        if state.sessionUploadStatus == .success {
-            state.dismissSessionUploadStatus()
-        }
+        mealResults.closeResultPresentation()
     }
 
     /// 첫 실행 onboarding sheet binding — DB fetch 한 번 끝났고(`didLoadProfile`) 온보딩을

@@ -1,6 +1,6 @@
 # ododok_ui 작업 규칙
 
-SwiftUI 기반 오도독 iOS 앱. AirPods IMU 신호를 신호처리(DSP)로 분석해 저작 리듬을 시각화하고, 세션·프로필·통계를 백엔드와 동기화한다. 설계의 정본은 Obsidian `Projects/ododok/`, 작업 상태의 정본은 Linear다. 이 파일은 코드를 짤 때 매번 지킬 규칙만 둔다.
+SwiftUI 기반 오도독 iOS 앱. AirPods IMU 신호를 신호처리(DSP)로 분석해 저작 리듬을 시각화하고, 세션·프로필·통계를 백엔드와 동기화한다. 설계 기준은 Obsidian `Projects/ododok/`, 작업 상태 기록 위치는 Linear다. 이 파일은 코드를 짤 때 매번 지킬 규칙만 둔다.
 
 ## 빌드·테스트
 
@@ -11,16 +11,16 @@ SwiftUI 기반 오도독 iOS 앱. AirPods IMU 신호를 신호처리(DSP)로 분
 
 ## 코드 구조
 
-- SwiftUI 앱. 화면은 SwiftUI View, 상태는 `@Observable` `AppState`(`ChewChewIOS/Models/`)로 모은다.
-- 새 코드 배치 전 `README.md`의 "앱 구조 규칙"을 확인한다. View에 외부 효과를 넣거나, AppState에 도메인 절차를 바로 쌓지 않는다.
-- `AppState`는 화면 상태 facade로 유지한다. 네트워크·오디오·알림·파일·분석 등 외부 효과와 도메인 절차는 별도 `Infra/`(공유)·`Features/<도메인>/`(전용) 어댑터·coordinator·순수 함수로 분리한다. 상세 기준은 `README.md`의 "AppState 경계 규칙"을 따른다.
+- SwiftUI 앱. 화면은 SwiftUI View, 기능 상태는 `@Observable @MainActor` Feature Store가 소유한다. `AppState`는 앱 조립과 전역 facade로 얇게 유지한다.
+- 새 코드 배치 전 `docs/ios-architecture.md`를 확인한다. View에 외부 효과를 넣거나, AppState에 도메인 절차를 바로 쌓지 않는다.
+- `AppState`는 모든 상태를 모으는 저장소가 아니다. 네트워크·오디오·알림·파일·분석 등 외부 효과와 도메인 절차는 별도 `Infra/`(공유)·`Features/<도메인>/`(전용) 어댑터·coordinator·순수 함수로 분리한다. 상세 기준은 `docs/ios-architecture.md`를 따른다.
 - 백엔드 접근은 **포트&어댑터**다. 포트는 `RemoteStore` 프로토콜(`ChewChewIOS/Infra/RemoteStore.swift`), 어댑터는 `InsForgeRemoteStore`·`SpringRemoteStore`·`NoopRemoteStore`다. 화면·상태는 프로토콜에만 의존하고 구현은 주입으로 갈아끼운다.
 - 어댑터 선택은 `ChewChewIOS/ChewChewIOSApp.swift`의 `makeRemoteStore()` 한 곳에서만 한다. 기본은 Spring(`AppEnvironment.backendURL`), 테스트(XCTest/`-useNoopRemote`)는 Noop, `-useInsForge`는 레거시 InsForge.
 - 환경(바라보는 백엔드)은 **config 주입**으로 결정한다: `AppEnvironment.backendURL` ← Info.plist `ODODOK_BACKEND_URL` ← xcconfig(`Config/Env.Dev.xcconfig` Debug / `Config/Env.Prod.xcconfig` Release). 환경 분기를 코드에 하드코딩하지 않는다.
 - 번들 ID는 환경별로 쪼개지 않는다(앱 하나에 번들 ID 하나로 고정, `com.shamrock.ododok`). 환경 분리는 백엔드 URL로만 한다.
 - 테스트 런치 인자(`-useNoopRemote`/`-useInsForge`)는 환경 config와 **직교한 오버라이드**다. 환경 분리(dev/prod)와 섞지 않는다.
 - 신호처리(DSP) 카운터는 `ChewChewIOS/SignalProcessing/ChewCounter.swift`(actor)다. 모델 추론이 아니라 IMU 신호처리 기반 감지다.
-- 모든 스펙(Obsidian `Projects/ododok/`) 구현은 README "코드 작성 원칙"과 `.swiftlint.yml`을 기준으로 한다. 구현 완료 전 `swiftlint`를 돌려 경고를 정리하고, 무서명 시뮬레이터 빌드와 함께 통과시킨다. lint·원칙에 어긋나는 구현은 완료로 보지 않는다.
+- 모든 스펙(Obsidian `Projects/ododok/`) 구현은 `docs/ios-architecture.md`, README "코드 작성 원칙", `.swiftlint.yml`을 기준으로 한다. 구현 완료 전 `swiftlint`를 돌려 경고를 정리하고, 무서명 시뮬레이터 빌드와 함께 통과시킨다. lint·원칙에 어긋나는 구현은 완료로 보지 않는다.
 
 ## 디자인 규칙
 
@@ -34,7 +34,7 @@ SwiftUI 기반 오도독 iOS 앱. AirPods IMU 신호를 신호처리(DSP)로 분
 - 브랜치: `type/odo-NN-짧은-설명` (type + Linear 키 + 설명, 소문자, 하이픈).
 - PR: `.github/PULL_REQUEST_TEMPLATE.md`를 사용한다. 제목은 `type(ODO-NN): 요약` 형식으로 쓴다. 머지는 사용자가 본인 검토 후 직접 한다.
 
-## Linear · 레포 (작업 상태 정본)
+## Linear · 레포 (작업 상태 기록 위치)
 
 작업은 아래 Linear 팀과 GitHub 레포를 기반으로 한다. Linear MCP는 개인 환경 설정이라 레포에 강제하지 않으니(.mcp.json 미커밋) 각자 설정해서 쓴다.
 

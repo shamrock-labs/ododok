@@ -9,40 +9,40 @@ final class MotionPermissionGuardTests: XCTestCase {
     // MARK: - .authorized
 
     func testAuthorized_available_returnsTrue() {
-        XCTAssertTrue(AppState.shouldStartImmediately(status: .authorized, available: true))
+        XCTAssertTrue(MealSessionRuntimeRules.shouldStartImmediately(status: .authorized, available: true))
     }
 
     func testAuthorized_notAvailable_returnsFalse() {
-        XCTAssertFalse(AppState.shouldStartImmediately(status: .authorized, available: false))
+        XCTAssertFalse(MealSessionRuntimeRules.shouldStartImmediately(status: .authorized, available: false))
     }
 
     // MARK: - .notDetermined
 
     func testNotDetermined_available_returnsFalse() {
-        XCTAssertFalse(AppState.shouldStartImmediately(status: .notDetermined, available: true))
+        XCTAssertFalse(MealSessionRuntimeRules.shouldStartImmediately(status: .notDetermined, available: true))
     }
 
     func testNotDetermined_notAvailable_returnsFalse() {
-        XCTAssertFalse(AppState.shouldStartImmediately(status: .notDetermined, available: false))
+        XCTAssertFalse(MealSessionRuntimeRules.shouldStartImmediately(status: .notDetermined, available: false))
     }
 
     // MARK: - .denied
 
     func testDenied_available_returnsFalse() {
-        XCTAssertFalse(AppState.shouldStartImmediately(status: .denied, available: true))
+        XCTAssertFalse(MealSessionRuntimeRules.shouldStartImmediately(status: .denied, available: true))
     }
 
     func testDenied_notAvailable_returnsFalse() {
-        XCTAssertFalse(AppState.shouldStartImmediately(status: .denied, available: false))
+        XCTAssertFalse(MealSessionRuntimeRules.shouldStartImmediately(status: .denied, available: false))
     }
 
     // MARK: - .restricted
 
     func testRestricted_available_returnsFalse() {
-        XCTAssertFalse(AppState.shouldStartImmediately(status: .restricted, available: true))
+        XCTAssertFalse(MealSessionRuntimeRules.shouldStartImmediately(status: .restricted, available: true))
     }
 
     func testRestricted_notAvailable_returnsFalse() {
-        XCTAssertFalse(AppState.shouldStartImmediately(status: .restricted, available: false))
+        XCTAssertFalse(MealSessionRuntimeRules.shouldStartImmediately(status: .restricted, available: false))
     }
 }

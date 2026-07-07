@@ -66,7 +66,7 @@ final class NotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotific
                 pendingNotificationAction = (action, deepLink)
                 return
             }
-            state.handleNotificationAction(action, deepLink: deepLink)
+            state.mealSession.handleNotificationAction(action, deepLink: deepLink)
         }
     }
 
@@ -75,7 +75,7 @@ final class NotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotific
         guard appState != nil, let pending = pendingNotificationAction else { return }
         pendingNotificationAction = nil
         Task { @MainActor in
-            appState?.handleNotificationAction(pending.action, deepLink: pending.deepLink)
+            appState?.mealSession.handleNotificationAction(pending.action, deepLink: pending.deepLink)
         }
     }
 }

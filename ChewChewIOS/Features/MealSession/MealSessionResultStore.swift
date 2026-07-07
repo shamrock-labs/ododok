@@ -20,7 +20,7 @@ final class MealSessionResultStore {
     var todaySessions: [ChewingSessionDTO] = []
     var lastCompletedSession: ChewingSessionDTO?
 
-    private let remoteStore: RemoteStore
+    private let repository: MealSessionUploadRepository
     private let analytics: AnalyticsService
     private let appVersion: String?
     private let onHomeReceived: @MainActor (HomeStateDTO) -> Void
@@ -30,7 +30,7 @@ final class MealSessionResultStore {
     @ObservationIgnored private var pendingUpload: (output: IMUSessionRecorder.Output, stats: SessionStats?)?
 
     init(
-        remoteStore: RemoteStore,
+        repository: MealSessionUploadRepository,
         analytics: AnalyticsService,
         appVersion: String?,
         onHomeReceived: @escaping @MainActor (HomeStateDTO) -> Void,
@@ -38,7 +38,7 @@ final class MealSessionResultStore {
         onRemoteError: @escaping @MainActor (Error) -> Void,
         refreshHome: @escaping @MainActor () async -> Void
     ) {
-        self.remoteStore = remoteStore
+        self.repository = repository
         self.analytics = analytics
         self.appVersion = appVersion
         self.onHomeReceived = onHomeReceived
@@ -54,14 +54,9 @@ final class MealSessionResultStore {
     func uploadSession(_ output: IMUSessionRecorder.Output, stats: SessionStats?) async {
         sessionUploadStatus = .uploading
         do {
-            let deviceId = DeviceIdentity.shared
-            let storagePath = try await remoteStore.uploadIMUCSV(
-                sessionId: output.sessionId,
-                deviceId: deviceId,
-                csvData: output.csvData
-            )
-            let dto = makeSessionDTO(output: output, stats: stats, deviceId: deviceId, storagePath: storagePath)
-            let result = try await remoteStore.createChewingSession(dto)
+            let upload = try await repository.uploadSession(output: output, stats: stats, appVersion: appVersion)
+            let dto = upload.session
+            let result = upload.result
             sessionUploadStatus = .success
             sessionUploadErrorMessage = nil
             pendingUpload = nil
@@ -92,9 +87,8 @@ final class MealSessionResultStore {
 
     func fetchTodaySessions() async {
         let startOfDay = Calendar.current.startOfDay(for: Date())
-        let deviceId = DeviceIdentity.shared
         do {
-            let rows = try await remoteStore.fetchChewingSessions(deviceId: deviceId, since: startOfDay)
+            let rows = try await repository.fetchTodaySessions(startOfDay: startOfDay)
             todaySessions = rows.filter { ReportCardModel.from($0) != nil }
             await refreshHome()
         } catch {
@@ -104,7 +98,7 @@ final class MealSessionResultStore {
 
     func deleteSession(_ session: ChewingSessionDTO) async {
         do {
-            try await remoteStore.deleteChewingSession(id: session.id, deviceId: DeviceIdentity.shared)
+            try await repository.deleteSession(session)
             todaySessions.removeAll { $0.id == session.id }
             await refreshHome()
         } catch {
@@ -114,7 +108,7 @@ final class MealSessionResultStore {
 
     func deleteAllChewingSessions() async {
         do {
-            try await remoteStore.deleteAllChewingSessions(deviceId: DeviceIdentity.shared)
+            try await repository.deleteAllSessions()
             todaySessions = []
             await refreshHome()
         } catch {
@@ -137,6 +131,13 @@ final class MealSessionResultStore {
         sessionUploadErrorMessage = nil
     }
 
+    func closeResultPresentation() {
+        lastCompletedSession = nil
+        if sessionUploadStatus == .success {
+            dismissSessionUploadStatus()
+        }
+    }
+
     func resetTransientState() {
         lastCompletedSession = nil
         sessionUploadStatus = .idle
@@ -147,32 +148,6 @@ final class MealSessionResultStore {
     func resetAll() {
         todaySessions = []
         resetTransientState()
-    }
-
-    private func makeSessionDTO(
-        output: IMUSessionRecorder.Output,
-        stats: SessionStats?,
-        deviceId: String,
-        storagePath: String
-    ) -> ChewingSessionDTO {
-        ChewingSessionDTO(
-            id: output.sessionId,
-            deviceId: deviceId,
-            startedAt: output.startedAt,
-            endedAt: output.endedAt,
-            durationSec: output.durationSec,
-            sensorLocation: output.sensorLocation,
-            sampleCount: output.sampleCount,
-            sampleRateHz: 50,
-            storagePath: storagePath,
-            appVersion: appVersion,
-            chewingSeconds: stats?.chewingSeconds,
-            restSeconds: stats?.restSeconds,
-            chewingFraction: stats?.chewingFraction,
-            estimatedTotalChews: stats?.estimatedTotalChews,
-            modelVersion: stats?.modelVersion,
-            chewingTimeline: stats?.chewingTimeline
-        )
     }
 
     private static func uploadFailureReason(_ error: Error) -> String {

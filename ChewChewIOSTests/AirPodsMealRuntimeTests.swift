@@ -1,77 +1,126 @@
+import CoreMotion
 import XCTest
 @testable import ChewChewIOS
 
 @MainActor
 final class AirPodsMealRuntimeTests: XCTestCase {
     func testUpdatingAlertVolumeAlsoUpdatesRunningAudioFeedback() {
-        let keepAlive = FakeMealAudioFeedbackKeepAlive()
-        let store = MealSessionRuntimeStore(
-            analytics: NoopAnalytics(),
-            onChewPulse: {},
-            onPersistSnapshot: {},
-            onSessionReadyForUpload: { _, _ in },
-            backgroundKeepAlive: keepAlive
-        )
+        let runtime = FakeAirPodsMealRuntimeServices()
+        let store = makeStore(runtime: runtime)
 
         store.startEating()
         store.updateAlertVolume(0)
 
-        XCTAssertEqual(keepAlive.volume, 0, accuracy: 0.0001)
+        XCTAssertEqual(runtime.audio.volume, 0, accuracy: 0.0001)
     }
 
     func testDisconnectingAirPodsWithinOneMinuteShowsShortSessionConfirm() {
-        let monitor = FakeAirPodsConnectionMonitor()
-        var now = Date(timeIntervalSince1970: 1_000)
-        let store = MealSessionRuntimeStore(
-            analytics: NoopAnalytics(),
-            onChewPulse: {},
-            onPersistSnapshot: {},
-            onSessionReadyForUpload: { _, _ in },
-            mealAirPodsConnectionMonitor: monitor,
-            dateProvider: { now }
-        )
+        let runtime = FakeAirPodsMealRuntimeServices(now: Date(timeIntervalSince1970: 1_000))
+        let store = makeStore(runtime: runtime)
 
         store.startEating()
-        now = now.addingTimeInterval(59)
+        runtime.now = runtime.now.addingTimeInterval(59)
 
         XCTAssertTrue(store.isEating)
 
-        monitor.emitConnectionChanged(false)
+        runtime.airPodsMonitor.emitConnectionChanged(false)
 
         XCTAssertTrue(store.isEating)
         XCTAssertTrue(store.showShortSessionConfirm)
     }
 
     func testDisconnectingAirPodsAfterOneMinuteStopsMeasurement() {
-        let monitor = FakeAirPodsConnectionMonitor()
-        var now = Date(timeIntervalSince1970: 2_000)
-        let store = MealSessionRuntimeStore(
-            analytics: NoopAnalytics(),
-            onChewPulse: {},
-            onPersistSnapshot: {},
-            onSessionReadyForUpload: { _, _ in },
-            mealAirPodsConnectionMonitor: monitor,
-            dateProvider: { now }
-        )
+        let runtime = FakeAirPodsMealRuntimeServices(now: Date(timeIntervalSince1970: 2_000))
+        let store = makeStore(runtime: runtime)
 
         store.startEating()
-        now = now.addingTimeInterval(60)
+        runtime.now = runtime.now.addingTimeInterval(60)
 
         XCTAssertTrue(store.isEating)
 
-        monitor.emitConnectionChanged(false)
+        runtime.airPodsMonitor.emitConnectionChanged(false)
 
         XCTAssertFalse(store.isEating)
         XCTAssertFalse(store.showShortSessionConfirm)
     }
+
+    private func makeStore(runtime: FakeAirPodsMealRuntimeServices) -> MealSessionRuntimeStore {
+        MealSessionRuntimeStore(
+            analytics: NoopAnalytics(),
+            onChewPulse: {},
+            onPersistSnapshot: {},
+            onSessionReadyForUpload: { _, _ in },
+            runtimeServices: runtime.services
+        )
+    }
 }
 
-private final class FakeMealAudioFeedbackKeepAlive: MealAudioFeedbackKeeping {
+private final class FakeAirPodsMealRuntimeServices {
+    let motion = FakeAirPodsMotionService()
+    let audio = FakeAirPodsAudioFeedbackService()
+    let callMonitor = FakeAirPodsCallInterruptionMonitor()
+    let activity = FakeAirPodsMealActivityController()
+    let airPodsMonitor = FakeAirPodsConnectionMonitor()
+    let notification = FakeAirPodsInterruptionNotifier()
+    var now: Date
+
+    init(now: Date = Date()) {
+        self.now = now
+    }
+
+    var services: MealSessionRuntimeServices {
+        MealSessionRuntimeServices(
+            makeMotionService: { self.motion },
+            makeAudioFeedbackService: { self.audio },
+            makeCallInterruptionMonitor: { self.callMonitor },
+            makeActivityController: { self.activity },
+            makeAirPodsConnectionMonitor: { self.airPodsMonitor },
+            makeStartCountdownController: { StartCountdownController() },
+            notificationScheduler: notification,
+            now: { self.now }
+        )
+    }
+}
+
+private final class FakeAirPodsMotionService: MealMotionServicing {
+    var liveMotionUnavailableSource: IMUWaveformSource?
+    var isDeviceMotionAvailable = true
+    var authorizationStatus = CMAuthorizationStatus.authorized
+
+    func start(
+        onSample: @escaping (HeadphoneMotionSample) -> Void,
+        onError: @escaping (String) -> Void
+    ) {}
+
+    func stop() {}
+}
+
+private final class FakeAirPodsAudioFeedbackService: MealAudioFeedbackServicing {
     var volume: Float = 0.5
 
     func start() {}
     func stop() {}
     func playTone(for pace: ChewPaceSample) {}
+}
+
+private final class FakeAirPodsCallInterruptionMonitor: MealCallInterruptionMonitoring {
+    var onCallStarted: (() -> Void)?
+    var onCallEnded: (() -> Void)?
+
+    func start() {}
+    func stop() {}
+}
+
+private final class FakeAirPodsMealActivityController: MealActivityControlling {
+    func start(startedAt: Date) {}
+    func setPaused(_ paused: Bool, callActive: Bool) async {}
+    func end() {}
+}
+
+private final class FakeAirPodsInterruptionNotifier: MealInterruptionNotificationScheduling {
+    func requestAuthorizationIfNeeded() async -> Bool { true }
+    func scheduleInterruptionPrompt() async {}
+    func cancelInterruptionPrompt() {}
 }
 
 private final class FakeAirPodsConnectionMonitor: AirPodsConnectionMonitoring {
