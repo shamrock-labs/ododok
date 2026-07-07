@@ -48,7 +48,9 @@ final class HomeStoreTests: XCTestCase {
         let store = HomeStore(repository: repository)
 
         async let pendingRefresh: Void = store.refresh()
-        await Task.yield()
+        while !store.isLoading {
+            await Task.yield()
+        }
         store.applyExternal(writeHome)
         await pendingRefresh
 
@@ -103,6 +105,20 @@ final class HomeStoreTests: XCTestCase {
         XCTAssertEqual(store.currentStreak, 0)
         XCTAssertEqual(store.freezeInventory, 0)
         XCTAssertNil(store.errorMessage)
+    }
+
+    func testSyncLocalCacheUpdatesDisplayedStatsAndServerSnapshot() {
+        let store = HomeStore(
+            repository: FakeHomeRepository(result: .success(makeHome())),
+            initialHome: makeHome(points: 80, streak: 4, freeze: 2, chew: 20, progress: 0.1)
+        )
+
+        store.syncLocalCache(points: 30, streak: 3, freezeInventory: 1)
+
+        XCTAssertEqual(store.points, 30)
+        XCTAssertEqual(store.currentStreak, 3)
+        XCTAssertEqual(store.freezeInventory, 1)
+        XCTAssertEqual(store.serverHome?.points, 30)
     }
 
     func testGrantDailyAttendanceAppliesHomeAndShowsReward() async {

@@ -104,6 +104,18 @@ final class HomeStore {
         isLoading = false
     }
 
+    func syncLocalCache(points: Int, streak: Int, freezeInventory: Int) {
+        self.points = points
+        self.streak = streak
+        self.freezeInventory = freezeInventory
+        if var serverHome {
+            serverHome.points = points
+            serverHome.streak = streak
+            serverHome.freezeInventory = freezeInventory
+            self.serverHome = serverHome
+        }
+    }
+
     func applySessionReward(from result: CreateSessionResultDTO) {
         if let streakGrant = rewardGrant(for: result.streak) {
             pendingRewardGrant = streakGrant

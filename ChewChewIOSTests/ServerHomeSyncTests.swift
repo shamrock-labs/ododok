@@ -62,21 +62,21 @@ final class ServerHomeSyncTests: XCTestCase {
     /// 서버 홈 값이 그대로 in-memory 상태 + derived 프로퍼티로 흘러야 한다(정본 = 서버).
     func testRefreshFromServerHome_appliesServerValues() async {
         let home = makeHome(points: 123, streak: 5, freeze: 2, chew: 200, goal: 400, progress: 0.5)
-        let state = AppState(remoteStore: StubHomeStore(home: home))
+        let state = AppState(remoteStore: StubHomeStore(home: home), startStartupTasks: false)
 
         await state.refreshFromServerHome()
 
         XCTAssertEqual(state.points, 123)
-        XCTAssertEqual(state.currentStreak, 5)
+        XCTAssertEqual(state.home.currentStreak, 5)
         XCTAssertEqual(state.freezeInventory, 2)
-        XCTAssertEqual(state.todayRealChewCount, 200)
-        XCTAssertEqual(state.todayProgress, 0.5, accuracy: 0.0001)
+        XCTAssertEqual(state.home.todayRealChewCount, 200)
+        XCTAssertEqual(state.home.todayProgress, 0.5, accuracy: 0.0001)
     }
 
     /// 응답이 안 오는 경우(offline) — 마지막 성공 상태를 유지해야 한다(화면이 깨지지 않음).
     func testRefreshFromServerHome_failureKeepsLastGoodState() async {
         let store = StubHomeStore(home: makeHome(points: 50, streak: 3, freeze: 1, chew: 100, goal: 400, progress: 0.25))
-        let state = AppState(remoteStore: store)
+        let state = AppState(remoteStore: store, startStartupTasks: false)
         await state.refreshFromServerHome()
         XCTAssertEqual(state.points, 50)
 
@@ -84,6 +84,6 @@ final class ServerHomeSyncTests: XCTestCase {
         await state.refreshFromServerHome()
 
         XCTAssertEqual(state.points, 50, "서버 실패 시 마지막 성공 상태를 유지해야 한다")
-        XCTAssertEqual(state.currentStreak, 3)
+        XCTAssertEqual(state.home.currentStreak, 3)
     }
 }

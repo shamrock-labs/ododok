@@ -72,6 +72,25 @@ final class SpyAuthSessionManager: AuthSessionManaging {
     }
 }
 
+private final class FakeAuthTokenStorage: AuthTokenStorage {
+    var accessToken: String?
+    var refreshToken: String?
+
+    var isLoggedIn: Bool {
+        accessToken != nil
+    }
+
+    init(accessToken: String? = nil, refreshToken: String? = nil) {
+        self.accessToken = accessToken
+        self.refreshToken = refreshToken
+    }
+
+    func clear() {
+        accessToken = nil
+        refreshToken = nil
+    }
+}
+
 @MainActor
 final class EraseAllUserDataTests: XCTestCase {
     private let pendingInviteKey = "ChewChewIOS.AppState.pendingInviteCode"
@@ -97,7 +116,7 @@ final class EraseAllUserDataTests: XCTestCase {
 
     func testEraseAllUserData_callsDeleteUserDataOnce() async {
         let spy = SpyRemoteStore()
-        let state = AppState(remoteStore: spy)
+        let state = AppState(remoteStore: spy, startStartupTasks: false)
 
         // 초기 상태에서 직렬화 체인이 drain되도록 짧게 yield
         await Task.yield()
@@ -111,7 +130,7 @@ final class EraseAllUserDataTests: XCTestCase {
 
     func testEraseAllUserData_resetsPointsToZero() async {
         let spy = SpyRemoteStore()
-        let state = AppState(remoteStore: spy)
+        let state = AppState(remoteStore: spy, startStartupTasks: false)
         state.points = 500
 
         await state.eraseAllUserData()
@@ -121,7 +140,7 @@ final class EraseAllUserDataTests: XCTestCase {
 
     func testEraseAllUserData_resetsTodaySessionsToEmpty() async {
         let spy = SpyRemoteStore()
-        let state = AppState(remoteStore: spy)
+        let state = AppState(remoteStore: spy, startStartupTasks: false)
         state.todaySessions = [
             ChewingSessionDTO(
                 id: UUID(),
@@ -149,7 +168,7 @@ final class EraseAllUserDataTests: XCTestCase {
 
     func testEraseAllUserDataClearsPendingRuntimeState() async {
         let spy = SpyRemoteStore()
-        let state = AppState(remoteStore: spy)
+        let state = AppState(remoteStore: spy, startStartupTasks: false)
         state.pendingMealStartRequest = true
         state.sessionUploadStatus = .failure
         state.sessionUploadErrorMessage = "offline"
@@ -165,7 +184,7 @@ final class EraseAllUserDataTests: XCTestCase {
 
     func testEraseAllUserData_resetsStreakToZero() async {
         let spy = SpyRemoteStore()
-        let state = AppState(remoteStore: spy)
+        let state = AppState(remoteStore: spy, startStartupTasks: false)
         state.streak = 7
 
         await state.eraseAllUserData()
@@ -176,7 +195,7 @@ final class EraseAllUserDataTests: XCTestCase {
     func testEraseAllUserDataReturnsToLoginGate() async {
         TokenManager.save(access: "access-token", refresh: "refresh-token")
         let spy = SpyRemoteStore()
-        let state = AppState(remoteStore: spy)
+        let state = AppState(remoteStore: spy, startStartupTasks: false)
         state.isLoggedIn = true
 
         XCTAssertTrue(state.isLoggedIn)
@@ -187,16 +206,20 @@ final class EraseAllUserDataTests: XCTestCase {
     }
 
     func testEraseAllUserDataClearsTokensImmediatelyAndUsesTokenSnapshotForDelete() async {
-        TokenManager.save(access: "access-token", refresh: "refresh-token")
+        let tokens = FakeAuthTokenStorage(accessToken: "access-token", refreshToken: "refresh-token")
         let spy = SpyRemoteStore()
-        let state = AppState(remoteStore: spy)
+        let state = AppState(remoteStore: spy, authTokenStorage: tokens, startStartupTasks: false)
 
         await state.eraseAllUserData()
 
-        XCTAssertNil(TokenManager.accessToken)
-        XCTAssertNil(TokenManager.refreshToken)
+        XCTAssertNil(tokens.accessToken)
+        XCTAssertNil(tokens.refreshToken)
 
-        let restoredState = AppState(remoteStore: NoopRemoteStore())
+        let restoredState = AppState(
+            remoteStore: NoopRemoteStore(),
+            authTokenStorage: tokens,
+            startStartupTasks: false
+        )
         XCTAssertFalse(restoredState.isLoggedIn, "계정 삭제 직후 재실행되어도 Keychain 토큰으로 로그인 상태가 복원되면 안 된다")
 
         await waitFor(spy.deleteUserDataAccessToken != nil)
@@ -211,7 +234,7 @@ final class EraseAllUserDataTests: XCTestCase {
     func testLogoutClearsLocalAccountCacheWithoutDeletingRemoteData() {
         TokenManager.save(access: "access-token", refresh: "refresh-token")
         let spy = SpyRemoteStore()
-        let state = AppState(remoteStore: spy)
+        let state = AppState(remoteStore: spy, startStartupTasks: false)
 
         state.displayName = "이전계정"
         state.hasCompletedOnboarding = true
@@ -238,7 +261,7 @@ final class EraseAllUserDataTests: XCTestCase {
         TokenManager.save(access: "access-token", refresh: "refresh-token")
         let remote = SpyRemoteStore()
         let auth = SpyAuthSessionManager()
-        let state = AppState(remoteStore: remote, authSessionManager: auth)
+        let state = AppState(remoteStore: remote, authSessionManager: auth, startStartupTasks: false)
         state.displayName = "이전계정"
         state.hasCompletedOnboarding = true
         state.points = 42
@@ -258,7 +281,7 @@ final class EraseAllUserDataTests: XCTestCase {
         TokenManager.save(access: "access-token", refresh: "refresh-token")
         let remote = SpyRemoteStore()
         remote.fetchHomeError = RemoteStoreError.authExpired
-        let state = AppState(remoteStore: remote)
+        let state = AppState(remoteStore: remote, startStartupTasks: false)
         state.displayName = "이전계정"
         state.hasCompletedOnboarding = true
 
@@ -273,7 +296,7 @@ final class EraseAllUserDataTests: XCTestCase {
     func testPendingInviteCodeRemainsWhenAcceptFailsAfterLogin() async {
         let remote = SpyRemoteStore()
         remote.acceptFriendInviteError = RemoteStoreError.offline
-        let state = AppState(remoteStore: remote)
+        let state = AppState(remoteStore: remote, startStartupTasks: false)
         state.isLoggedIn = false
         state.receiveInviteCode("FRIEND-123")
 

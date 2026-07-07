@@ -13,7 +13,7 @@ final class CompleteLoginTests: XCTestCase {
     // MARK: - onboardingCompleted: true
 
     func testCompleteLogin_onboardingTrue_setsHasCompletedOnboarding() {
-        let state = AppState(remoteStore: SpyRemoteStore())
+        let state = AppState(remoteStore: SpyRemoteStore(), startStartupTasks: false)
 
         state.completeLogin(onboardingCompleted: true, method: "google")
 
@@ -22,7 +22,7 @@ final class CompleteLoginTests: XCTestCase {
     }
 
     func testCompleteLogin_onboardingTrue_setsIsLoggedIn() {
-        let state = AppState(remoteStore: SpyRemoteStore())
+        let state = AppState(remoteStore: SpyRemoteStore(), startStartupTasks: false)
 
         state.completeLogin(onboardingCompleted: true, method: "google")
 
@@ -32,7 +32,7 @@ final class CompleteLoginTests: XCTestCase {
     // MARK: - onboardingCompleted: false
 
     func testCompleteLogin_onboardingFalse_doesNotSetHasCompletedOnboarding() {
-        let state = AppState(remoteStore: SpyRemoteStore())
+        let state = AppState(remoteStore: SpyRemoteStore(), startStartupTasks: false)
 
         state.completeLogin(onboardingCompleted: false, method: "google")
 
@@ -46,7 +46,7 @@ final class CompleteLoginTests: XCTestCase {
     /// completeLogin 내부에서 clearLocalSessionCache()가 hasCompletedOnboarding을 false로
     /// 리셋하는데, 그 뒤에 서버 값(true)이 재적용돼야 온보딩 재노출 버그가 재발하지 않는다.
     func testCompleteLogin_onboardingTrue_survivesInternalCacheClear() {
-        let state = AppState(remoteStore: SpyRemoteStore())
+        let state = AppState(remoteStore: SpyRemoteStore(), startStartupTasks: false)
         // 로그아웃으로 캐시가 한 번 지워진 상태를 시뮬레이션
         state.hasCompletedOnboarding = false
 
@@ -58,7 +58,7 @@ final class CompleteLoginTests: XCTestCase {
 
     /// 반대 케이스: false일 때는 clearLocalSessionCache 이후에도 false로 남아야 한다.
     func testCompleteLogin_onboardingFalse_remainsFalseAfterCacheClear() {
-        let state = AppState(remoteStore: SpyRemoteStore())
+        let state = AppState(remoteStore: SpyRemoteStore(), startStartupTasks: false)
         // 로컬에 true가 캐시된 상태에서 재로그인
         state.hasCompletedOnboarding = true
 
@@ -71,7 +71,7 @@ final class CompleteLoginTests: XCTestCase {
     // MARK: - 기존 로컬 캐시 초기화 확인
 
     func testCompleteLogin_clearsLocalCache() {
-        let state = AppState(remoteStore: SpyRemoteStore())
+        let state = AppState(remoteStore: SpyRemoteStore(), startStartupTasks: false)
         state.points = 100
         state.streak = 5
         state.displayName = "이전계정"

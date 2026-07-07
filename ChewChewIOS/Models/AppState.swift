@@ -113,7 +113,7 @@ final class AppState {
 
     /// 서버 OAuth 로그인 여부(ODO-47). 토큰이 Keychain에 있으면 로그인 상태로 시작.
     /// false인 동안 ContentView가 LoginView를 fullScreenCover로 띄운다.
-    var isLoggedIn: Bool = TokenManager.isLoggedIn
+    var isLoggedIn: Bool = false
 
     /// 온보딩(닉네임 입력 + 사용법 튜토리얼)을 끝까지 마쳤는지. false인 동안 ContentView가
     /// onboarding sheet를 띄운다. 튜토리얼 마지막 "시작하기"/"건너뛰기"의 `completeOnboarding()`
@@ -219,9 +219,10 @@ final class AppState {
     /// 원격 백엔드(InsForge)에 대한 추상화. 테스트/시뮬레이터에선 NoopRemoteStore 주입 가능.
     @ObservationIgnored let remoteStore: RemoteStore
 
+    @ObservationIgnored private let authTokenStorage: any AuthTokenStorage
+
     @MainActor @ObservationIgnored lazy var home: HomeStore = HomeStore(
         repository: RemoteStoreHomeRepository(remoteStore: remoteStore),
-        initialHome: serverHome,
         initialPoints: points,
         initialStreak: streak,
         initialFreezeInventory: freezeInventory,
@@ -320,13 +321,6 @@ final class AppState {
     /// nil이면 화면이 기본 카피를 쓴다. 성공·dismiss 시 비운다.
     var sessionUploadErrorMessage: String?
 
-    /// 서버가 계산한 홈 상태(도토리/스트릭/오늘 진행도)의 최신 스냅샷. ODO-54 thin-client 전환 후
-    /// 도토리·스트릭·오늘완료의 정본은 서버다. 세션 저장 응답·홈 조회·출석 적립이 이 값을 갱신하고,
-    /// `points`/`streak`/`freezeInventory`와 derived 프로퍼티는 모두 여기서 흘러나온다.
-    /// nil이면 아직 서버 응답 전 — 로컬 캐시 fallback. derived 프로퍼티가 이 값을 읽으므로
-    /// 관찰 대상으로 둔다(변경 시 홈 화면 자동 갱신).
-    private(set) var serverHome: HomeStateDTO?
-
     /// "오늘의 식사 기록" 리스트 — 오늘 0시 이후 시작된 chewing_session 행들.
     /// Tracking 탭이 관찰만 하고, fetch/append는 AppState가 single source of truth.
     /// 세션 종료 + INSERT 성공 시 자동 append, 탭 진입 시 fetchTodaySessions로 재동기화.
@@ -362,14 +356,18 @@ final class AppState {
         remoteStore: RemoteStore = NoopRemoteStore(),
         authSessionManager: AuthSessionManaging = NoopAuthSessionManager(),
         authRepository: AuthRepository? = nil,
-        analytics: AnalyticsService = NoopAnalytics()
+        analytics: AnalyticsService = NoopAnalytics(),
+        authTokenStorage: any AuthTokenStorage = KeychainAuthTokenStorage(),
+        startStartupTasks: Bool = true
     ) {
         self.remoteStore = remoteStore
+        self.authTokenStorage = authTokenStorage
         self.authSessionManager = authSessionManager
         self.authRepository = authRepository
             ?? (authSessionManager as? AuthRepository)
             ?? AuthSessionManagerRepositoryAdapter(sessionManager: authSessionManager)
         self.analytics = analytics
+        isLoggedIn = authTokenStorage.isLoggedIn
         self.mealPushCoordinator = MealPushCoordinator(remoteStore: remoteStore)
         // displayName은 game state(`PersistedSnapshot`)과 다른 별도 캐시 키 — cold-start
         // 시 UserDefaults에서 즉시 read해 HomeView가 빈 이름으로 깜빡이지 않도록.
@@ -386,6 +384,7 @@ final class AppState {
         }
         // 즉시 표시용 fallback — DB 실패 또는 응답 전에 화면 그려도 마지막 캐시값으로.
         loadPersistedSnapshot()
+        guard startStartupTasks else { return }
         Task { [weak self] in
             // push 경로의 authExpired를 기존 세션 만료 처리(handleRemoteError → expireSession)로 연결한다.
             // init 시점엔 self 캡처가 불가해 생성 직후 여기서 핸들러를 건다.
@@ -659,10 +658,12 @@ final class AppState {
 
     /// ShopItem 구매. 자동 장착하지 않음 (명시적 `equip` 필요).
     @discardableResult
+    @MainActor
     func buyItem(_ item: ShopItem) -> PurchaseResult {
         if owned.contains(item.id) { return .alreadyOwned }
         guard points >= item.price else { return .notEnoughPoints }
         points -= item.price
+        home.syncLocalCache(points: points, streak: streak, freezeInventory: freezeInventory)
         owned.insert(item.id)
         persistSnapshot()
         analytics.track(.shopItemPurchased(itemId: item.id, itemType: item.type.rawValue, price: item.price))
@@ -758,6 +759,10 @@ final class AppState {
     /// 로컬: 모든 게임 상태를 초기화하고 스냅샷도 비움.
     @MainActor
     func eraseAllUserData() async {
+        // 삭제 요청은 현재 token 스냅샷으로 보내고, canonical session 저장소는 즉시 비운다.
+        let deletionAccessToken = authTokenStorage.accessToken
+        let deletionRefreshToken = authTokenStorage.refreshToken
+
         // 로컬 인메모리 상태 리셋 (reset()과 동일 범위)
         stopEating()
         clearTransientRuntimeState()
@@ -782,10 +787,7 @@ final class AppState {
         MealNotificationService.cancelMealReminders()
         Task { await mealPushCoordinator.clearRegistration() }
 
-        // 삭제 요청은 현재 access token 스냅샷으로 보내고, canonical session 저장소는 즉시 비운다.
-        let deletionAccessToken = TokenManager.accessToken
-        let deletionRefreshToken = TokenManager.refreshToken
-        TokenManager.clear()
+        authTokenStorage.clear()
 
         await MainActor.run {
             home.reset()
@@ -814,7 +816,7 @@ final class AppState {
         loginMethod = nil
         hasCompletedOnboarding = false
         freezeInventory = 0
-        TokenManager.clear()
+        authTokenStorage.clear()
         isLoggedIn = false
         analytics.setUserId(nil)
         SentryService.setUser(id: nil)
@@ -860,8 +862,9 @@ final class AppState {
 
     /// 분석 유저 속성을 현재 상태로 동기화(코호트 분석용). 로그인·콜드스타트 복원·서버 홈 갱신 시 호출.
     /// 가입일·총세션수는 서버 DTO에 없어 제외(서버 추가 시 후속).
+    @MainActor
     private func syncAnalyticsUserProperties() {
-        analytics.setUserProperty("current_streak", currentStreak)
+        analytics.setUserProperty("current_streak", home.currentStreak)
         analytics.setUserProperty("total_points", points)
     }
 
@@ -899,7 +902,7 @@ final class AppState {
         // 토큰이 유효할 때 수행. 만료 경로는 401이라 DELETE 무의미하므로 in-memory만 비운다).
         MealNotificationService.cancelMealReminders()
         Task { await mealPushCoordinator.clearRegistration() }
-        TokenManager.clear()
+        authTokenStorage.clear()
         isLoggedIn = false
         analytics.setUserId(nil)
         SentryService.setUser(id: nil)
@@ -915,38 +918,8 @@ final class AppState {
 
     // MARK: - Derived
 
-    var status: MoodStatus { MoodStatus.from(count: todayRealChewCount) }
-
-    /// 홈에 표시할 "오늘 기준" 연속 출석 일수. ODO-54 전환 후 스트릭 정본은 서버다.
-    /// 서버 홈 응답의 `streak`(이미 "현재 유효한" 값)을 그대로 쓰고, 서버 응답 전이면
-    /// 로컬 캐시(`streak`)로 fallback.
-    /// 주의: 오프라인 cold-start에선 만료 검증을 로컬에서 못 한다(`lastSuccessDate`는 서버 소유로
-    /// 제거됨). 마지막 성공 스냅샷의 스트릭을 그대로 보여주는 건 ODO-54 Done-When "서버 실패 시
-    /// 마지막 성공 상태 보존"에 따른 의도된 동작 — 다음 서버 응답에서 즉시 정정된다.
-    var currentStreak: Int {
-        serverHome?.streak ?? streak
-    }
-
-    /// 오늘의 실제 씹기 횟수. 서버가 계산한 값(오늘 0시 이후 60초+ 세션 합)을 정본으로 쓰고,
-    /// 서버 응답 전이면 로컬 `todaySessions` 합으로 fallback. dailyGoal == 0은 "정책 없는 홈"
-    /// (InsForge 레거시 어댑터의 legacyHome)의 표지라, 그때도 로컬 합산으로 fallback —
-    /// 레거시 백엔드에서 홈 카운트/링이 0에 붙박이는 것을 막는다(todayProgress와 같은 기준).
-    var todayRealChewCount: Int {
-        if let serverHome, serverHome.dailyGoal > 0 { return serverHome.todayRealChewCount }
-        return localTodayRealChewCount
-    }
-
     private var localTodayRealChewCount: Int {
         todaySessions.reduce(0) { $0 + ($1.estimatedTotalChews ?? 0) }
-    }
-
-    /// 일일 목표 진행도(0~1). 서버 홈 응답의 진행도를 정본으로 쓰고(분모 dailyGoal>0일 때),
-    /// 서버 응답 전이면 로컬 계산으로 fallback. 홈 다람이 둘레 링이 사용.
-    var todayProgress: Double {
-        if let serverHome, serverHome.dailyGoal > 0 {
-            return min(1.0, max(0.0, serverHome.todayProgress))
-        }
-        return min(1.0, max(0.0, Double(todayRealChewCount) / Double(Constants.dailyGoal)))
     }
 
     var imuWaveformStatusText: String {
@@ -1211,7 +1184,6 @@ final class AppState {
         didLoadProfile = false
         hasCompletedOnboarding = false
         auth.markLoggedOut()
-        serverHome = nil
         home.reset()
         homeApplyVersion += 1
         // 끼니 설정 로컬 캐시도 비운다 — 다음 계정이 이전 계정 알림시각을 보지 않도록(ODO-103).
@@ -1240,8 +1212,6 @@ final class AppState {
 
     func clearPersistedSnapshot() {
         UserDefaults.standard.removeObject(forKey: Self.persistenceKey)
-        // 서버 홈 캐시도 비움 — reset/erase 후 화면이 옛 도토리/스트릭을 잠깐 보여주지 않도록.
-        serverHome = nil
         homeApplyVersion += 1   // 초기화 직전 시작된 refreshFromServerHome이 완료 후 applyHome을 실행하지 못하게.
     }
 
@@ -1257,9 +1227,9 @@ final class AppState {
 
     // MARK: - 서버 홈 상태 동기화 (ODO-54 thin-client)
 
-    /// 서버가 계산한 홈 상태를 in-memory에 반영. 도토리/스트릭/프리즈는 서버값으로 덮고,
-    /// derived 프로퍼티(currentStreak/todayRealChewCount/todayProgress)는 자동으로 따라온다.
-    /// 로컬 캐시도 write-through해 다음 cold-start의 fallback이 최신값을 갖게 한다.
+    /// 서버가 계산한 홈 상태를 AppState의 레거시 캐시에 write-through한다.
+    /// 홈 화면 표시 상태의 소유권은 HomeStore가 갖고, AppState의 points/streak/freezeInventory는
+    /// Shop·스냅샷 호환용 캐시로만 남긴다.
     /// applyHome이 일어날 때마다 증가 — 비행 중인 읽기(GET /home) 응답이 도착했을 때 그 사이
     /// 다른 응답(출석/세션 저장 POST)이 홈을 갱신했는지 판별하는 버전 카운터.
     @ObservationIgnored private var homeApplyVersion = 0
@@ -1278,7 +1248,6 @@ final class AppState {
     @MainActor
     private func applyHomeLocally(_ home: HomeStateDTO) {
         homeApplyVersion += 1
-        serverHome = home
         points = home.points
         streak = home.streak
         freezeInventory = home.freezeInventory
