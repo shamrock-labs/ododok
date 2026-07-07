@@ -31,15 +31,25 @@ final class MealSessionRuntimeStore {
 
     private static let modelVersion = "dsp-chewcounter-1"
 
-    var isEating: Bool = false
-    private(set) var eatingStartedAt: Date?
+    private(set) var phase: MealSessionPhase = .idle
+    var isEating: Bool { phase.isEating }
+    var eatingStartedAt: Date? { phase.startedAt }
     var imuWaveformSamples: [Double] = MealSessionRuntimeStore.idleIMUWaveformSamples
     var imuWaveformSource: IMUWaveformSource = .idle
     var imuSampleCount: Int = 0
     var lastIMUSampleAt: Date?
     var startButtonHighlighted: Bool = false
     var pendingMealStartRequest: Bool = false
-    var showShortSessionConfirm: Bool = false
+    var showShortSessionConfirm: Bool {
+        get { phase.isConfirmingShortStop }
+        set {
+            if newValue {
+                requestShortSessionConfirmation()
+            } else {
+                dismissShortSessionConfirmation()
+            }
+        }
+    }
     var showAirPodsConnectionPrompt: Bool = false
 
     private let analytics: AnalyticsService
@@ -86,10 +96,9 @@ final class MealSessionRuntimeStore {
 
     func startEating() {
         guard !isEating else { return }
-        isEating = true
         analytics.track(.mealSessionStarted())
         let now = Date()
-        eatingStartedAt = now
+        phase = .measuring(MealSessionMeasurementContext(startedAt: now))
 
         prepareEatingSession(startedAt: now)
         let counter = ChewCounter()
@@ -108,33 +117,41 @@ final class MealSessionRuntimeStore {
 
     func stopEating() {
         guard isEating else { return }
-        isEating = false
-        let sessionDurationSec = eatingStartedAt.map { Int(Date().timeIntervalSince($0)) } ?? 0
-        eatingStartedAt = nil
+        let startedAt = eatingStartedAt
+        let endedAt = Date()
+        let sessionDurationSec = startedAt.map { Int(endedAt.timeIntervalSince($0)) } ?? 0
+        if let startedAt {
+            phase = .analyzing(MealSessionAnalysisContext(startedAt: startedAt, endedAt: endedAt))
+        } else {
+            phase = .idle
+        }
         let counter = stopEatingRuntime()
         onPersistSnapshot()
 
         chewCounter = nil
         if let recorder = imuSessionRecorder {
             imuSessionRecorder = nil
-            let endedAt = Date()
             let output = recorder.finalize(endedAt: endedAt)
             guard output.sampleCount > 0 else {
+                phase = .idle
                 analytics.track(.mealSessionAborted(reason: "no_samples", durationSec: sessionDurationSec))
                 return
             }
+            phase = .idle
             Task { [weak self] in
                 let stats = await counter?.sessionStats(modelVersion: Self.modelVersion)
                 await self?.onSessionReadyForUpload(output, stats)
             }
+        } else {
+            phase = .idle
         }
     }
 
     func discardCurrentSession() {
         guard isEating else { return }
-        isEating = false
-        let sessionDurationSec = eatingStartedAt.map { Int(Date().timeIntervalSince($0)) } ?? 0
-        eatingStartedAt = nil
+        let startedAt = eatingStartedAt
+        let sessionDurationSec = startedAt.map { Int(Date().timeIntervalSince($0)) } ?? 0
+        phase = .idle
         _ = stopEatingRuntime()
         onPersistSnapshot()
         chewCounter = nil
@@ -164,6 +181,9 @@ final class MealSessionRuntimeStore {
         interruptionWasCall = false
         interruptionBeganAt = nil
         MealNotificationService.cancelInterruptionPrompt()
+        if let startedAt = eatingStartedAt {
+            phase = .measuring(MealSessionMeasurementContext(startedAt: startedAt))
+        }
         Task { await self.mealActivity.setPaused(false) }
         _ = startHeadphoneMotionLoop()
     }
@@ -246,7 +266,7 @@ final class MealSessionRuntimeStore {
     func clearTransientRuntimeState() {
         pendingMealStartRequest = false
         startButtonHighlighted = false
-        showShortSessionConfirm = false
+        dismissShortSessionConfirmation()
         showAirPodsConnectionPrompt = false
     }
 
@@ -254,19 +274,30 @@ final class MealSessionRuntimeStore {
         if isEating {
             stopEating()
         }
-        isEating = false
-        eatingStartedAt = nil
+        phase = .idle
         resetIMUWaveform()
         imuWaveformSource = .idle
         clearTransientRuntimeState()
     }
 
-    private static func normalizedAlertVolume(_ volume: Double) -> Float {
+    func requestShortSessionConfirmation() {
+        guard let startedAt = eatingStartedAt else { return }
+        phase = .confirmingShortStop(MealSessionMeasurementContext(startedAt: startedAt))
+    }
+
+    private func dismissShortSessionConfirmation() {
+        guard case let .confirmingShortStop(context) = phase else { return }
+        phase = .measuring(context)
+    }
+}
+
+private extension MealSessionRuntimeStore {
+    static func normalizedAlertVolume(_ volume: Double) -> Float {
         guard volume.isFinite else { return 0.5 }
         return Float(max(0.0, min(1.0, volume)))
     }
 
-    private func prepareEatingSession(startedAt: Date) {
+    func prepareEatingSession(startedAt: Date) {
         imuSampleCount = 0
         lastIMUSampleAt = nil
         imuSessionRecorder = IMUSessionRecorder(startedAt: startedAt)
@@ -274,7 +305,7 @@ final class MealSessionRuntimeStore {
         interruptionBeganAt = nil
     }
 
-    private func configureCallInterruptionHandling() {
+    func configureCallInterruptionHandling() {
         callMonitor.onCallStarted = { [weak self] in
             Task { @MainActor [weak self] in
                 await self?.pauseMeasurementForCall()
@@ -288,17 +319,21 @@ final class MealSessionRuntimeStore {
         callMonitor.start()
     }
 
-    private func pauseMeasurementForCall() async {
+    func pauseMeasurementForCall() async {
         guard isEating else { return }
         await withMealBackgroundTask(named: "MealCallPause") {
             interruptionWasCall = true
-            if interruptionBeganAt == nil { interruptionBeganAt = Date() }
+            let pausedAt = Date()
+            if interruptionBeganAt == nil { interruptionBeganAt = pausedAt }
+            if let startedAt = eatingStartedAt {
+                phase = .paused(MealSessionPauseContext(startedAt: startedAt, pausedAt: pausedAt, reason: .call))
+            }
             stopHeadphoneMotionLoop()
             await mealActivity.setPaused(true, callActive: true)
         }
     }
 
-    private func showResumePromptAfterCall() async {
+    func showResumePromptAfterCall() async {
         guard isEating, interruptionWasCall else { return }
         await withMealBackgroundTask(named: "MealCallEnded") {
             await mealActivity.setPaused(true, callActive: false)
@@ -306,7 +341,7 @@ final class MealSessionRuntimeStore {
         }
     }
 
-    private func withMealBackgroundTask(named name: String, operation: () async -> Void) async {
+    func withMealBackgroundTask(named name: String, operation: () async -> Void) async {
         #if canImport(UIKit)
         let bgTask = UIApplication.shared.beginBackgroundTask(withName: name)
         defer {
@@ -316,7 +351,7 @@ final class MealSessionRuntimeStore {
         await operation()
     }
 
-    private func startAudioFeedback(counter: ChewCounter) {
+    func startAudioFeedback(counter: ChewCounter) {
         backgroundKeepAlive.volume = alertVolume
         backgroundKeepAlive.start()
         let keepAlive = backgroundKeepAlive
@@ -331,7 +366,7 @@ final class MealSessionRuntimeStore {
         }
     }
 
-    private func stopEatingRuntime() -> ChewCounter? {
+    func stopEatingRuntime() -> ChewCounter? {
         stopHeadphoneMotionLoop()
         stopChewAnimationLoop()
         stopDemoIMUWaveformLoop()
@@ -350,19 +385,19 @@ final class MealSessionRuntimeStore {
         return counter
     }
 
-    private func startChewAnimationLoop() {
+    func startChewAnimationLoop() {
         stopChewAnimationLoop()
         chewPulseTimer = Timer.scheduledTimer(withTimeInterval: 0.85, repeats: true) { [weak self] _ in
             self?.onChewPulse()
         }
     }
 
-    private func stopChewAnimationLoop() {
+    func stopChewAnimationLoop() {
         chewPulseTimer?.invalidate()
         chewPulseTimer = nil
     }
 
-    private func startHeadphoneMotionLoop() -> Bool {
+    func startHeadphoneMotionLoop() -> Bool {
         #if targetEnvironment(simulator)
         imuWaveformSource = .simulator
         return false
@@ -405,7 +440,7 @@ final class MealSessionRuntimeStore {
         #endif
     }
 
-    private func handleMotionSample(_ sample: HeadphoneMotionSample) {
+    func handleMotionSample(_ sample: HeadphoneMotionSample) {
         imuWaveformSource = .live
         imuSampleCount += 1
         lastIMUSampleAt = Date()
@@ -420,7 +455,7 @@ final class MealSessionRuntimeStore {
         feedChewCounter(row)
     }
 
-    private func feedChewCounter(_ row: IMURow) {
+    func feedChewCounter(_ row: IMURow) {
         guard let chewCounter else { return }
         Task {
             await chewCounter.feed(
@@ -434,13 +469,13 @@ final class MealSessionRuntimeStore {
         }
     }
 
-    private func stopHeadphoneMotionLoop() {
+    func stopHeadphoneMotionLoop() {
         #if !targetEnvironment(simulator)
         headphoneMotionService.stop()
         #endif
     }
 
-    private func startDemoIMUWaveformLoop(source: IMUWaveformSource = .demo) {
+    func startDemoIMUWaveformLoop(source: IMUWaveformSource = .demo) {
         stopDemoIMUWaveformLoop()
         if isEating, !imuWaveformSource.usesRealMotion {
             imuWaveformSource = source
@@ -457,12 +492,12 @@ final class MealSessionRuntimeStore {
         }
     }
 
-    private func stopDemoIMUWaveformLoop() {
+    func stopDemoIMUWaveformLoop() {
         demoIMUWaveformTimer?.invalidate()
         demoIMUWaveformTimer = nil
     }
 
-    private func resetIMUWaveform() {
+    func resetIMUWaveform() {
         imuWaveformPhase = 0
         imuWaveformSamples = Self.idleIMUWaveformSamples
     }
