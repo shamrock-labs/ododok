@@ -37,6 +37,7 @@ final class MealSessionRuntimeStore {
     var imuWaveformSamples: [Double] = MealSessionRuntimeStore.idleIMUWaveformSamples
     var imuWaveformSource: IMUWaveformSource = .idle
     var imuSampleCount: Int = 0
+    private(set) var liveChewCount: Int = 0
     var lastIMUSampleAt: Date?
     var startButtonHighlighted: Bool = false
     var pendingMealStartRequest: Bool = false
@@ -60,7 +61,6 @@ final class MealSessionRuntimeStore {
     @ObservationIgnored private let runtimeServices: MealSessionRuntimeServices
 
     @ObservationIgnored private lazy var headphoneMotionService = runtimeServices.makeMotionService()
-    @ObservationIgnored private var chewPulseTimer: Timer?
     @ObservationIgnored private var demoIMUWaveformTimer: Timer?
     @ObservationIgnored private var imuWaveformPhase: Double = 0
     @ObservationIgnored private lazy var callMonitor = runtimeServices.makeCallInterruptionMonitor()
@@ -122,7 +122,6 @@ final class MealSessionRuntimeStore {
         prepareEatingSession(startedAt: now)
         let counter = ChewCounter()
         chewCounter = counter
-        startChewAnimationLoop()
 
         configureCallInterruptionHandling()
         configureMealAirPodsConnectionHandling()
@@ -328,6 +327,7 @@ final class MealSessionRuntimeStore {
         phase = .idle
         resetIMUWaveform()
         imuWaveformSource = .idle
+        liveChewCount = 0
         clearTransientRuntimeState()
     }
 
@@ -354,6 +354,7 @@ private extension MealSessionRuntimeStore {
 
     func prepareEatingSession(startedAt: Date) {
         imuSampleCount = 0
+        liveChewCount = 0
         lastIMUSampleAt = nil
         imuSessionRecorder = IMUSessionRecorder(startedAt: startedAt)
         interruptionWasCall = false
@@ -474,7 +475,6 @@ private extension MealSessionRuntimeStore {
 
     func stopEatingRuntime() -> ChewCounter? {
         stopHeadphoneMotionLoop()
-        stopChewAnimationLoop()
         stopDemoIMUWaveformLoop()
         let counter = chewCounter
         Task { await counter?.setSustainedChewingHandler(nil) }
@@ -489,21 +489,8 @@ private extension MealSessionRuntimeStore {
         mealActivity.end()
         resetIMUWaveform()
         imuWaveformSource = .idle
+        liveChewCount = 0
         return counter
-    }
-
-    func startChewAnimationLoop() {
-        stopChewAnimationLoop()
-        chewPulseTimer = Timer.scheduledTimer(withTimeInterval: 0.85, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.onChewPulse()
-            }
-        }
-    }
-
-    func stopChewAnimationLoop() {
-        chewPulseTimer?.invalidate()
-        chewPulseTimer = nil
     }
 
     func startHeadphoneMotionLoop() -> Bool {
@@ -566,8 +553,8 @@ private extension MealSessionRuntimeStore {
 
     func feedChewCounter(_ row: IMURow) {
         guard let chewCounter else { return }
-        Task {
-            await chewCounter.feed(
+        Task { [weak self] in
+            let event = await chewCounter.feed(
                 rotX: row.rotationX,
                 rotY: row.rotationY,
                 rotZ: row.rotationZ,
@@ -575,6 +562,12 @@ private extension MealSessionRuntimeStore {
                 accelY: row.userAccelY,
                 accelZ: row.userAccelZ
             )
+            guard let event else { return }
+            await MainActor.run { [weak self] in
+                guard let self, case .measuring = self.phase else { return }
+                self.liveChewCount = event.count
+                self.onChewPulse()
+            }
         }
     }
 

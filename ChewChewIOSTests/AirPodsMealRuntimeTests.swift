@@ -1,4 +1,5 @@
 import CoreMotion
+import Foundation
 import XCTest
 @testable import ChewChewIOS
 
@@ -44,13 +45,104 @@ final class AirPodsMealRuntimeTests: XCTestCase {
         XCTAssertFalse(store.showShortSessionConfirm)
     }
 
-    private func makeStore(runtime: FakeAirPodsMealRuntimeServices) -> MealSessionRuntimeStore {
+    func testDSPChewDetectionTriggersChewPulse() async {
+        let runtime = FakeAirPodsMealRuntimeServices()
+        var pulseCount = 0
+        let store = makeStore(runtime: runtime) {
+            pulseCount += 1
+        }
+
+        store.startEating()
+        emitChewingMotionSamples(runtime.motion)
+        try? await Task.sleep(for: .milliseconds(500))
+
+        XCTAssertGreaterThan(pulseCount, 0)
+        XCTAssertEqual(store.liveChewCount, pulseCount)
+
+        store.discardCurrentSession()
+        XCTAssertEqual(store.liveChewCount, 0)
+    }
+
+    func testFlatMotionDoesNotTriggerChewPulse() async {
+        let runtime = FakeAirPodsMealRuntimeServices()
+        var pulseCount = 0
+        let store = makeStore(runtime: runtime) {
+            pulseCount += 1
+        }
+
+        store.startEating()
+        for index in 0..<500 {
+            runtime.motion.emit(makeSample(index: index, rotationY: 0))
+        }
+        try? await Task.sleep(for: .milliseconds(500))
+
+        XCTAssertEqual(pulseCount, 0)
+        XCTAssertEqual(store.liveChewCount, 0)
+
+        store.discardCurrentSession()
+    }
+
+    func testStoppedSessionDoesNotTriggerChewPulseFromLaterSamples() async {
+        let runtime = FakeAirPodsMealRuntimeServices()
+        var pulseCount = 0
+        let store = makeStore(runtime: runtime) {
+            pulseCount += 1
+        }
+
+        store.startEating()
+        store.discardCurrentSession()
+        emitChewingMotionSamples(runtime.motion)
+        try? await Task.sleep(for: .milliseconds(200))
+
+        XCTAssertEqual(pulseCount, 0)
+        XCTAssertEqual(store.liveChewCount, 0)
+    }
+
+    private func makeStore(
+        runtime: FakeAirPodsMealRuntimeServices,
+        onChewPulse: @escaping @MainActor () -> Void = {}
+    ) -> MealSessionRuntimeStore {
         MealSessionRuntimeStore(
             analytics: NoopAnalytics(),
-            onChewPulse: {},
+            onChewPulse: onChewPulse,
             onPersistSnapshot: {},
             onSessionReadyForUpload: { _, _ in },
             runtimeServices: runtime.services
+        )
+    }
+
+    private func emitChewingMotionSamples(_ motion: FakeAirPodsMotionService) {
+        for index in 0..<500 {
+            motion.emit(makeSample(index: index, rotationY: chewingRotationY(index: index)))
+        }
+    }
+
+    private func chewingRotationY(index: Int) -> Double {
+        let elapsed = Double(index) / 50.0
+        return 0.08 * sin(2 * Double.pi * 1.4 * elapsed)
+    }
+
+    private func makeSample(index: Int, rotationY: Double) -> HeadphoneMotionSample {
+        HeadphoneMotionSample(
+            timestamp: Double(index) / 50.0,
+            rotationRateMagnitude: abs(rotationY),
+            userAccelerationMagnitude: 0,
+            attitudeRoll: 0,
+            attitudePitch: 0,
+            attitudeYaw: 0,
+            rotationX: 0,
+            rotationY: rotationY,
+            rotationZ: 0,
+            gravityX: 0,
+            gravityY: 0,
+            gravityZ: 0,
+            userAccelX: 0,
+            userAccelY: 0,
+            userAccelZ: 0,
+            magneticFieldX: 0,
+            magneticFieldY: 0,
+            magneticFieldZ: 0,
+            sensorLocation: "headphone_right"
         )
     }
 }
@@ -86,13 +178,22 @@ private final class FakeAirPodsMotionService: MealMotionServicing {
     var liveMotionUnavailableSource: IMUWaveformSource?
     var isDeviceMotionAvailable = true
     var authorizationStatus = CMAuthorizationStatus.authorized
+    private var onSample: ((HeadphoneMotionSample) -> Void)?
 
     func start(
         onSample: @escaping (HeadphoneMotionSample) -> Void,
         onError: @escaping (String) -> Void
-    ) {}
+    ) {
+        self.onSample = onSample
+    }
 
-    func stop() {}
+    func stop() {
+        onSample = nil
+    }
+
+    func emit(_ sample: HeadphoneMotionSample) {
+        onSample?(sample)
+    }
 }
 
 private final class FakeAirPodsAudioFeedbackService: MealAudioFeedbackServicing {

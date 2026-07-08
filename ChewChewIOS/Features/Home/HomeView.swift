@@ -188,7 +188,7 @@ struct HomeView: View {
         .appElevation(.flat)
     }
 
-    // MARK: Squirrel card + IMU waveform
+    // MARK: Squirrel card + chew counter
 
     private var squirrelCard: some View {
         VStack(spacing: 10) {
@@ -221,6 +221,7 @@ struct HomeView: View {
                     isNight: isNightTime
                 )
                 .scaleEffect(1.5)
+
             }
             .frame(height: Metrics.squirrelAreaHeight)
 
@@ -236,7 +237,7 @@ struct HomeView: View {
                 }
             }
 
-            imuWaveformCard
+            chewAcornCounterCard
                 .padding(.top, 2)
 
             Spacer(minLength: 0)
@@ -249,11 +250,132 @@ struct HomeView: View {
         .appElevation(.flat)
     }
 
-    private var imuWaveformCard: some View {
-        IMUWaveformView(samples: mealSession.imuWaveformSamples, isLive: mealSession.isIMUWaveformLive)
-            .frame(height: Metrics.imuWaveformHeight)
+    private var chewAcornCounterCard: some View {
+        ChewAcornCounterCard(
+            count: mealSession.liveChewCount,
+            statusText: chewAcornCounterStatusText,
+            isActive: mealSession.phase.showsChewFeedback,
+            animKey: state.animKey
+        )
+        .frame(height: Metrics.chewCounterHeight)
+    }
+
+    private var chewAcornCounterStatusText: String {
+        switch mealSession.phase {
+        case .measuring:
+            mealSession.imuWaveformSource.usesRealMotion ? "AirPods LIVE" : "MVP 모드"
+        case .paused:
+            "일시정지"
+        case .confirmingShortStop:
+            "확인 중"
+        case .analyzing:
+            "분석 중"
+        case .idle:
+            "대기 중"
+        }
+    }
+
+    private struct ChewAcornCounterCard: View {
+        let count: Int
+        let statusText: String
+        let isActive: Bool
+        let animKey: Int
+
+        @State private var isBumping = false
+
+        var body: some View {
+            HStack(spacing: AppSpacing.four) {
+                ZStack {
+                    Circle()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.butter100,
+                                    Color.acorn100,
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .overlay {
+                            Circle()
+                                .stroke(Color.surface.opacity(0.9), lineWidth: AppSize.border)
+                        }
+                        .shadow(color: Color.highlightShadow.opacity(isActive ? 0.2 : 0.08), radius: 8, x: 0, y: 5)
+
+                    OpenIconView(icon: .acorn, color: .rewardAcorn, lineWidth: 2.25)
+                        .frame(width: Metrics.counterIconSize, height: Metrics.counterIconSize)
+                }
+                .frame(width: Metrics.counterIconContainer, height: Metrics.counterIconContainer)
+                .scaleEffect(isBumping ? 1.1 : 1)
+
+                VStack(alignment: .leading, spacing: AppSpacing.microGap) {
+                    Text("감지 도토리")
+                        .font(.appFont(.semiboldCaption))
+                        .foregroundStyle(Color.textMuted)
+                        .lineLimit(1)
+
+                    HStack(alignment: .firstTextBaseline, spacing: AppSpacing.oneHalf) {
+                        Text(count.koLocale)
+                            .font(.appFont(.heavyDisplay))
+                            .foregroundStyle(Color.textDefault)
+                            .monospacedDigit()
+                            .contentTransition(.numericText(value: Double(count)))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.65)
+
+                        Text("개")
+                            .font(.appFont(.boldCallout))
+                            .foregroundStyle(Color.rewardAcorn)
+                    }
+                }
+
+                Spacer(minLength: AppSpacing.two)
+
+                Text(statusText)
+                    .font(.appFont(.boldCaption))
+                    .foregroundStyle(isActive ? Color.rewardAcorn : Color.textSubtle)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+                    .padding(.horizontal, AppSpacing.iconGap)
+                    .padding(.vertical, AppSpacing.badgeV)
+                    .background(
+                        (isActive ? Color.acorn100 : Color.bgSurface).opacity(0.82),
+                        in: Capsule()
+                    )
+            }
             .padding(AppSpacing.gap)
-            .background(Color.controlOnSurface, in: RoundedRectangle(cornerRadius: AppRadius.elementLarge))
+            .background(
+                LinearGradient(
+                    colors: [
+                        Color.acorn50.opacity(isActive ? 0.95 : 0.62),
+                        Color.sage50.opacity(isActive ? 0.78 : 0.45),
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                ),
+                in: RoundedRectangle(cornerRadius: AppRadius.elementLarge)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: AppRadius.elementLarge)
+                    .stroke(Color.bgSurface.opacity(0.86), lineWidth: AppSize.border)
+            }
+            .allowsHitTesting(false)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("감지 도토리 \(count)개, \(statusText)")
+            .animation(
+                .spring(response: AppMotion.springFastResponse, dampingFraction: AppMotion.springDampingFraction),
+                value: count
+            )
+            .onChange(of: animKey) { _, _ in
+                guard isActive else { return }
+                isBumping = true
+                Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(AppMotion.durationButtonPress))
+                    isBumping = false
+                }
+            }
+        }
     }
 
     // MARK: Meal toggle button
@@ -299,6 +421,7 @@ struct HomeView: View {
             value: mealSession.startButtonHighlighted
         )
     }
+
 }
 
 private struct RewardHistorySheet: View {
@@ -422,7 +545,9 @@ private enum Metrics {
     static let squirrelAreaHeight: CGFloat = 246
     static let squirrelCardMinHeight: CGFloat = 390
     static let squirrelCardRadius: CGFloat = 26
-    static let imuWaveformHeight = AppSize.visualMedium
+    static let chewCounterHeight = AppSize.visualMedium
+    static let counterIconContainer: CGFloat = 42
+    static let counterIconSize: CGFloat = 24
     static let mealButtonRadius = AppSize.controlTiny
     static let mealButtonHighlightBorder = AppSize.indicatorTiny
     static let rewardSheetIconContainer = AppSize.iconContainer
@@ -435,5 +560,12 @@ private extension HomeView {
     var isNightTime: Bool {
         let hour = Calendar.current.component(.hour, from: nowTick)
         return hour >= 22 || hour < 6
+    }
+}
+
+private extension MealSessionPhase {
+    var showsChewFeedback: Bool {
+        if case .measuring = self { return true }
+        return false
     }
 }
