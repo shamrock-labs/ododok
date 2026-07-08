@@ -98,6 +98,7 @@ final class AppState {
 
     private static let displayNameKey = "ChewChewIOS.AppState.displayName"
     private static let loginMethodKey = "ChewChewIOS.AppState.loginMethod"
+    private static let analyticsUserIdKey = "ChewChewIOS.AppState.analyticsUserId"
     private static let onboardingCompleteKey = "ChewChewIOS.AppState.hasCompletedOnboarding"
     private static let pendingInviteCodeKey = "ChewChewIOS.AppState.pendingInviteCode"
 
@@ -153,7 +154,7 @@ final class AppState {
         isLoggedIn: isLoggedIn,
         hasCompletedOnboarding: hasCompletedOnboarding,
         onLoginCompleted: { [weak self] result, method in
-            self?.completeLogin(onboardingCompleted: result.onboardingCompleted, method: method)
+            self?.completeLogin(userId: result.userId, onboardingCompleted: result.onboardingCompleted, method: method)
         },
         onLogoutCompleted: { [weak self] in
             self?.expireSession()
@@ -398,6 +399,7 @@ final class AppState {
         mealResults.resetAll()
         displayName = nil
         loginMethod = nil
+        clearAnalyticsUserId()
         didLoadProfile = false
         hasCompletedOnboarding = false
         isLoggedIn = false
@@ -432,6 +434,7 @@ final class AppState {
         loginMethod = nil
         hasCompletedOnboarding = false
         freezeInventory = 0
+        clearAnalyticsUserId()
         authTokenStorage.clear()
         isLoggedIn = false
         analytics.setUserId(nil)
@@ -441,16 +444,17 @@ final class AppState {
     }
 
     @MainActor
-    func completeLogin(onboardingCompleted: Bool, method: String) {
+    func completeLogin(userId: String, onboardingCompleted: Bool, method: String) {
         clearLocalSessionCache()
         if onboardingCompleted { hasCompletedOnboarding = true }
         loginMethod = method
         isLoggedIn = true
         auth.markLoggedIn(onboardingCompleted: onboardingCompleted)
-        let deviceIdForLogin = DeviceIdentity.shared
-        analytics.setUserId(deviceIdForLogin)
+        storeAnalyticsUserId(userId)
+        analytics.setUserId(userId)
+        analytics.setUserProperty("anonymous_device_id", DeviceIdentity.shared)
         analytics.setUserProperty("has_completed_onboarding", onboardingCompleted)
-        SentryService.setUser(id: deviceIdForLogin)
+        SentryService.setUser(id: userId)
         analytics.track(.login(method: method, onboardingCompleted: onboardingCompleted))
         syncAnalyticsUserProperties()
         Task { [weak self] in
@@ -486,6 +490,7 @@ final class AppState {
         Task { await mealPushCoordinator.clearRegistration() }
         authTokenStorage.clear()
         isLoggedIn = false
+        clearAnalyticsUserId()
         analytics.setUserId(nil)
         SentryService.setUser(id: nil)
         clearLocalSessionCache()
@@ -587,6 +592,18 @@ final class AppState {
         homeApplyVersion += 1
     }
 
+    private func storeAnalyticsUserId(_ userId: String) {
+        UserDefaults.standard.set(userId, forKey: Self.analyticsUserIdKey)
+    }
+
+    private func storedAnalyticsUserId() -> String? {
+        UserDefaults.standard.string(forKey: Self.analyticsUserIdKey)
+    }
+
+    private func clearAnalyticsUserId() {
+        UserDefaults.standard.removeObject(forKey: Self.analyticsUserIdKey)
+    }
+
     private func scheduleRemoteUserDataDeletion(accessToken: String?, refreshToken: String?) {
         let store = remoteStore
         let previous = remoteSyncChain
@@ -643,6 +660,9 @@ final class AppState {
         var meSucceeded = false
         if isLoggedIn {
             if let result = try? await authSessionManager.me() {
+                storeAnalyticsUserId(result.userId)
+                analytics.setUserId(result.userId)
+                SentryService.setUser(id: result.userId)
                 hasCompletedOnboarding = result.onboardingCompleted
                 auth.updateOnboardingCompleted(result.onboardingCompleted)
                 if let name = result.displayName, !name.isEmpty, name != displayName {
@@ -676,10 +696,12 @@ final class AppState {
             }
         }
         if isLoggedIn {
-            let deviceIdForRestore = DeviceIdentity.shared
-            analytics.setUserId(deviceIdForRestore)
+            if let userId = storedAnalyticsUserId() {
+                analytics.setUserId(userId)
+                SentryService.setUser(id: userId)
+            }
+            analytics.setUserProperty("anonymous_device_id", DeviceIdentity.shared)
             analytics.setUserProperty("has_completed_onboarding", hasCompletedOnboarding)
-            SentryService.setUser(id: deviceIdForRestore)
             syncAnalyticsUserProperties()
         }
         didLoadProfile = true

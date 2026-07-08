@@ -44,6 +44,7 @@ final class SpringAuthClientMeTests: XCTestCase {
         XCTAssertEqual(capturedRequest?.httpMethod, "GET")
         XCTAssertEqual(capturedRequest?.url?.path, "/auth/me")
         XCTAssertEqual(capturedRequest?.value(forHTTPHeaderField: "Authorization"), "Bearer access-token")
+        XCTAssertEqual(result.userId, "11111111-1111-1111-1111-111111111111")
         XCTAssertEqual(result.displayName, "보형")
         XCTAssertTrue(result.onboardingCompleted)
         let alertVolume = try XCTUnwrap(result.alertVolume)
@@ -79,9 +80,90 @@ final class SpringAuthClientMeTests: XCTestCase {
 
         let result = try await client.me()
 
+        XCTAssertEqual(result.userId, "11111111-1111-1111-1111-111111111111")
         XCTAssertNil(result.displayName)
         XCTAssertFalse(result.onboardingCompleted)
         XCTAssertNil(result.alertVolume)
+    }
+
+    func testLoginThrowsMalformedWhenUserIsMissing() async throws {
+        let client = makeClient()
+
+        SpringAuthClientMeMockURLProtocol.handler = { request in
+            (
+                HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!,
+                Data(
+                    """
+                    {
+                      "code": 1000,
+                      "message": "요청에 성공하였습니다.",
+                      "result": {
+                        "accessToken": "access-token",
+                        "refreshToken": "refresh-token",
+                        "expiresIn": 3600,
+                        "user": null
+                      }
+                    }
+                    """.utf8
+                )
+            )
+        }
+
+        do {
+            _ = try await client.login(provider: "google", idToken: "id-token", deviceId: "device-id", name: nil)
+            XCTFail("Expected malformed error")
+        } catch RemoteStoreError.malformed(let message) {
+            XCTAssertEqual(message, "missing login user id")
+            XCTAssertNil(TokenManager.accessToken)
+            XCTAssertNil(TokenManager.refreshToken)
+        }
+    }
+
+    func testLoginThrowsMalformedWhenUserIdIsEmpty() async throws {
+        let client = makeClient()
+
+        SpringAuthClientMeMockURLProtocol.handler = { request in
+            (
+                HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!,
+                Data(
+                    """
+                    {
+                      "code": 1000,
+                      "message": "요청에 성공하였습니다.",
+                      "result": {
+                        "accessToken": "access-token",
+                        "refreshToken": "refresh-token",
+                        "expiresIn": 3600,
+                        "user": {
+                          "id": " ",
+                          "displayName": "보형",
+                          "onboardingCompleted": true
+                        }
+                      }
+                    }
+                    """.utf8
+                )
+            )
+        }
+
+        do {
+            _ = try await client.login(provider: "google", idToken: "id-token", deviceId: "device-id", name: nil)
+            XCTFail("Expected malformed error")
+        } catch RemoteStoreError.malformed(let message) {
+            XCTAssertEqual(message, "missing login user id")
+            XCTAssertNil(TokenManager.accessToken)
+            XCTAssertNil(TokenManager.refreshToken)
+        }
     }
 
     private func makeClient() -> SpringAuthClient {

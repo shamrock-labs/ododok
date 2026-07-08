@@ -56,7 +56,7 @@ final class SpyRemoteStore: RemoteStore {
 
 final class SpyAuthSessionManager: AuthSessionManaging {
     // swiftlint:disable:next large_tuple
-    typealias AuthMeResult = (displayName: String?, onboardingCompleted: Bool, alertVolume: Double?)
+    typealias AuthMeResult = (userId: String, displayName: String?, onboardingCompleted: Bool, alertVolume: Double?)
 
     private(set) var logoutCallCount = 0
     /// me() 가 반환할 값. nil이면 throw(오프라인 시뮬레이션).
@@ -99,11 +99,13 @@ final class EraseAllUserDataTests: XCTestCase {
         super.setUp()
         TokenManager.clear()
         UserDefaults.standard.removeObject(forKey: pendingInviteKey)
+        UserDefaults.standard.removeObject(forKey: "ChewChewIOS.AppState.analyticsUserId")
     }
 
     override func tearDown() {
         TokenManager.clear()
         UserDefaults.standard.removeObject(forKey: pendingInviteKey)
+        UserDefaults.standard.removeObject(forKey: "ChewChewIOS.AppState.analyticsUserId")
         super.tearDown()
     }
 
@@ -300,7 +302,7 @@ final class EraseAllUserDataTests: XCTestCase {
         state.isLoggedIn = false
         state.receiveInviteCode("FRIEND-123")
 
-        state.completeLogin(onboardingCompleted: true, method: "kakao")
+        state.completeLogin(userId: "server-user-123", onboardingCompleted: true, method: "kakao")
 
         await waitFor(!remote.acceptedInviteCodes.isEmpty)
         XCTAssertEqual(remote.acceptedInviteCodes, ["FRIEND-123"])
