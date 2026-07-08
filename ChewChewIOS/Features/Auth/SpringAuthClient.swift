@@ -59,8 +59,11 @@ final class SpringAuthClient: AuthSessionManaging {
     func login(provider: String, idToken: String, deviceId: String?, name: String?) async throws -> LoginResult {
         let body = LoginRequest(provider: provider, idToken: idToken, deviceId: deviceId, name: name)
         let token = try await post("/auth/login", body: body, as: TokenResult.self)
+        guard let user = token.user, !user.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw RemoteStoreError.malformed("missing login user id")
+        }
         TokenManager.save(access: token.accessToken, refresh: token.refreshToken)
-        return LoginResult(userId: token.user?.id ?? "", displayName: token.user?.displayName, onboardingCompleted: token.user?.onboardingCompleted ?? false)
+        return LoginResult(userId: user.id, displayName: user.displayName, onboardingCompleted: user.onboardingCompleted ?? false)
     }
 
     /// access 만료 시 refresh로 재발급. 동시 401이 여러 개 와도 single-flight로 묶어
