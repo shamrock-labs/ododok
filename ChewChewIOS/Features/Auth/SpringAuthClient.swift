@@ -2,16 +2,16 @@ import Foundation
 
 protocol AuthSessionManaging {
     func logout() async
-    /// `/auth/me` 조회 — displayName + onboardingCompleted + alertVolume(서버 원격 알림음 볼륨). 오프라인 등 실패 시 throw.
-    func me() async throws -> (displayName: String?, onboardingCompleted: Bool, alertVolume: Double?)
+    /// `/auth/me` 조회 — userId + displayName + onboardingCompleted + alertVolume(서버 원격 알림음 볼륨). 오프라인 등 실패 시 throw.
+    func me() async throws -> (userId: String, displayName: String?, onboardingCompleted: Bool, alertVolume: Double?)
 }
 
 struct NoopAuthSessionManager: AuthSessionManaging {
     func logout() async {
         TokenManager.clear()
     }
-    func me() async throws -> (displayName: String?, onboardingCompleted: Bool, alertVolume: Double?) {
-        (displayName: nil, onboardingCompleted: false, alertVolume: nil)
+    func me() async throws -> (userId: String, displayName: String?, onboardingCompleted: Bool, alertVolume: Double?) {
+        (userId: "", displayName: nil, onboardingCompleted: false, alertVolume: nil)
     }
 }
 
@@ -91,7 +91,7 @@ final class SpringAuthClient: AuthSessionManaging {
     /// `/auth/me` 조회 — 현재 로그인 계정의 displayName + onboardingCompleted + alertVolume 반환.
     /// 콜드 스타트에서 onboardingCompleted 정본을 가져올 때 사용한다.
     /// 실패(오프라인·401 등)는 throw로 전파 — 호출처가 silent fallback 처리.
-    func me() async throws -> (displayName: String?, onboardingCompleted: Bool, alertVolume: Double?) {
+    func me() async throws -> (userId: String, displayName: String?, onboardingCompleted: Bool, alertVolume: Double?) {
         var base = config.baseURL.absoluteString
         if base.hasSuffix("/") { base.removeLast() }
         var req = URLRequest(url: URL(string: base + "/auth/me")!)
@@ -118,7 +118,7 @@ final class SpringAuthClient: AuthSessionManaging {
         guard let user = try? decoder.decode(BaseResponse<UserDTO>.self, from: data).result else {
             throw RemoteStoreError.malformed("empty result")
         }
-        return (displayName: user.displayName, onboardingCompleted: user.onboardingCompleted ?? false, alertVolume: user.alertVolume)
+        return (userId: user.id, displayName: user.displayName, onboardingCompleted: user.onboardingCompleted ?? false, alertVolume: user.alertVolume)
     }
 
     /// 서버 refresh 폐기 + 로컬 토큰 제거. 네트워크 실패해도 로컬은 비운다.

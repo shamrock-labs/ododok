@@ -44,6 +44,7 @@ final class SpringAuthClientMeTests: XCTestCase {
         XCTAssertEqual(capturedRequest?.httpMethod, "GET")
         XCTAssertEqual(capturedRequest?.url?.path, "/auth/me")
         XCTAssertEqual(capturedRequest?.value(forHTTPHeaderField: "Authorization"), "Bearer access-token")
+        XCTAssertEqual(result.userId, "11111111-1111-1111-1111-111111111111")
         XCTAssertEqual(result.displayName, "보형")
         XCTAssertTrue(result.onboardingCompleted)
         let alertVolume = try XCTUnwrap(result.alertVolume)
@@ -79,6 +80,7 @@ final class SpringAuthClientMeTests: XCTestCase {
 
         let result = try await client.me()
 
+        XCTAssertEqual(result.userId, "11111111-1111-1111-1111-111111111111")
         XCTAssertNil(result.displayName)
         XCTAssertFalse(result.onboardingCompleted)
         XCTAssertNil(result.alertVolume)
