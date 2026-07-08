@@ -57,10 +57,8 @@ final class AirPodsMealRuntimeTests: XCTestCase {
         try? await Task.sleep(for: .milliseconds(500))
 
         XCTAssertGreaterThan(pulseCount, 0)
-        XCTAssertEqual(store.liveChewCount, pulseCount)
 
         store.discardCurrentSession()
-        XCTAssertEqual(store.liveChewCount, 0)
     }
 
     func testFlatMotionDoesNotTriggerChewPulse() async {
@@ -77,7 +75,6 @@ final class AirPodsMealRuntimeTests: XCTestCase {
         try? await Task.sleep(for: .milliseconds(500))
 
         XCTAssertEqual(pulseCount, 0)
-        XCTAssertEqual(store.liveChewCount, 0)
 
         store.discardCurrentSession()
     }
@@ -95,7 +92,6 @@ final class AirPodsMealRuntimeTests: XCTestCase {
         try? await Task.sleep(for: .milliseconds(200))
 
         XCTAssertEqual(pulseCount, 0)
-        XCTAssertEqual(store.liveChewCount, 0)
     }
 
     private func makeStore(

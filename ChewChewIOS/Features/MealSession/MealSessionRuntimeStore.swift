@@ -37,7 +37,6 @@ final class MealSessionRuntimeStore {
     var imuWaveformSamples: [Double] = MealSessionRuntimeStore.idleIMUWaveformSamples
     var imuWaveformSource: IMUWaveformSource = .idle
     var imuSampleCount: Int = 0
-    private(set) var liveChewCount: Int = 0
     var lastIMUSampleAt: Date?
     var startButtonHighlighted: Bool = false
     var pendingMealStartRequest: Bool = false
@@ -327,7 +326,6 @@ final class MealSessionRuntimeStore {
         phase = .idle
         resetIMUWaveform()
         imuWaveformSource = .idle
-        liveChewCount = 0
         clearTransientRuntimeState()
     }
 
@@ -354,7 +352,6 @@ private extension MealSessionRuntimeStore {
 
     func prepareEatingSession(startedAt: Date) {
         imuSampleCount = 0
-        liveChewCount = 0
         lastIMUSampleAt = nil
         imuSessionRecorder = IMUSessionRecorder(startedAt: startedAt)
         interruptionWasCall = false
@@ -489,7 +486,6 @@ private extension MealSessionRuntimeStore {
         mealActivity.end()
         resetIMUWaveform()
         imuWaveformSource = .idle
-        liveChewCount = 0
         return counter
     }
 
@@ -562,10 +558,9 @@ private extension MealSessionRuntimeStore {
                 accelY: row.userAccelY,
                 accelZ: row.userAccelZ
             )
-            guard let event else { return }
+            guard event != nil else { return }
             await MainActor.run { [weak self] in
                 guard let self, case .measuring = self.phase else { return }
-                self.liveChewCount = event.count
                 self.onChewPulse()
             }
         }
