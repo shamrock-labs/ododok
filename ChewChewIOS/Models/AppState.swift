@@ -157,10 +157,10 @@ final class AppState {
             self?.completeLogin(userId: result.userId, onboardingCompleted: result.onboardingCompleted, method: method)
         },
         onLogoutCompleted: { [weak self] in
-            self?.expireSession()
+            self?.expireSession(trackLogoutEvent: true)
         },
         onSessionExpired: { [weak self] in
-            self?.expireSession()
+            self?.expireSession(trackLogoutEvent: false)
         }
     )
 
@@ -387,6 +387,7 @@ final class AppState {
         let deletionAccessToken = authTokenStorage.accessToken
         let deletionRefreshToken = authTokenStorage.refreshToken
 
+        analytics.track(.accountDeleted(source: "settings"))
         mealSession.resetRuntimeState()
         clearTransientRuntimeState()
         clearPendingInviteCode()
@@ -475,7 +476,7 @@ final class AppState {
 
     @MainActor
     func logout() {
-        expireSession()
+        expireSession(trackLogoutEvent: true)
     }
 
     @MainActor
@@ -485,7 +486,10 @@ final class AppState {
     }
 
     @MainActor
-    private func expireSession() {
+    private func expireSession(trackLogoutEvent: Bool) {
+        if trackLogoutEvent {
+            analytics.track(.logout(source: "settings"))
+        }
         MealNotificationService.cancelMealReminders()
         Task { await mealPushCoordinator.clearRegistration() }
         authTokenStorage.clear()

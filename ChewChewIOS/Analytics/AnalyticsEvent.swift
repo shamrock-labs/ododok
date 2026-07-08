@@ -66,6 +66,16 @@ extension AnalyticsEvent {
         .init("login", ["method": method, "onboarding_completed": onboardingCompleted])
     }
 
+    /// 사용자가 명시적으로 로그아웃함. source: settings.
+    static func logout(source: String) -> AnalyticsEvent {
+        .init("logout", ["source": source])
+    }
+
+    /// 사용자가 명시적으로 계정 탈퇴/데이터 삭제를 요청함. source: settings.
+    static func accountDeleted(source: String) -> AnalyticsEvent {
+        .init("account_deleted", ["source": source])
+    }
+
     /// 측정 세션이 서버 저장 없이 종료됨. reason: user_discard(사용자 그만두기) | no_samples(IMU 0개).
     /// 저장 성공한 세션은 meal_session_completed, 저장 실패는 meal_session_failed로 별도 구분.
     static func mealSessionAborted(reason: String, durationSec: Int) -> AnalyticsEvent {

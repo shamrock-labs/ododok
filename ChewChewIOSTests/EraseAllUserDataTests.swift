@@ -91,6 +91,17 @@ private final class FakeAuthTokenStorage: AuthTokenStorage {
     }
 }
 
+private final class UserFlowSpyAnalytics: AnalyticsService {
+    private(set) var trackedEvents: [AnalyticsEvent] = []
+
+    func track(_ event: AnalyticsEvent) {
+        trackedEvents.append(event)
+    }
+
+    func setUserId(_ userId: String?) {}
+    func setUserProperty(_ key: String, _ value: Any) {}
+}
+
 @MainActor
 final class EraseAllUserDataTests: XCTestCase {
     private let pendingInviteKey = "ChewChewIOS.AppState.pendingInviteCode"
@@ -207,6 +218,17 @@ final class EraseAllUserDataTests: XCTestCase {
         XCTAssertFalse(state.isLoggedIn, "계정 삭제 후 ContentView가 로그인 게이트로 돌아가야 스피너 오버레이에 갇히지 않는다")
     }
 
+    func testEraseAllUserDataTracksAccountDeletedBeforeClearingSession() async {
+        let analytics = UserFlowSpyAnalytics()
+        let state = AppState(remoteStore: SpyRemoteStore(), analytics: analytics, startStartupTasks: false)
+
+        await state.eraseAllUserData()
+
+        let event = analytics.trackedEvents.first
+        XCTAssertEqual(event?.name, "account_deleted")
+        XCTAssertEqual(event?.properties["source"] as? String, "settings")
+    }
+
     func testEraseAllUserDataClearsTokensImmediatelyAndUsesTokenSnapshotForDelete() async {
         let tokens = FakeAuthTokenStorage(accessToken: "access-token", refreshToken: "refresh-token")
         let spy = SpyRemoteStore()
@@ -259,6 +281,17 @@ final class EraseAllUserDataTests: XCTestCase {
         XCTAssertEqual(spy.deleteUserDataCallCount, 0, "로그아웃은 원격 데이터를 삭제하면 안 된다")
     }
 
+    func testLogoutTracksLogoutBeforeClearingSession() {
+        let analytics = UserFlowSpyAnalytics()
+        let state = AppState(remoteStore: SpyRemoteStore(), analytics: analytics, startStartupTasks: false)
+
+        state.logout()
+
+        let event = analytics.trackedEvents.first
+        XCTAssertEqual(event?.name, "logout")
+        XCTAssertEqual(event?.properties["source"] as? String, "settings")
+    }
+
     func testLogoutFromServerRevokesRefreshThenClearsLocalSession() async {
         TokenManager.save(access: "access-token", refresh: "refresh-token")
         let remote = SpyRemoteStore()
@@ -293,6 +326,18 @@ final class EraseAllUserDataTests: XCTestCase {
         XCTAssertNil(TokenManager.accessToken)
         XCTAssertNil(state.displayName)
         XCTAssertFalse(state.hasCompletedOnboarding)
+    }
+
+    func testAuthExpiredDuringHomeRefreshDoesNotTrackLogout() async {
+        TokenManager.save(access: "access-token", refresh: "refresh-token")
+        let remote = SpyRemoteStore()
+        remote.fetchHomeError = RemoteStoreError.authExpired
+        let analytics = UserFlowSpyAnalytics()
+        let state = AppState(remoteStore: remote, analytics: analytics, startStartupTasks: false)
+
+        await state.refreshFromServerHome()
+
+        XCTAssertFalse(analytics.trackedEvents.contains { $0.name == "logout" })
     }
 
     func testPendingInviteCodeRemainsWhenAcceptFailsAfterLogin() async {

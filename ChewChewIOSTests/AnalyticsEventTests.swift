@@ -51,4 +51,18 @@ final class AnalyticsEventTests: XCTestCase {
         XCTAssertEqual(event.properties["estimated_total_chews"] as? Int, 432)
         XCTAssertEqual(event.properties["duration_sec"] as? Int, 720)
     }
+
+    func testLogoutEventSchema() {
+        let event = AnalyticsEvent.logout(source: "settings")
+
+        XCTAssertEqual(event.name, "logout")
+        XCTAssertEqual(event.properties["source"] as? String, "settings")
+    }
+
+    func testAccountDeletedEventSchema() {
+        let event = AnalyticsEvent.accountDeleted(source: "settings")
+
+        XCTAssertEqual(event.name, "account_deleted")
+        XCTAssertEqual(event.properties["source"] as? String, "settings")
+    }
 }
