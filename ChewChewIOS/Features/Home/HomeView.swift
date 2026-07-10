@@ -204,7 +204,7 @@ struct HomeView: View {
         .appElevation(.flat)
     }
 
-    // MARK: Squirrel card + IMU waveform
+    // MARK: Squirrel card
 
     private var squirrelCard: some View {
         VStack(spacing: 10) {
@@ -258,9 +258,6 @@ struct HomeView: View {
                 }
             }
 
-            imuWaveformCard
-                .padding(.top, 2)
-
             Spacer(minLength: 0)
         }
         .padding(.horizontal, AppSpacing.four)
@@ -269,13 +266,6 @@ struct HomeView: View {
         .frame(minHeight: Metrics.squirrelCardMinHeight)
         .background(Color.bgCard, in: RoundedRectangle(cornerRadius: Metrics.squirrelCardRadius))
         .appElevation(.flat)
-    }
-
-    private var imuWaveformCard: some View {
-        IMUWaveformView(samples: mealSession.imuWaveformSamples, isLive: mealSession.isIMUWaveformLive)
-            .frame(height: Metrics.imuWaveformHeight)
-            .padding(AppSpacing.gap)
-            .background(Color.controlOnSurface, in: RoundedRectangle(cornerRadius: AppRadius.elementLarge))
     }
 
     // MARK: Meal toggle button
@@ -518,9 +508,8 @@ private enum Metrics {
     static let statIconRadius: CGFloat = 13
     static let progressRing: CGFloat = 220
     static let squirrelAreaHeight: CGFloat = 246
-    static let squirrelCardMinHeight: CGFloat = 390
+    static let squirrelCardMinHeight: CGFloat = 310
     static let squirrelCardRadius: CGFloat = 26
-    static let imuWaveformHeight = AppSize.visualMedium
     static let mealButtonRadius = AppSize.controlTiny
     static let mealButtonHighlightBorder = AppSize.indicatorTiny
     static let maxChewAcornPulses = 4
