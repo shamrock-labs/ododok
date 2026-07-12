@@ -228,7 +228,19 @@ struct HomeView: View {
                 Text(mealSession.isEating ? "맛있게 먹는 중이에요" : home.status.title)
                     .font(.appFont(.boldTitleCompact))
                     .foregroundStyle(Color.textDefault)
-                if !mealSession.isEating {
+                if mealSession.isEating {
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
+                        Text(mealSession.liveChewCount.koLocale)
+                            .font(.appFont(.heavyTitleXLarge))
+                            .foregroundStyle(Color.dataChew)
+                            .monospacedDigit()
+                            .contentTransition(.numericText(value: Double(mealSession.liveChewCount)))
+                        Text("번 씹었어요")
+                            .font(.appFont(.semiboldCallout))
+                            .foregroundStyle(Color.textMuted)
+                    }
+                    .animation(.snappy, value: mealSession.liveChewCount)
+                } else {
                     Text("오늘 \(home.todayRealChewCount.koLocale) / \(Constants.dailyGoal.koLocale)회")
                         .font(.appFont(.semiboldCallout))
                         .foregroundStyle(Color.textMuted)

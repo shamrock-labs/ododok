@@ -13,6 +13,7 @@ struct SettingsView: View {
     @State private var showDeleteConfirmation = false
     @State private var showAirPodsPicker = false
     @State private var showFeedback = false
+    @State private var showChewDebug = false
 
     private static let feedbackFormURL = URL(string: "https://forms.gle/6AsoDPHhywVpV9Qb6")!
 
@@ -110,6 +111,9 @@ struct SettingsView: View {
         .sheet(isPresented: $showFeedback) {
             SafariView(url: Self.feedbackFormURL)
         }
+        .sheet(isPresented: $showChewDebug) {
+            ChewDebugView()
+        }
     }
 
     // MARK: - Sections
@@ -167,6 +171,15 @@ struct SettingsView: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("AirPodsModelPicker")
+
+            Button {
+                showChewDebug = true
+            } label: {
+                AppSettingsRow(icon: "slider.horizontal.3", title: "씹기 감지 튜닝", showsChevron: true)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, AppSpacing.topInsetCompact)
+            .accessibilityIdentifier("ChewDebugEntry")
         }
     }
 

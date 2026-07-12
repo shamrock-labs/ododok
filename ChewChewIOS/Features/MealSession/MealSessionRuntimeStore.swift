@@ -25,6 +25,7 @@ enum MealSessionRuntimeRules {
 @MainActor
 final class MealSessionRuntimeStore {
     private static let maxIMUWaveformSamples = 54
+    private static let chewSensitivityKey = "chewSensitivityV3"
     static let idleIMUWaveformSamples: [Double] = (0..<maxIMUWaveformSamples).map { index in
         0.05 + sin(Double(index) * 0.42) * 0.015
     }
@@ -52,6 +53,20 @@ final class MealSessionRuntimeStore {
     }
     var showAirPodsConnectionPrompt: Bool = false
     var startCountdownValue: Int?
+    private(set) var liveChewCount = 0
+    private(set) var liveChewDiagnostics: ChewDiagnostics?
+    var chewSensitivity: ChewSensitivity = MealSessionRuntimeStore.loadChewSensitivity() {
+        didSet {
+            Self.saveChewSensitivity(chewSensitivity)
+            guard let chewCounter else { return }
+            let updated = chewSensitivity
+            let previousUpdate = sensitivityUpdateTask
+            sensitivityUpdateTask = Task {
+                await previousUpdate?.value
+                await chewCounter.setSensitivity(updated)
+            }
+        }
+    }
 
     private let analytics: AnalyticsService
     private let onChewPulse: @MainActor () -> Void
@@ -84,6 +99,8 @@ final class MealSessionRuntimeStore {
         return coordinator
     }()
     @ObservationIgnored private var chewCounter: ChewCounter?
+    @ObservationIgnored private var chewCountPollTimer: Timer?
+    @ObservationIgnored private var sensitivityUpdateTask: Task<Void, Never>?
     @ObservationIgnored private var imuSessionRecorder: IMUSessionRecorder?
 
     init(
@@ -98,6 +115,19 @@ final class MealSessionRuntimeStore {
         self.onPersistSnapshot = onPersistSnapshot
         self.onSessionReadyForUpload = onSessionReadyForUpload
         self.runtimeServices = runtimeServices
+    }
+
+    private static func loadChewSensitivity() -> ChewSensitivity {
+        guard let data = UserDefaults.standard.data(forKey: chewSensitivityKey),
+              let sensitivity = try? JSONDecoder().decode(ChewSensitivity.self, from: data) else {
+            return .defaults
+        }
+        return sensitivity
+    }
+
+    private static func saveChewSensitivity(_ sensitivity: ChewSensitivity) {
+        guard let data = try? JSONEncoder().encode(sensitivity) else { return }
+        UserDefaults.standard.set(data, forKey: chewSensitivityKey)
     }
 
     var imuWaveformStatusText: String {
@@ -120,9 +150,12 @@ final class MealSessionRuntimeStore {
         phase = .measuring(MealSessionMeasurementContext(startedAt: now))
 
         prepareEatingSession(startedAt: now)
-        let counter = ChewCounter()
+        liveChewCount = 0
+        liveChewDiagnostics = nil
+        let counter = ChewCounter(sensitivity: chewSensitivity)
         chewCounter = counter
         startChewAnimationLoop()
+        startLiveChewCountPolling()
 
         configureCallInterruptionHandling()
         configureMealAirPodsConnectionHandling()
@@ -473,6 +506,7 @@ private extension MealSessionRuntimeStore {
     }
 
     func stopEatingRuntime() -> ChewCounter? {
+        stopLiveChewCountPolling()
         stopHeadphoneMotionLoop()
         stopChewAnimationLoop()
         stopDemoIMUWaveformLoop()
@@ -489,6 +523,8 @@ private extension MealSessionRuntimeStore {
         mealActivity.end()
         resetIMUWaveform()
         imuWaveformSource = .idle
+        liveChewCount = 0
+        liveChewDiagnostics = nil
         return counter
     }
 
@@ -501,9 +537,29 @@ private extension MealSessionRuntimeStore {
         }
     }
 
+    func startLiveChewCountPolling() {
+        stopLiveChewCountPolling()
+        chewCountPollTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+            Task { [weak self] in
+                guard let self, let counter = await self.chewCounter else { return }
+                let diagnostics = await counter.diagnostics()
+                await MainActor.run { [weak self] in
+                    guard let self, self.isEating, self.chewCounter === counter else { return }
+                    self.liveChewCount = diagnostics.chewCount
+                    self.liveChewDiagnostics = diagnostics
+                }
+            }
+        }
+    }
+
     func stopChewAnimationLoop() {
         chewPulseTimer?.invalidate()
         chewPulseTimer = nil
+    }
+
+    func stopLiveChewCountPolling() {
+        chewCountPollTimer?.invalidate()
+        chewCountPollTimer = nil
     }
 
     func startHeadphoneMotionLoop() -> Bool {
