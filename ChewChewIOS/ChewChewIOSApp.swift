@@ -7,6 +7,7 @@ import KakaoSDKCommon
 @main
 struct ChewChewIOSApp: App {
     @State private var appState: AppState
+    @State private var serverAvailability: ServerAvailabilityStore
     @Environment(\.scenePhase) private var scenePhase
 
     @UIApplicationDelegateAdaptor private var notifDelegate: NotificationDelegate
@@ -22,7 +23,12 @@ struct ChewChewIOSApp: App {
         _appState = State(initialValue: AppState(
             remoteStore: dependencies.remoteStore,
             authSessionManager: dependencies.authSessionManager,
-            analytics: ChewChewIOSApp.makeAnalytics()
+            analytics: ChewChewIOSApp.makeAnalytics(),
+            startStartupTasks: dependencies.environment == "prod"
+        ))
+        _serverAvailability = State(initialValue: ServerAvailabilityStore(
+            environment: dependencies.environment,
+            checker: HTTPServerHealthChecker(baseURL: dependencies.springConfig.baseURL)
         ))
         // Kakao SDK 초기화(네이티브 앱키는 Info.plist 경유 Secrets.xcconfig). placeholder면 건너뜀.
         if let kakaoKey = Bundle.main.object(forInfoDictionaryKey: "KakaoNativeAppKey") as? String,
@@ -39,17 +45,29 @@ struct ChewChewIOSApp: App {
     ///
     /// ODO-54 전면 전환: 기본 백엔드는 Spring(staging)이다. 레거시 InsForge는 `-useInsForge`
     /// 오버라이드로만 사용한다. 환경(바라보는 백엔드 URL) 분리는 config 주입 영역으로 별도.
-    private static func makeDependencies() -> (remoteStore: RemoteStore, authSessionManager: AuthSessionManaging) {
+    private static func makeDependencies() -> (
+        remoteStore: RemoteStore,
+        authSessionManager: AuthSessionManaging,
+        springConfig: SpringConfig,
+        environment: String
+    ) {
         let pi = ProcessInfo.processInfo
         let underTest = pi.environment["XCTestConfigurationFilePath"] != nil
             || pi.arguments.contains("-useNoopRemote")
-        if underTest { return (NoopRemoteStore(), NoopAuthSessionManager()) }
+        let springConfig = SpringConfig.current
+        if underTest {
+            return (NoopRemoteStore(), NoopAuthSessionManager(), springConfig, "prod")
+        }
         // 레거시 InsForge는 명시적 오버라이드일 때만 — 기본은 Spring.
         if pi.arguments.contains("-useInsForge") {
-            return (InsForgeRemoteStore(config: .default), NoopAuthSessionManager())
+            return (InsForgeRemoteStore(config: .default), NoopAuthSessionManager(), springConfig, "prod")
         }
-        let springConfig = SpringConfig.current
-        return (SpringRemoteStore(config: springConfig), SpringAuthClient(config: springConfig))
+        return (
+            SpringRemoteStore(config: springConfig),
+            SpringAuthClient(config: springConfig),
+            springConfig,
+            AppRuntimeEnvironment.name
+        )
     }
 
     /// 제품·리텐션 분석 부트스트랩(ODO-79). Amplitude로 fan-out하는 CompositeAnalytics를 만든다.
@@ -90,7 +108,21 @@ struct ChewChewIOSApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            Group {
+                if serverAvailability.status == .available {
+                    ContentView()
+                        .task {
+                            // 서버 준비가 확인된 뒤에만 앱 API 흐름을 시작한다.
+                            await appState.startStartupTasks()
+                            await appState.mealResults.fetchTodaySessions()
+                            await appState.mealPushCoordinator.syncFromServer()
+                        }
+                } else {
+                    ServerPreparingView(status: serverAvailability.status) {
+                        Task { await serverAvailability.retryNow() }
+                    }
+                }
+            }
                 .environment(appState)
                 .preferredColorScheme(.light)
                 .onAppear {
@@ -105,17 +137,18 @@ struct ChewChewIOSApp: App {
                     handleOpenURL(url)
                 }
                 .task {
-                    // 홈 진행도/마스코트 mood가 첫 진입부터 정확히 보이도록 오늘 세션을 미리 적재.
-                    await appState.mealResults.fetchTodaySessions()
-                    // 끼니 알림(ODO-56, ODO-103): 정본인 서버에서 받아 화면·로컬 캐시를 맞추고 전달 경로를 정합한다.
-                    // 로그인·권한·APNs 토큰 등록 상태에 따라 서버(APNs) 또는 로컬 알림으로 갈린다.
-                    await appState.mealPushCoordinator.syncFromServer()
+                    await serverAvailability.monitor()
+                }
+                .onChange(of: serverAvailability.status) { _, status in
+                    guard status == .available else { return }
+                    Task { await appState.startStartupTasks() }
                 }
         }
         // `initial: true` — 콜드 스타트 시 첫 .active 도달도 콜백으로 받기 위함.
         // 기본 onChange는 변경 시에만 호출돼, 앱 launch 직후 phase가 .active로
         // 세팅되는 순간을 놓쳐 일일 출석 보너스 트리거가 누락됐다.
         .onChange(of: scenePhase, initial: true) { _, newPhase in
+            guard serverAvailability.status == .available else { return }
             appState.sceneDidChange(toForeground: newPhase == .active)
         }
     }

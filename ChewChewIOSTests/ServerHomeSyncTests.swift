@@ -6,6 +6,7 @@ import XCTest
 private final class StubHomeStore: RemoteStore {
     var home: HomeStateDTO
     var fetchHomeShouldThrow: Bool
+    private(set) var fetchHomeCallCount = 0
 
     init(home: HomeStateDTO, fetchHomeShouldThrow: Bool = false) {
         self.home = home
@@ -29,6 +30,7 @@ private final class StubHomeStore: RemoteStore {
         )
     }
     func fetchHome(deviceId: String) async throws -> HomeStateDTO {
+        fetchHomeCallCount += 1
         if fetchHomeShouldThrow { throw RemoteStoreError.offline }
         return home
     }
@@ -85,5 +87,17 @@ final class ServerHomeSyncTests: XCTestCase {
 
         XCTAssertEqual(state.points, 50, "서버 실패 시 마지막 성공 상태를 유지해야 한다")
         XCTAssertEqual(state.home.currentStreak, 3)
+    }
+
+    func testStartStartupTasks_runsOnceAfterDeferredInitialization() async {
+        let store = StubHomeStore(home: makeHome(points: 50, streak: 3, freeze: 1, chew: 100, goal: 400, progress: 0.25))
+        let state = AppState(remoteStore: store, startStartupTasks: false)
+
+        XCTAssertEqual(store.fetchHomeCallCount, 0)
+
+        await state.startStartupTasks()
+        await state.startStartupTasks()
+
+        XCTAssertEqual(store.fetchHomeCallCount, 1)
     }
 }
