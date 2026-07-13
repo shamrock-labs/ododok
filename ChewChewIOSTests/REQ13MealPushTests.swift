@@ -106,7 +106,7 @@ final class REQ13MealPushTests: XCTestCase {
 
     // MARK: - Notification stop routing
 
-    func testNotificationStop_usesShortSessionConfirmationForSubMinuteMeal() {
+    func testNotificationStop_usesShortSessionConfirmationBeforeMinimumDuration() {
         let state = AppState(remoteStore: NoopRemoteStore())
         state.mealSession.startEating()
 
@@ -121,11 +121,11 @@ final class REQ13MealPushTests: XCTestCase {
 
         XCTAssertTrue(MealSessionRuntimeRules.shouldConfirmShortSessionStop(
             startedAt: startedAt,
-            now: startedAt.addingTimeInterval(59)
+            now: startedAt.addingTimeInterval(29)
         ))
         XCTAssertFalse(MealSessionRuntimeRules.shouldConfirmShortSessionStop(
             startedAt: startedAt,
-            now: startedAt.addingTimeInterval(60)
+            now: startedAt.addingTimeInterval(30)
         ))
         XCTAssertFalse(MealSessionRuntimeRules.shouldConfirmShortSessionStop(startedAt: nil, now: startedAt))
     }

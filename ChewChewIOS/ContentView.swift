@@ -122,7 +122,7 @@ struct ContentView: View {
         .appDialog(
             isPresented: shortSessionBinding,
             title: "측정이 너무 짧아요",
-            message: "1분 미만은 분석할 수 없어요. 더 씹을까요?",
+            message: "30초 미만은 분석할 수 없어요. 더 씹을까요?",
             primary: .init("더 측정") {},
             secondary: .init("그만두기", role: .destructive) { mealSession.discardCurrentSession() }
         )

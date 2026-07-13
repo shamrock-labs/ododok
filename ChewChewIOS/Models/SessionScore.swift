@@ -6,7 +6,7 @@ import Foundation
 ///
 /// `ChewingSessionDTO`의 분석 5필드(`estimatedTotalChews`/`chewingFraction`/`chewingSeconds`/
 /// `restSeconds`/`modelVersion`)가 모두 채워진 세션에서만 산출 가능. 시뮬레이터/AirPods
-/// 미연결/60초 미만 세션은 nil 반환 → 호출자가 empty state 카드를 표시.
+/// 미연결/30초 미만 세션은 nil 반환 → 호출자가 empty state 카드를 표시.
 struct SessionScore: Equatable {
     /// 4요소 가중평균. 0~100 정수.
     let total: Int

@@ -1,0 +1,917 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Ododok DSP Gate, Count, UI Pulse 구조</title>
+  <style>
+    :root {
+      --page: #f5f6f8;
+      --surface: #ffffff;
+      --surface-soft: #fafbfc;
+      --ink: #191c20;
+      --muted: #68707a;
+      --line: #dfe3e8;
+      --queue: #2f6fbd;
+      --queue-soft: #eaf2fb;
+      --gate: #247a52;
+      --gate-soft: #e8f5ee;
+      --peak: #a55f12;
+      --peak-soft: #fff3df;
+      --count: #b33c32;
+      --count-soft: #fcecea;
+      --pulse: #6a4ca2;
+      --pulse-soft: #f0ebf8;
+      --warning: #9b6a00;
+      --radius: 8px;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--page);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Apple SD Gothic Neo", sans-serif;
+      letter-spacing: 0;
+    }
+
+    button, input { font: inherit; }
+
+    button:focus-visible,
+    input:focus-visible,
+    .pipeline-node:focus-visible,
+    .row-cell:focus-visible {
+      outline: 3px solid rgba(47, 111, 189, 0.28);
+      outline-offset: 2px;
+    }
+
+    .page-header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+    }
+
+    .header-inner,
+    .content {
+      width: min(1240px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    .header-inner {
+      padding: 28px 0 24px;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+      gap: 24px;
+    }
+
+    .eyebrow {
+      margin: 0 0 8px;
+      color: var(--queue);
+      font-size: 13px;
+      font-weight: 750;
+    }
+
+    h1, h2, h3, p { margin-top: 0; }
+
+    h1 {
+      margin-bottom: 10px;
+      font-size: clamp(30px, 4vw, 46px);
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+
+    .lead {
+      max-width: 760px;
+      margin-bottom: 0;
+      color: var(--muted);
+      line-height: 1.65;
+    }
+
+    .header-facts {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(88px, 1fr));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: var(--surface-soft);
+    }
+
+    .header-fact {
+      padding: 12px 14px;
+      border-left: 1px solid var(--line);
+      text-align: right;
+    }
+
+    .header-fact:first-child { border-left: 0; }
+    .header-fact strong { display: block; font-size: 20px; }
+    .header-fact span { color: var(--muted); font-size: 12px; }
+
+    .content { padding: 24px 0 56px; }
+
+    .section {
+      margin-top: 24px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+
+    .section:first-child { margin-top: 0; }
+
+    .section-header {
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .section-header h2 { margin-bottom: 4px; font-size: 20px; }
+    .section-header p { margin-bottom: 0; color: var(--muted); font-size: 14px; }
+
+    .scenario-control {
+      display: inline-flex;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 3px;
+      background: var(--surface-soft);
+    }
+
+    .scenario-control button {
+      min-height: 38px;
+      border: 0;
+      border-radius: 4px;
+      padding: 0 13px;
+      color: var(--muted);
+      background: transparent;
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    .scenario-control button[aria-selected="true"] {
+      color: var(--surface);
+      background: var(--ink);
+    }
+
+    .pipeline {
+      padding: 22px 20px;
+      display: grid;
+      grid-template-columns: 1fr 32px 1fr 32px 1fr 32px 1fr 32px 1fr;
+      align-items: stretch;
+    }
+
+    .pipeline-node {
+      position: relative;
+      min-width: 0;
+      min-height: 142px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-top: 4px solid var(--node-color);
+      border-radius: var(--radius);
+      background: var(--surface-soft);
+      cursor: pointer;
+      text-align: left;
+      transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
+    }
+
+    .pipeline-node:hover { transform: translateY(-2px); }
+    .pipeline-node.active {
+      border-color: var(--node-color);
+      background: var(--node-soft);
+    }
+
+    .pipeline-node.queue { --node-color: var(--queue); --node-soft: var(--queue-soft); }
+    .pipeline-node.gate { --node-color: var(--gate); --node-soft: var(--gate-soft); }
+    .pipeline-node.peak { --node-color: var(--peak); --node-soft: var(--peak-soft); }
+    .pipeline-node.count { --node-color: var(--count); --node-soft: var(--count-soft); }
+    .pipeline-node.pulse { --node-color: var(--pulse); --node-soft: var(--pulse-soft); }
+
+    .node-label {
+      display: block;
+      margin-bottom: 7px;
+      color: var(--node-color);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+    }
+
+    .pipeline-node strong { display: block; margin-bottom: 8px; font-size: 17px; }
+    .pipeline-node small { color: var(--muted); line-height: 1.45; }
+    .node-value {
+      display: block;
+      margin-top: 12px;
+      font-variant-numeric: tabular-nums;
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .pipeline-arrow {
+      display: grid;
+      place-items: center;
+      color: #a4abb4;
+      font-size: 22px;
+      font-weight: 800;
+    }
+
+    .detail-strip {
+      min-height: 96px;
+      padding: 16px 20px;
+      border-top: 1px solid var(--line);
+      background: var(--surface-soft);
+      display: grid;
+      grid-template-columns: 150px minmax(0, 1fr) minmax(240px, 0.7fr);
+      gap: 18px;
+      align-items: start;
+    }
+
+    .detail-strip h3 { margin-bottom: 4px; font-size: 16px; }
+    .detail-strip p { margin-bottom: 0; color: var(--muted); line-height: 1.55; font-size: 14px; }
+    .inspect-code {
+      padding: 10px 12px;
+      border-left: 3px solid var(--queue);
+      background: var(--surface);
+      color: #414850;
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 12px;
+      line-height: 1.5;
+      overflow-wrap: anywhere;
+    }
+
+    .simulator-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.4fr) minmax(280px, 0.6fr);
+      min-height: 480px;
+    }
+
+    .simulator-main { min-width: 0; padding: 20px; }
+    .simulator-side { padding: 20px; border-left: 1px solid var(--line); background: var(--surface-soft); }
+
+    .transport {
+      display: grid;
+      grid-template-columns: auto auto auto minmax(180px, 1fr) auto;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 18px;
+    }
+
+    .icon-button {
+      width: 40px;
+      height: 40px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--ink);
+      cursor: pointer;
+      font-weight: 800;
+    }
+
+    .icon-button:hover { background: #eef1f4; }
+
+    input[type="range"] { width: 100%; accent-color: var(--queue); }
+
+    .step-readout {
+      min-width: 88px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-weight: 800;
+    }
+
+    .row-track {
+      display: grid;
+      grid-template-columns: repeat(30, minmax(30px, 1fr));
+      gap: 4px;
+      overflow-x: auto;
+      padding-bottom: 8px;
+    }
+
+    .row-cell {
+      position: relative;
+      height: 92px;
+      min-width: 30px;
+      padding: 7px 2px;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: var(--surface-soft);
+      color: var(--muted);
+      cursor: pointer;
+      text-align: center;
+      font-size: 10px;
+    }
+
+    .row-cell.processed { background: #f0f3f6; color: var(--ink); }
+    .row-cell.match { box-shadow: inset 0 -5px 0 var(--gate); }
+    .row-cell.miss { box-shadow: inset 0 -5px 0 #aab1b9; }
+    .row-cell.local-peak { border-color: var(--peak); background: var(--peak-soft); }
+    .row-cell.confirmed { border-color: var(--count); background: var(--count-soft); }
+    .row-cell.current { outline: 3px solid var(--queue); outline-offset: 1px; z-index: 2; }
+    .row-cell .row-index { display: block; font-weight: 800; font-size: 11px; }
+    .row-cell .row-time { display: block; margin-top: 4px; font-variant-numeric: tabular-nums; }
+    .row-cell .row-mark { display: block; margin-top: 12px; color: var(--peak); font-weight: 900; }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .legend span::before {
+      content: "";
+      display: inline-block;
+      width: 9px;
+      height: 9px;
+      margin-right: 5px;
+      border-radius: 2px;
+      background: var(--legend-color);
+    }
+
+    .event-box {
+      margin-top: 18px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--queue);
+      border-radius: var(--radius);
+      background: var(--surface-soft);
+    }
+
+    .event-box strong { display: block; margin-bottom: 6px; }
+    .event-box p { margin-bottom: 0; color: var(--muted); line-height: 1.55; }
+
+    .state-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+
+    .state-item {
+      padding: 11px 12px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface);
+    }
+
+    .state-item span { display: block; color: var(--muted); font-size: 11px; }
+    .state-item strong { display: block; margin-top: 5px; font-variant-numeric: tabular-nums; font-size: 17px; }
+    .state-item.wide { grid-column: 1 / -1; }
+
+    .event-log {
+      max-height: 226px;
+      overflow: auto;
+      border-top: 1px solid var(--line);
+    }
+
+    .event-log h3 { margin: 16px 0 10px; font-size: 14px; }
+    .event-log ol { margin: 0; padding-left: 24px; }
+    .event-log li { margin-bottom: 8px; color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .event-log li strong { color: var(--ink); }
+
+    .variables {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .variable-group {
+      min-width: 0;
+      padding: 20px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .variable-group:nth-child(odd) { border-right: 1px solid var(--line); }
+    .variable-group h3 { margin-bottom: 6px; font-size: 17px; }
+    .variable-group > p { color: var(--muted); font-size: 13px; line-height: 1.5; }
+
+    .variable-table { width: 100%; table-layout: fixed; border-collapse: collapse; margin-top: 14px; font-size: 13px; }
+    .variable-table th,
+    .variable-table td { padding: 9px 8px; border-top: 1px solid var(--line); text-align: left; vertical-align: top; }
+    .variable-table th { width: 34%; color: var(--muted); font-weight: 650; }
+    code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.92em;
+      overflow-wrap: anywhere;
+    }
+    .renamed { color: var(--gate); font-weight: 750; }
+
+    .callout {
+      margin: 20px;
+      padding: 14px 16px;
+      border: 1px solid #e6d49a;
+      border-radius: var(--radius);
+      background: #fff9e7;
+      color: #604900;
+      line-height: 1.55;
+      font-size: 14px;
+    }
+
+    .source-list {
+      padding: 18px 20px 22px;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .source-item { padding-left: 12px; border-left: 3px solid var(--line); }
+    .source-item strong { display: block; margin-bottom: 5px; font-size: 13px; }
+    .source-item code { color: var(--muted); overflow-wrap: anywhere; }
+
+    @media (max-width: 980px) {
+      .header-inner { grid-template-columns: 1fr; }
+      .header-facts { width: min(100%, 420px); }
+      .pipeline { grid-template-columns: 1fr; gap: 8px; }
+      .pipeline-arrow { transform: rotate(90deg); min-height: 24px; }
+      .pipeline-node { min-height: 0; }
+      .detail-strip { grid-template-columns: 1fr; }
+      .simulator-layout { grid-template-columns: 1fr; }
+      .simulator-side { border-left: 0; border-top: 1px solid var(--line); }
+    }
+
+    @media (max-width: 680px) {
+      .header-inner, .content { width: min(100% - 20px, 1240px); }
+      .section-header { align-items: flex-start; flex-direction: column; }
+      .scenario-control { width: 100%; }
+      .scenario-control button { flex: 1; }
+      .transport { grid-template-columns: repeat(3, auto); }
+      .transport input { grid-column: 1 / -1; grid-row: 2; }
+      .step-readout { grid-column: 3; text-align: right; }
+      .variables { grid-template-columns: 1fr; }
+      .variable-group:nth-child(odd) { border-right: 0; }
+      .source-list { grid-template-columns: 1fr; }
+      .header-facts { grid-template-columns: 1fr; }
+      .header-fact { border-left: 0; border-top: 1px solid var(--line); text-align: left; }
+      .header-fact:first-child { border-top: 0; }
+    }
+  </style>
+</head>
+<body>
+  <header class="page-header">
+    <div class="header-inner">
+      <div>
+        <p class="eyebrow">Ododok iOS · DSP runtime map</p>
+        <h1>Queue에서 Gate, Count, UI Pulse까지</h1>
+        <p class="lead">
+          AirPods IMU 한 행이 어떤 순서로 처리되고, 30개 행 동안 Gate와 peak 후보가 어떻게 변하는지
+          단계별로 재생합니다. 화면은 현재 코드 동작과 이번 리팩터링의 이름 변경을 함께 표시합니다.
+        </p>
+      </div>
+      <div class="header-facts" aria-label="핵심 시간 기준">
+        <div class="header-fact"><strong>50 Hz</strong><span>행 입력 주기</span></div>
+        <div class="header-fact"><strong>0.30 s</strong><span>대표 peak 창</span></div>
+        <div class="header-fact"><strong>30 rows</strong><span>Gate close 기준</span></div>
+      </div>
+    </div>
+  </header>
+
+  <main class="content">
+    <section class="section" id="overview">
+      <div class="section-header">
+        <div>
+          <h2>전체 흐름</h2>
+          <p>노드를 누르면 책임, 변수와 실제 코드 위치를 확인할 수 있습니다.</p>
+        </div>
+      </div>
+      <div class="pipeline" id="pipeline">
+        <button class="pipeline-node queue active" data-node="queue">
+          <span class="node-label">1 · ordering</span>
+          <strong>Sample Queue</strong>
+          <small>센서 행을 받은 순서대로 DSP에 전달합니다.</small>
+          <span class="node-value" id="queue-value">0 / 30 처리</span>
+        </button>
+        <div class="pipeline-arrow" aria-hidden="true">›</div>
+        <button class="pipeline-node gate" data-node="gate">
+          <span class="node-label">2 · activity</span>
+          <strong>Chewing Gate</strong>
+          <small>현재 구간에서 peak를 셀 수 있는지 허용합니다.</small>
+          <span class="node-value" id="gate-value">CLOSED</span>
+        </button>
+        <div class="pipeline-arrow" aria-hidden="true">›</div>
+        <button class="pipeline-node peak" data-node="peak">
+          <span class="node-label">3 · candidate</span>
+          <strong>Peak Window</strong>
+          <small>0.3초 안의 local peak 중 가장 강한 하나를 보관합니다.</small>
+          <span class="node-value" id="peak-value">후보 없음</span>
+        </button>
+        <div class="pipeline-arrow" aria-hidden="true">›</div>
+        <button class="pipeline-node count" data-node="count">
+          <span class="node-label">4 · decision</span>
+          <strong>Confirmed Count</strong>
+          <small>Gate와 간격 조건을 통과한 대표 peak만 더합니다.</small>
+          <span class="node-value" id="count-value">0회</span>
+        </button>
+        <div class="pipeline-arrow" aria-hidden="true">›</div>
+        <button class="pipeline-node pulse" data-node="pulse">
+          <span class="node-label">5 · feedback</span>
+          <strong>UI Pulse</strong>
+          <small>확정 이벤트를 MainActor에서 도토리 피드백으로 바꿉니다.</small>
+          <span class="node-value" id="pulse-value">대기</span>
+        </button>
+      </div>
+      <div class="detail-strip" id="node-detail" aria-live="polite"></div>
+    </section>
+
+    <section class="section" id="simulation">
+      <div class="section-header">
+        <div>
+          <h2>30행 상태 변화</h2>
+          <p id="scenario-description">연속 일치 10행에서 Gate가 열리고, 대표 peak가 Count와 UI Pulse가 되는 흐름입니다.</p>
+        </div>
+        <div class="scenario-control" role="tablist" aria-label="시뮬레이션 시나리오">
+          <button role="tab" aria-selected="true" data-scenario="open">Gate 열기 + Count</button>
+          <button role="tab" aria-selected="false" data-scenario="close">Gate 30행으로 닫기</button>
+        </div>
+      </div>
+
+      <div class="simulator-layout">
+        <div class="simulator-main">
+          <div class="transport">
+            <button class="icon-button" id="reset-button" title="처음으로" aria-label="처음으로">↺</button>
+            <button class="icon-button" id="previous-button" title="이전 행" aria-label="이전 행">‹</button>
+            <button class="icon-button" id="play-button" title="재생" aria-label="재생">▶</button>
+            <input id="step-range" type="range" min="0" max="30" value="0" aria-label="처리한 센서 행 수" />
+            <div class="step-readout"><span id="step-number">0</span> / 30행</div>
+          </div>
+
+          <div class="row-track" id="row-track" aria-label="30개 센서 행 타임라인"></div>
+          <div class="legend" aria-label="타임라인 범례">
+            <span style="--legend-color: var(--gate)">Gate 조건 일치</span>
+            <span style="--legend-color: #aab1b9">Gate 조건 불일치</span>
+            <span style="--legend-color: var(--peak)">Local peak 후보</span>
+            <span style="--legend-color: var(--count)">대표 peak 확정</span>
+          </div>
+
+          <div class="event-box" id="current-event" aria-live="polite">
+            <strong>아직 처리한 행이 없습니다.</strong>
+            <p>재생하거나 타임라인의 행을 눌러 상태 변화를 확인하세요.</p>
+          </div>
+        </div>
+
+        <aside class="simulator-side" aria-label="현재 알고리즘 상태">
+          <div class="state-grid">
+            <div class="state-item"><span>Queue 처리</span><strong id="state-processed">0 / 30</strong></div>
+            <div class="state-item"><span>현재 시각</span><strong id="state-time">0.00 s</strong></div>
+            <div class="state-item"><span>Gate 상태</span><strong id="state-gate">CLOSED</strong></div>
+            <div class="state-item"><span>연속 일치</span><strong id="state-match">0 / 10</strong></div>
+            <div class="state-item"><span>연속 불일치</span><strong id="state-miss">0 / 30</strong></div>
+            <div class="state-item"><span>확정 Count</span><strong id="state-count">0</strong></div>
+            <div class="state-item wide"><span>Peak Window의 최강 후보</span><strong id="state-peak">없음</strong></div>
+            <div class="state-item wide"><span>이번 행의 UI Pulse</span><strong id="state-pulse">없음</strong></div>
+          </div>
+          <div class="event-log">
+            <h3>상태 전환 기록</h3>
+            <ol id="event-log"></ol>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <section class="section" id="variables">
+      <div class="section-header">
+        <div>
+          <h2>변수 사전</h2>
+          <p>변경 전 이름과 현재 코드 이름을 나란히 두어 책임을 명확히 합니다.</p>
+        </div>
+      </div>
+      <div class="variables">
+        <article class="variable-group">
+          <h3>Queue · 입력 순서</h3>
+          <p>Queue는 Gate를 판단하지 않습니다. 센서 행이 DSP에 순서대로 들어가도록 보장합니다.</p>
+          <table class="variable-table">
+            <tr><th>변경 전</th><td><code>chewCounterFeedTask</code></td></tr>
+            <tr><th>현재</th><td><code class="renamed">sampleProcessingTailTask</code></td></tr>
+            <tr><th>입력 함수</th><td><code class="renamed">enqueueChewDetectionSample</code></td></tr>
+            <tr><th>종료 규칙</th><td>마지막 Task가 끝난 뒤 <code>finishSession()</code></td></tr>
+          </table>
+        </article>
+
+        <article class="variable-group">
+          <h3>Gate · 활동 구간</h3>
+          <p>실제 씹기 횟수가 아니라, 지금 peak를 세도 되는 구간인지를 나타냅니다.</p>
+          <table class="variable-table">
+            <tr><th><code>isChewing</code></th><td><code class="renamed">isChewingGateOpen</code></td></tr>
+            <tr><th><code>chewingLike</code></th><td><code class="renamed">matchesChewingGate</code></td></tr>
+            <tr><th><code>enterSampleCount</code></th><td><code class="renamed">samplesRequiredToOpen = 10</code></td></tr>
+            <tr><th><code>exitSampleCount</code></th><td><code class="renamed">samplesRequiredToClose = 30</code></td></tr>
+          </table>
+        </article>
+
+        <article class="variable-group">
+          <h3>Peak · 후보와 대표값</h3>
+          <p>Gate가 열려 있을 때만 local peak를 받고, 0.3초 창 안에서 가장 강한 값을 선택합니다.</p>
+          <table class="variable-table">
+            <tr><th><code>isPeak</code></th><td><code class="renamed">isLocalPeakCandidate</code></td></tr>
+            <tr><th><code>RepresentativePeakSelector</code></th><td><code class="renamed">RepresentativePeakWindow</code></td></tr>
+            <tr><th><code>representativePeakSelector</code></th><td><code class="renamed">peakSelectionWindow</code></td></tr>
+            <tr><th>최소 진폭</th><td><code>minPeakAmplitude = 0.006</code></td></tr>
+            <tr><th>선택 창</th><td><code>windowDuration = 0.30 s</code> · 약 15행</td></tr>
+          </table>
+        </article>
+
+        <article class="variable-group">
+          <h3>Count · 확정과 UI</h3>
+          <p>확정 Count는 데이터이고 UI Pulse는 피드백입니다. UI가 합쳐져도 Count는 보존합니다.</p>
+          <table class="variable-table">
+            <tr><th><code>chewCount</code></th><td><code class="renamed">confirmedChewCount</code></td></tr>
+            <tr><th><code>register</code></th><td><code class="renamed">confirmChew</code></td></tr>
+            <tr><th>최소 간격</th><td><code>minPeakGapSeconds = 0.32 s</code></td></tr>
+            <tr><th>UI 합치기</th><td><code>minimumInterval = 0.20 s</code></td></tr>
+            <tr><th>모델 버전</th><td><code>dsp-chewcounter-2</code></td></tr>
+          </table>
+        </article>
+      </div>
+      <div class="callout">
+        이 시뮬레이터는 Gate의 Biquad·EWMA 계산을 전부 재현하지 않고, 그 계산 결과인
+        <code>matchesChewingGate</code>를 입력값으로 사용합니다. 실제 코드에서는 rotation 표준편차,
+        Y축 우세도, jitter 우세도, 가속도 대비 회전 에너지가 먼저 계산됩니다.
+      </div>
+    </section>
+
+    <section class="section" id="sources">
+      <div class="section-header">
+        <div>
+          <h2>Source of truth</h2>
+          <p>구조와 수치는 아래 실제 코드에서 확인했습니다.</p>
+        </div>
+      </div>
+      <div class="source-list">
+        <div class="source-item"><strong>Gate와 Count</strong><code>ChewChewIOS/SignalProcessing/ChewCounter.swift</code></div>
+        <div class="source-item"><strong>Queue와 UI 전달</strong><code>ChewChewIOS/Features/MealSession/MealSessionRuntimeStore.swift</code></div>
+        <div class="source-item"><strong>도토리 Pulse</strong><code>ChewChewIOS/Features/Home/HomeView.swift</code></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const nodeDetails = {
+      queue: {
+        title: "Sample Queue",
+        why: "50Hz 센서 행이 비동기 Task 실행 순서 때문에 뒤섞이지 않도록 앞 Task 완료를 기다립니다.",
+        inspect: "MealSessionRuntimeStore.enqueueChewDetectionSample(_:)\nsampleProcessingTailTask → finishSession()"
+      },
+      gate: {
+        title: "Chewing Gate",
+        why: "약한 단발 움직임을 바로 세지 않고, 씹기 특징이 연속으로 관찰된 구간에서만 peak 검출을 허용합니다.",
+        inspect: "ChewingStateDetector → ChewingActivityGate\nisChewing → isChewingGateOpen"
+      },
+      peak: {
+        title: "Peak Selection Window",
+        why: "한 번 씹을 때 생기는 여러 작은 봉우리 중 0.3초 안에서 가장 강한 하나만 대표로 선택합니다.",
+        inspect: "RepresentativePeakWindow\nwindowDuration = 0.30\nminPeakAmplitude = 0.006"
+      },
+      count: {
+        title: "Confirmed Count",
+        why: "대표 peak가 마지막 확정 peak와 0.32초 이상 떨어져 있을 때만 최종 씹기 횟수를 증가시킵니다.",
+        inspect: "register(_:) → confirmChew(_:)\nchewCount → confirmedChewCount"
+      },
+      pulse: {
+        title: "UI Pulse",
+        why: "확정 Count를 도토리와 다람쥐 움직임으로 보여줍니다. MainActor가 밀린 경우 시각 이벤트는 합칠 수 있지만 Count는 바꾸지 않습니다.",
+        inspect: "onChewPulse()\nChewPulseDeliveryGate.minimumInterval = 0.20\nHomeView.addChewAcornPulse(for:)"
+      }
+    };
+
+    const scenarioMeta = {
+      open: {
+        description: "연속 일치 10행에서 Gate가 열리고, 대표 peak가 Count와 UI Pulse가 되는 흐름입니다.",
+        initialGateOpen: false
+      },
+      close: {
+        description: "이미 열린 Gate가 연속 불일치 30행을 받고 마지막 행에서 닫히는 흐름입니다.",
+        initialGateOpen: true
+      }
+    };
+
+    let scenario = "open";
+    let step = { value: 0 };
+    let player = { timer: null };
+
+    function makeRows() {
+      return Array.from({ length: 30 }, (_, index) => {
+        const row = index + 1;
+        const base = {
+          row,
+          time: (row - 1) * 0.02,
+          matchesGate: scenario === "open",
+          localPeakAmplitude: null
+        };
+        if (scenario === "open") {
+          const peaks = { 11: 0.012, 15: 0.028, 19: 0.017 };
+          base.localPeakAmplitude = peaks[row] ?? null;
+        }
+        return base;
+      });
+    }
+
+    function simulate(until) {
+      const rows = makeRows();
+      const state = {
+        processed: 0,
+        gateOpen: scenarioMeta[scenario].initialGateOpen,
+        matchStreak: 0,
+        missStreak: 0,
+        count: 0,
+        pulseNow: false,
+        peakWindow: null,
+        events: [],
+        snapshots: []
+      };
+
+      rows.forEach((row, index) => {
+        if (index >= until) return;
+        state.processed = row.row;
+        state.pulseNow = false;
+        const messages = [];
+
+        if (row.matchesGate) {
+          state.matchStreak += 1;
+          state.missStreak = 0;
+        } else {
+          state.missStreak += 1;
+          state.matchStreak = 0;
+        }
+
+        if (!state.gateOpen && state.matchStreak >= 10) {
+          state.gateOpen = true;
+          messages.push("Gate OPEN: 연속 일치 10행 도달");
+          state.events.push({ row: row.row, text: "Gate가 열렸습니다." });
+        }
+        if (state.gateOpen && state.missStreak >= 30) {
+          state.gateOpen = false;
+          messages.push("Gate CLOSED: 연속 불일치 30행 도달");
+          state.events.push({ row: row.row, text: "Gate가 닫혔습니다." });
+        }
+
+        if (state.peakWindow && row.time - state.peakWindow.startedAt >= 0.30) {
+          const selected = state.peakWindow.strongest;
+          state.count += 1;
+          state.pulseNow = true;
+          state.peakWindow = null;
+          messages.push(`대표 peak 확정: ${selected.amplitude.toFixed(3)} · Count ${state.count}`);
+          state.events.push({ row: row.row, text: `row ${selected.row} peak가 확정되어 UI Pulse가 발생했습니다.` });
+          row.confirmed = true;
+        }
+
+        if (state.gateOpen && row.localPeakAmplitude !== null && row.localPeakAmplitude > 0.006) {
+          if (!state.peakWindow) {
+            state.peakWindow = {
+              startedAt: row.time,
+              strongest: { row: row.row, amplitude: row.localPeakAmplitude }
+            };
+            messages.push(`Peak Window 시작: ${row.localPeakAmplitude.toFixed(3)}`);
+          } else if (row.localPeakAmplitude > state.peakWindow.strongest.amplitude) {
+            state.peakWindow.strongest = { row: row.row, amplitude: row.localPeakAmplitude };
+            messages.push(`대표 후보 교체: ${row.localPeakAmplitude.toFixed(3)}`);
+          } else {
+            messages.push(`약한 peak 유지 안 함: ${row.localPeakAmplitude.toFixed(3)}`);
+          }
+        }
+
+        if (!messages.length) {
+          messages.push(row.matchesGate ? "Gate 조건과 일치하는 행을 누적합니다." : "Gate 조건과 불일치하는 행을 누적합니다.");
+        }
+
+        state.snapshots.push({
+          ...row,
+          gateOpen: state.gateOpen,
+          matchStreak: state.matchStreak,
+          missStreak: state.missStreak,
+          count: state.count,
+          pulseNow: state.pulseNow,
+          peakWindow: state.peakWindow ? JSON.parse(JSON.stringify(state.peakWindow)) : null,
+          messages,
+          events: [...state.events]
+        });
+      });
+
+      return { rows, state };
+    }
+
+    function renderRows(rows, state) {
+      const track = document.getElementById("row-track");
+      track.innerHTML = "";
+      rows.forEach((row, index) => {
+        const snapshot = state.snapshots[index];
+        const button = document.createElement("button");
+        button.className = "row-cell";
+        if (index < step.value) {
+          button.classList.add("processed", row.matchesGate ? "match" : "miss");
+          if (row.localPeakAmplitude !== null) button.classList.add("local-peak");
+          if (snapshot?.pulseNow) button.classList.add("confirmed");
+        }
+        if (index === step.value - 1) button.classList.add("current");
+        button.setAttribute("aria-label", `${row.row}번 행, ${row.time.toFixed(2)}초`);
+        button.innerHTML = `
+          <span class="row-index">${row.row}</span>
+          <span class="row-time">${row.time.toFixed(2)}</span>
+          <span class="row-mark">${row.localPeakAmplitude !== null ? "▲" : ""}</span>
+        `;
+        button.addEventListener("click", () => setStep(row.row));
+        track.appendChild(button);
+      });
+    }
+
+    function render() {
+      const { rows, state } = simulate(step.value);
+      const current = state.snapshots[step.value - 1];
+      renderRows(rows, state);
+
+      document.getElementById("step-number").textContent = step.value;
+      document.getElementById("step-range").value = step.value;
+      document.getElementById("queue-value").textContent = `${step.value} / 30 처리`;
+      document.getElementById("gate-value").textContent = state.gateOpen ? "OPEN" : "CLOSED";
+      document.getElementById("peak-value").textContent = state.peakWindow
+        ? `row ${state.peakWindow.strongest.row} · ${state.peakWindow.strongest.amplitude.toFixed(3)}`
+        : "후보 없음";
+      document.getElementById("count-value").textContent = `${state.count}회`;
+      document.getElementById("pulse-value").textContent = current?.pulseNow ? "PULSE" : "대기";
+
+      document.getElementById("state-processed").textContent = `${step.value} / 30`;
+      document.getElementById("state-time").textContent = current ? `${current.time.toFixed(2)} s` : "0.00 s";
+      document.getElementById("state-gate").textContent = state.gateOpen ? "OPEN" : "CLOSED";
+      document.getElementById("state-match").textContent = `${state.matchStreak} / 10`;
+      document.getElementById("state-miss").textContent = `${state.missStreak} / 30`;
+      document.getElementById("state-count").textContent = state.count;
+      document.getElementById("state-peak").textContent = state.peakWindow
+        ? `row ${state.peakWindow.strongest.row}, amplitude ${state.peakWindow.strongest.amplitude.toFixed(3)}`
+        : "없음";
+      document.getElementById("state-pulse").textContent = current?.pulseNow ? "도토리 Pulse 발생" : "없음";
+
+      const eventBox = document.getElementById("current-event");
+      if (!current) {
+        eventBox.innerHTML = "<strong>아직 처리한 행이 없습니다.</strong><p>재생하거나 타임라인의 행을 눌러 상태 변화를 확인하세요.</p>";
+      } else {
+        eventBox.innerHTML = `<strong>row ${current.row} · ${current.time.toFixed(2)}초</strong><p>${current.messages.join(" ")}</p>`;
+      }
+
+      const log = document.getElementById("event-log");
+      const events = current?.events ?? [];
+      log.innerHTML = events.length
+        ? events.map(event => `<li><strong>row ${event.row}</strong> ${event.text}</li>`).join("")
+        : "<li>아직 상태 전환이 없습니다.</li>";
+
+      document.querySelectorAll(".pipeline-node").forEach(node => node.classList.remove("active"));
+      let activeNode = "queue";
+      if (current) activeNode = current.pulseNow ? "pulse" : current.localPeakAmplitude !== null ? "peak" : "gate";
+      document.querySelector(`.pipeline-node[data-node="${activeNode}"]`)?.classList.add("active");
+    }
+
+    function setStep(value) {
+      step.value = Math.max(0, Math.min(30, Number(value)));
+      render();
+    }
+
+    function stopPlayer() {
+      if (player.timer) window.clearInterval(player.timer);
+      player.timer = null;
+      document.getElementById("play-button").textContent = "▶";
+      document.getElementById("play-button").setAttribute("aria-label", "재생");
+    }
+
+    function togglePlayer() {
+      if (player.timer) {
+        stopPlayer();
+        return;
+      }
+      if (step.value >= 30) setStep(0);
+      document.getElementById("play-button").textContent = "Ⅱ";
+      document.getElementById("play-button").setAttribute("aria-label", "일시정지");
+      player.timer = window.setInterval(() => {
+        setStep(step.value + 1);
+        if (step.value >= 30) stopPlayer();
+      }, 260);
+    }
+
+    function selectNode(name) {
+      const detail = nodeDetails[name];
+      document.getElementById("node-detail").innerHTML = `
+        <div><h3>${detail.title}</h3><p>책임과 경계</p></div>
+        <p>${detail.why}</p>
+        <div class="inspect-code">${detail.inspect.replaceAll("\n", "<br>")}</div>
+      `;
+    }
+
+    document.querySelectorAll(".pipeline-node").forEach(node => {
+      node.addEventListener("click", () => selectNode(node.dataset.node));
+    });
+    document.querySelectorAll("[data-scenario]").forEach(button => {
+      button.addEventListener("click", () => {
+        stopPlayer();
+        scenario = button.dataset.scenario;
+        document.querySelectorAll("[data-scenario]").forEach(item => item.setAttribute("aria-selected", String(item === button)));
+        document.getElementById("scenario-description").textContent = scenarioMeta[scenario].description;
+        setStep(0);
+      });
+    });
+    document.getElementById("reset-button").addEventListener("click", () => { stopPlayer(); setStep(0); });
+    document.getElementById("previous-button").addEventListener("click", () => { stopPlayer(); setStep(step.value - 1); });
+    document.getElementById("play-button").addEventListener("click", togglePlayer);
+    document.getElementById("step-range").addEventListener("input", event => { stopPlayer(); setStep(event.target.value); });
+
+    selectNode("queue");
+    render();
+  </script>
+</body>
+</html>

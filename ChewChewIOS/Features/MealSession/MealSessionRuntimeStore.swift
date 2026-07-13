@@ -9,7 +9,7 @@ import UIKit
 enum MealSessionRuntimeRules {
     static func shouldConfirmShortSessionStop(startedAt: Date?, now: Date = Date()) -> Bool {
         guard let startedAt else { return false }
-        return now.timeIntervalSince(startedAt) < 60
+        return now.timeIntervalSince(startedAt) < MealSessionReportability.minDurationSec
     }
 
     static func shouldAutoResume(interruptionWasCall: Bool, shouldResume: Bool) -> Bool {
@@ -21,6 +21,11 @@ enum MealSessionRuntimeRules {
     }
 }
 
+private struct StoppedEatingRuntime {
+    let engine: ChewDetectionEngine?
+    let sampleProcessingTailTask: Task<Void, Never>?
+}
+
 @Observable
 @MainActor
 final class MealSessionRuntimeStore {
@@ -28,8 +33,6 @@ final class MealSessionRuntimeStore {
     static let idleIMUWaveformSamples: [Double] = (0..<maxIMUWaveformSamples).map { index in
         0.05 + sin(Double(index) * 0.42) * 0.015
     }
-
-    private static let modelVersion = "dsp-chewcounter-1"
 
     private(set) var phase: MealSessionPhase = .idle
     var isEating: Bool { phase.isEating }
@@ -60,7 +63,6 @@ final class MealSessionRuntimeStore {
     @ObservationIgnored private let runtimeServices: MealSessionRuntimeServices
 
     @ObservationIgnored private lazy var headphoneMotionService = runtimeServices.makeMotionService()
-    @ObservationIgnored private var chewPulseTimer: Timer?
     @ObservationIgnored private var demoIMUWaveformTimer: Timer?
     @ObservationIgnored private var imuWaveformPhase: Double = 0
     @ObservationIgnored private lazy var callMonitor = runtimeServices.makeCallInterruptionMonitor()
@@ -83,7 +85,9 @@ final class MealSessionRuntimeStore {
         }
         return coordinator
     }()
-    @ObservationIgnored private var chewCounter: ChewCounter?
+    @ObservationIgnored private var chewDetectionEngine: ChewDetectionEngine?
+    @ObservationIgnored private var sampleProcessingTailTask: Task<Void, Never>?
+    @ObservationIgnored private var chewPulseDeliveryGate = ChewPulseDeliveryGate(minimumInterval: 0.2)
     @ObservationIgnored private var imuSessionRecorder: IMUSessionRecorder?
 
     init(
@@ -120,16 +124,17 @@ final class MealSessionRuntimeStore {
         phase = .measuring(MealSessionMeasurementContext(startedAt: now))
 
         prepareEatingSession(startedAt: now)
-        let counter = ChewCounter()
-        chewCounter = counter
-        startChewAnimationLoop()
+        let engine = ChewDetectionEngine()
+        chewDetectionEngine = engine
+        sampleProcessingTailTask = nil
+        chewPulseDeliveryGate.reset()
 
         configureCallInterruptionHandling()
         configureMealAirPodsConnectionHandling()
         Task { [notificationScheduler = runtimeServices.notificationScheduler] in
             await notificationScheduler.requestAuthorizationIfNeeded()
         }
-        startAudioFeedback(counter: counter)
+        startAudioFeedback(engine: engine)
         mealActivity.start(startedAt: now)
 
         if !startHeadphoneMotionLoop() {
@@ -147,10 +152,10 @@ final class MealSessionRuntimeStore {
         } else {
             phase = .idle
         }
-        let counter = stopEatingRuntime()
+        let stoppedRuntime = stopEatingRuntime()
         onPersistSnapshot()
 
-        chewCounter = nil
+        chewDetectionEngine = nil
         if let recorder = imuSessionRecorder {
             imuSessionRecorder = nil
             let output = recorder.finalize(endedAt: endedAt)
@@ -161,7 +166,9 @@ final class MealSessionRuntimeStore {
             }
             phase = .idle
             Task { [weak self] in
-                let stats = await counter?.sessionStats(modelVersion: Self.modelVersion)
+                await stoppedRuntime.sampleProcessingTailTask?.value
+                await stoppedRuntime.engine?.finishSession()
+                let stats = await stoppedRuntime.engine?.sessionStats()
                 await self?.onSessionReadyForUpload(output, stats)
             }
         } else {
@@ -177,7 +184,7 @@ final class MealSessionRuntimeStore {
         phase = .idle
         _ = stopEatingRuntime()
         onPersistSnapshot()
-        chewCounter = nil
+        chewDetectionEngine = nil
         if let recorder = imuSessionRecorder {
             imuSessionRecorder = nil
             _ = recorder.finalize(endedAt: endedAt)
@@ -457,27 +464,30 @@ private extension MealSessionRuntimeStore {
         await operation()
     }
 
-    func startAudioFeedback(counter: ChewCounter) {
+    func startAudioFeedback(engine: ChewDetectionEngine) {
         backgroundKeepAlive.volume = alertVolume
         backgroundKeepAlive.start()
         let keepAlive = backgroundKeepAlive
         Task {
-            await counter.setSustainedChewingHandler {
+            await engine.setSustainedChewingHandler {
                 Task { @MainActor in
-                    let isChewing = await counter.isChewing
-                    let avgInterval = await counter.avgInterval
-                    keepAlive.playTone(for: ChewPaceSample(isChewing: isChewing, avgInterval: avgInterval))
+                    let isGateOpen = await engine.isChewingGateOpen
+                    let avgInterval = await engine.avgInterval
+                    keepAlive.playTone(for: ChewPaceSample(isChewing: isGateOpen, avgInterval: avgInterval))
                 }
             }
         }
     }
 
-    func stopEatingRuntime() -> ChewCounter? {
+    func stopEatingRuntime() -> StoppedEatingRuntime {
         stopHeadphoneMotionLoop()
-        stopChewAnimationLoop()
         stopDemoIMUWaveformLoop()
-        let counter = chewCounter
-        Task { await counter?.setSustainedChewingHandler(nil) }
+        let stoppedRuntime = StoppedEatingRuntime(
+            engine: chewDetectionEngine,
+            sampleProcessingTailTask: sampleProcessingTailTask
+        )
+        sampleProcessingTailTask = nil
+        Task { await stoppedRuntime.engine?.setSustainedChewingHandler(nil) }
         backgroundKeepAlive.stop()
         callMonitor.onCallStarted = nil
         callMonitor.onCallEnded = nil
@@ -489,21 +499,7 @@ private extension MealSessionRuntimeStore {
         mealActivity.end()
         resetIMUWaveform()
         imuWaveformSource = .idle
-        return counter
-    }
-
-    func startChewAnimationLoop() {
-        stopChewAnimationLoop()
-        chewPulseTimer = Timer.scheduledTimer(withTimeInterval: 0.85, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.onChewPulse()
-            }
-        }
-    }
-
-    func stopChewAnimationLoop() {
-        chewPulseTimer?.invalidate()
-        chewPulseTimer = nil
+        return stoppedRuntime
     }
 
     func startHeadphoneMotionLoop() -> Bool {
@@ -561,20 +557,34 @@ private extension MealSessionRuntimeStore {
         let row = MealSessionMotionMapper.makeRow(sample: sample, startedAt: recorder.startedAt)
         recorder.append(row)
         recorder.updateSensorLocation(sample.sensorLocation)
-        feedChewCounter(row)
+        enqueueChewDetectionSample(row)
     }
 
-    func feedChewCounter(_ row: IMURow) {
-        guard let chewCounter else { return }
-        Task {
-            await chewCounter.feed(
+    func enqueueChewDetectionSample(_ row: IMURow) {
+        guard let engine = chewDetectionEngine else { return }
+        let previousProcessingTask = sampleProcessingTailTask
+        sampleProcessingTailTask = Task { [weak self] in
+            await previousProcessingTask?.value
+            guard !Task.isCancelled else { return }
+            let event = await engine.feed(ChewDetectionSample(
+                timestamp: row.tMach,
                 rotX: row.rotationX,
                 rotY: row.rotationY,
                 rotZ: row.rotationZ,
                 accelX: row.userAccelX,
                 accelY: row.userAccelY,
                 accelZ: row.userAccelZ
-            )
+            ))
+            guard event != nil else { return }
+            await MainActor.run { [weak self] in
+                guard let self,
+                      self.chewDetectionEngine === engine,
+                      case .measuring = self.phase,
+                      self.chewPulseDeliveryGate.shouldDeliver(
+                          at: ProcessInfo.processInfo.systemUptime
+                      ) else { return }
+                self.onChewPulse()
+            }
         }
     }
 
