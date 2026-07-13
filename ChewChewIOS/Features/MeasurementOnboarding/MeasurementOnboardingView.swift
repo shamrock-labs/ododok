@@ -5,6 +5,7 @@ struct MeasurementOnboardingView: View {
     let onComplete: () -> Void
     let onSkip: () -> Void
     let onRetryConnection: () -> Void
+    var skipTitle = "나중에"
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -62,7 +63,7 @@ struct MeasurementOnboardingView: View {
             Spacer()
 
             Button(action: onSkip) {
-                Text("나중에")
+                Text(skipTitle)
                     .font(.appFont(.boldLabel))
                     .foregroundStyle(Color.textMuted)
                     .frame(minWidth: AppSize.dialogActionHeight, minHeight: AppSize.dialogActionHeight)
@@ -183,12 +184,11 @@ struct MeasurementOnboardingView: View {
     }
 
     private var readyDetails: some View {
-        let threshold = store.profile?.minPeakAmplitude ?? 0
         let detectedCount = store.profile?.validationDetectedCount ?? 0
         return detailRows([
-            ("slider.horizontal.3", String(format: "개인 진폭 기준 %.4f", threshold)),
+            ("waveform.path.ecg", "내 씹기 신호에 맞는 기준을 만들었어요"),
             ("checkmark.circle", "검증 10회 중 \(detectedCount)회 감지했어요"),
-            ("iphone", "결과는 이 기기에서만 확인해요"),
+            ("iphone", "맞춤 기준을 이 기기에 저장해요"),
         ])
     }
 
@@ -259,7 +259,7 @@ struct MeasurementOnboardingView: View {
         case .connection: "연결된 AirPods의 움직임 센서를 확인해요."
         case .calibration: "화면의 박자가 움직일 때 한 번씩 씹어주세요.\n10회의 신호로 내 기준을 계산해요."
         case .validation: "방금 만든 기준으로 실제 감지 횟수를 확인해요."
-        case .ready: "서버에 저장하지 않은 로컬 실험 결과예요."
+        case .ready: "다음 식사부터 이 기준으로 씹기를 감지해요."
         case .signalIssue: "괜찮아요. 착용 상태와 씹는 리듬을 확인해요."
         }
     }
@@ -292,7 +292,7 @@ struct MeasurementOnboardingView: View {
             if store.isMeasuring { return "검증 중 · \(store.cueIndex)/10" }
             return "10회 검증 시작"
         case .ready:
-            return "결과 확인"
+            return "맞춤 기준 사용하기"
         case .signalIssue:
             return "처음부터 다시"
         }

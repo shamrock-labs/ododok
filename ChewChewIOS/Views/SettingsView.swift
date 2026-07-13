@@ -13,6 +13,10 @@ struct SettingsView: View {
     @State private var showDeleteConfirmation = false
     @State private var showAirPodsPicker = false
     @State private var showFeedback = false
+    @State private var showMeasurementPersonalization = false
+    @State private var personalizationSettings = UserDefaultsChewProfileStore().load()
+
+    private let personalizationStore = UserDefaultsChewProfileStore()
 
     private static let feedbackFormURL = URL(string: "https://forms.gle/6AsoDPHhywVpV9Qb6")!
 
@@ -110,6 +114,11 @@ struct SettingsView: View {
         .sheet(isPresented: $showFeedback) {
             SafariView(url: Self.feedbackFormURL)
         }
+        .fullScreenCover(isPresented: $showMeasurementPersonalization) {
+            MeasurementPersonalizationFlow(personalizationStore: personalizationStore) { settings in
+                personalizationSettings = settings
+            }
+        }
     }
 
     // MARK: - Sections
@@ -167,6 +176,15 @@ struct SettingsView: View {
             }
             .buttonStyle(.plain)
             .accessibilityIdentifier("AirPodsModelPicker")
+
+            Button {
+                showMeasurementPersonalization = true
+            } label: {
+                ChewDetectionPersonalizationSettingsRow(isPersonalized: personalizationSettings != nil)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, AppSpacing.topInsetCompact)
+            .accessibilityIdentifier("ChewDetectionPersonalization")
         }
     }
 
@@ -271,10 +289,10 @@ private struct LegalDocumentView: View {
     }
 
     /// "1. ", "2. " 등 번호 목록 접두사를 제거하고 본문만 반환. 해당 없으면 nil.
-    private func numberedPrefix(_ s: String) -> String? {
+    private func numberedPrefix(_ source: String) -> String? {
         let pattern = #"^\d+\.\s+"#
-        guard let range = s.range(of: pattern, options: .regularExpression) else { return nil }
-        return String(s[range.upperBound...])
+        guard let range = source.range(of: pattern, options: .regularExpression) else { return nil }
+        return String(source[range.upperBound...])
     }
 
     @ViewBuilder
@@ -339,6 +357,8 @@ private struct LegalDocumentView: View {
 
 private extension LegalDocumentView {
 
+    // Legal prose stays on source lines that match its rendered paragraphs.
+    // swiftlint:disable line_length
     // 이용약관 초안. 법무 검토 전 초안이며 실제 출시 전 반드시 검토·교체가 필요합니다.
     static let termsMarkdown = """
 # 오도독 이용약관
@@ -496,6 +516,7 @@ private extension LegalDocumentView {
 
 - 이메일: ododok.team@gmail.com
 """
+    // swiftlint:enable line_length
     // TODO: 시행일(2026-06-30)은 목표 출시일 기준. 실제 출시일이 바뀌면 갱신하고 법무 최종 검토 후 적용할 것.
 }
 

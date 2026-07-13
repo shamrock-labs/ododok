@@ -97,6 +97,23 @@ final class AirPodsMealRuntimeTests: XCTestCase {
         store.discardCurrentSession()
     }
 
+    func testMealSessionUsesPersonalizedPeakAmplitudeConfiguration() async {
+        let runtime = FakeAirPodsMealRuntimeServices()
+        var pulseCount = 0
+        let store = makeStore(
+            runtime: runtime,
+            configuration: ChewDetectionConfiguration(minPeakAmplitude: 1),
+            onChewPulse: { pulseCount += 1 }
+        )
+
+        store.startEating()
+        emitChewingMotionSamples(runtime.motion)
+        try? await Task.sleep(for: .milliseconds(500))
+
+        XCTAssertEqual(pulseCount, 0)
+        store.discardCurrentSession()
+    }
+
     func testStoppedSessionDoesNotTriggerChewPulseFromLaterSamples() async {
         let runtime = FakeAirPodsMealRuntimeServices()
         var pulseCount = 0
@@ -135,6 +152,7 @@ final class AirPodsMealRuntimeTests: XCTestCase {
 
     private func makeStore(
         runtime: FakeAirPodsMealRuntimeServices,
+        configuration: ChewDetectionConfiguration = .standard,
         onSessionReadyForUpload: @escaping @MainActor (
             IMUSessionRecorder.Output,
             SessionStats?
@@ -146,6 +164,7 @@ final class AirPodsMealRuntimeTests: XCTestCase {
             onChewPulse: onChewPulse,
             onPersistSnapshot: {},
             onSessionReadyForUpload: onSessionReadyForUpload,
+            chewDetectionConfiguration: { configuration },
             runtimeServices: runtime.services
         )
     }

@@ -10,7 +10,13 @@ final class SettingsDeleteDataUITests: XCTestCase {
         super.setUp()
         continueAfterFailure = false
         app = XCUIApplication()
-        app.launchArguments = ["-resetState", "-skipOnboarding", "-skipAttendanceDialog", "-useNoopRemote"]
+        app.launchArguments = [
+            "-resetState",
+            "-skipOnboarding",
+            "-skipAttendanceDialog",
+            "-useNoopRemote",
+            "-forceLogin",
+        ]
     }
 
     override func tearDown() {
@@ -20,14 +26,25 @@ final class SettingsDeleteDataUITests: XCTestCase {
 
     func testSettingsSheet_opensFromGearButton() {
         app.launch()
+        dismissOnboardingIfNeeded()
 
-        let gearButton = app.buttons["gearshape.fill"]
+        let gearButton = app.buttons["gearshape"]
         XCTAssertTrue(gearButton.waitForExistence(timeout: 10), "gear 버튼이 HomeView에 있어야 한다")
         gearButton.tap()
 
         XCTAssertTrue(
             app.staticTexts["설정"].waitForExistence(timeout: 5),
             "SettingsView가 '설정' 타이틀과 함께 열려야 한다"
+        )
+        let personalizationButton = app.buttons["ChewDetectionPersonalization"]
+        XCTAssertTrue(
+            personalizationButton.waitForExistence(timeout: 5),
+            "씹기 감지 맞추기 진입점이 측정 설정에 있어야 한다"
+        )
+        personalizationButton.tap()
+        XCTAssertTrue(
+            app.buttons["MeasurementOnboardingPrimary"].waitForExistence(timeout: 5),
+            "씹기 감지 맞추기 화면이 열려야 한다"
         )
     }
 
@@ -54,7 +71,9 @@ final class SettingsDeleteDataUITests: XCTestCase {
 
     /// gear → SettingsView 정착 대기 → '계정 삭제' 탭 → 확인 다이얼로그 타이틀 등장까지.
     private func openSettingsAndTapDelete() {
-        let gearButton = app.buttons["gearshape.fill"]
+        dismissOnboardingIfNeeded()
+
+        let gearButton = app.buttons["gearshape"]
         XCTAssertTrue(gearButton.waitForExistence(timeout: 10), "gear 버튼이 HomeView에 있어야 한다")
         gearButton.tap()
 
@@ -66,5 +85,12 @@ final class SettingsDeleteDataUITests: XCTestCase {
         deleteButton.tap()
 
         XCTAssertTrue(app.staticTexts["계정을 삭제할까요?"].waitForExistence(timeout: 5), "confirmationDialog 타이틀이 표시되어야 한다")
+    }
+
+    private func dismissOnboardingIfNeeded() {
+        let skipButton = app.buttons["OnboardingSkip"]
+        if skipButton.waitForExistence(timeout: 2) {
+            skipButton.tap()
+        }
     }
 }
