@@ -915,7 +915,7 @@ private extension Mood {
 }
 
 /// 카드 frame을 유지한 채 본문에 안내 메시지를 표시하는 빈 카드. 기본값은 분석 5필드가
-/// 없는 세션(시뮬레이터/AirPods 미연결/60초 미만)용. emoji/title/subtitle을 갈아끼우면
+/// 없는 세션(시뮬레이터/AirPods 미연결/30초 미만)용. emoji/title/subtitle을 갈아끼우면
 /// "오늘 식사 0건" 같은 다른 빈 상태에도 같은 디자인으로 재사용 가능.
 struct EmptyReportCardView: View {
     var emoji: String = "🐿️"

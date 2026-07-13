@@ -4,7 +4,7 @@ import Foundation
 /// raw IMU는 별도로 imu-sessions 버킷에 gzip CSV로 올리고 `storagePath`에 경로만 보관.
 ///
 /// 분석 6필드(`chewingSeconds`/`restSeconds`/`chewingFraction`/`estimatedTotalChews`/`modelVersion`/`chewingTimeline`)는
-/// 온디바이스 DSP 감지(`ChewCounter`)가 동작한 세션에서만 채워진다. 시뮬레이터/AirPods 미연결 등
+/// 온디바이스 DSP 감지(`ChewDetectionEngine`)가 동작한 세션에서만 채워진다. 시뮬레이터/AirPods 미연결 등
 /// 감지가 돌지 않은 세션은 모두 nil — DB 컬럼도 nullable.
 struct ChewingSessionDTO: Codable, Equatable, Identifiable {
     var id: UUID

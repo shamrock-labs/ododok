@@ -3,7 +3,7 @@ import SwiftUI
 /// 식사 종료 직후 자동으로 표시되는 sheet. 측정 종료 → IMU 업로드/온디바이스
 /// 분석이 진행되는 동안 같은 sheet 안에서 "분석 중" 스피너를 먼저 보여주고,
 /// `ChewingSessionDTO`가 채워지면 `ReportCardView`로 자연스럽게 전환된다.
-/// 분석 5필드가 nil인 세션(시뮬레이터/AirPods 미연결/60초 미만)은 PRD #3의
+/// 분석 5필드가 nil인 세션(시뮬레이터/AirPods 미연결/30초 미만)은 PRD #3의
 /// "분석을 만들지 못했어요" 빈 카드로 대체.
 struct SessionResultSheet: View {
     let dto: ChewingSessionDTO?

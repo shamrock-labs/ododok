@@ -1,9 +1,28 @@
 import CoreMotion
+import Foundation
 import XCTest
 @testable import ChewChewIOS
 
 @MainActor
 final class AirPodsMealRuntimeTests: XCTestCase {
+    func testChewPulseDeliveryGateCoalescesBackloggedVisualEvents() {
+        var gate = ChewPulseDeliveryGate(minimumInterval: 0.2)
+
+        XCTAssertTrue(gate.shouldDeliver(at: 10))
+        XCTAssertFalse(gate.shouldDeliver(at: 10.05))
+        XCTAssertFalse(gate.shouldDeliver(at: 10.19))
+        XCTAssertTrue(gate.shouldDeliver(at: 10.2))
+    }
+
+    func testChewPulseDeliveryGateResetAllowsFirstEventOfNewSession() {
+        var gate = ChewPulseDeliveryGate(minimumInterval: 0.2)
+
+        XCTAssertTrue(gate.shouldDeliver(at: 10))
+        gate.reset()
+
+        XCTAssertTrue(gate.shouldDeliver(at: 10.01))
+    }
+
     func testUpdatingAlertVolumeAlsoUpdatesRunningAudioFeedback() {
         let runtime = FakeAirPodsMealRuntimeServices()
         let store = makeStore(runtime: runtime)
@@ -14,12 +33,12 @@ final class AirPodsMealRuntimeTests: XCTestCase {
         XCTAssertEqual(runtime.audio.volume, 0, accuracy: 0.0001)
     }
 
-    func testDisconnectingAirPodsWithinOneMinuteShowsShortSessionConfirm() {
+    func testDisconnectingAirPodsBeforeThirtySecondsShowsShortSessionConfirm() {
         let runtime = FakeAirPodsMealRuntimeServices(now: Date(timeIntervalSince1970: 1_000))
         let store = makeStore(runtime: runtime)
 
         store.startEating()
-        runtime.now = runtime.now.addingTimeInterval(59)
+        runtime.now = runtime.now.addingTimeInterval(29)
 
         XCTAssertTrue(store.isEating)
 
@@ -29,12 +48,12 @@ final class AirPodsMealRuntimeTests: XCTestCase {
         XCTAssertTrue(store.showShortSessionConfirm)
     }
 
-    func testDisconnectingAirPodsAfterOneMinuteStopsMeasurement() {
+    func testDisconnectingAirPodsAtThirtySecondsStopsMeasurement() {
         let runtime = FakeAirPodsMealRuntimeServices(now: Date(timeIntervalSince1970: 2_000))
         let store = makeStore(runtime: runtime)
 
         store.startEating()
-        runtime.now = runtime.now.addingTimeInterval(60)
+        runtime.now = runtime.now.addingTimeInterval(30)
 
         XCTAssertTrue(store.isEating)
 
@@ -44,13 +63,125 @@ final class AirPodsMealRuntimeTests: XCTestCase {
         XCTAssertFalse(store.showShortSessionConfirm)
     }
 
-    private func makeStore(runtime: FakeAirPodsMealRuntimeServices) -> MealSessionRuntimeStore {
+    func testDSPChewDetectionTriggersChewPulse() async {
+        let runtime = FakeAirPodsMealRuntimeServices()
+        var pulseCount = 0
+        let store = makeStore(runtime: runtime, onChewPulse: {
+            pulseCount += 1
+        })
+
+        store.startEating()
+        emitChewingMotionSamples(runtime.motion)
+        try? await Task.sleep(for: .milliseconds(500))
+
+        XCTAssertGreaterThan(pulseCount, 0)
+
+        store.discardCurrentSession()
+    }
+
+    func testFlatMotionDoesNotTriggerChewPulse() async {
+        let runtime = FakeAirPodsMealRuntimeServices()
+        var pulseCount = 0
+        let store = makeStore(runtime: runtime, onChewPulse: {
+            pulseCount += 1
+        })
+
+        store.startEating()
+        for index in 0..<500 {
+            runtime.motion.emit(makeSample(index: index, rotationY: 0))
+        }
+        try? await Task.sleep(for: .milliseconds(500))
+
+        XCTAssertEqual(pulseCount, 0)
+
+        store.discardCurrentSession()
+    }
+
+    func testStoppedSessionDoesNotTriggerChewPulseFromLaterSamples() async {
+        let runtime = FakeAirPodsMealRuntimeServices()
+        var pulseCount = 0
+        let store = makeStore(runtime: runtime, onChewPulse: {
+            pulseCount += 1
+        })
+
+        store.startEating()
+        store.discardCurrentSession()
+        emitChewingMotionSamples(runtime.motion)
+        try? await Task.sleep(for: .milliseconds(200))
+
+        XCTAssertEqual(pulseCount, 0)
+    }
+
+    func testStoppingSessionDrainsQueuedSamplesBeforeBuildingStats() async {
+        let runtime = FakeAirPodsMealRuntimeServices()
+        let uploadFinished = expectation(description: "session stats uploaded")
+        var uploadedStats: SessionStats?
+        let store = makeStore(runtime: runtime, onSessionReadyForUpload: { _, stats in
+            uploadedStats = stats
+            uploadFinished.fulfill()
+        })
+
+        store.startEating()
+        emitChewingMotionSamples(runtime.motion)
+        store.stopEating()
+
+        await fulfillment(of: [uploadFinished], timeout: 3)
+
+        let totalAnalyzedSeconds = (uploadedStats?.chewingSeconds ?? 0) +
+            (uploadedStats?.restSeconds ?? 0)
+        XCTAssertEqual(totalAnalyzedSeconds, 10, accuracy: 0.0001)
+        XCTAssertEqual(uploadedStats?.modelVersion, ChewDetectionEngine.modelVersion)
+    }
+
+    private func makeStore(
+        runtime: FakeAirPodsMealRuntimeServices,
+        onSessionReadyForUpload: @escaping @MainActor (
+            IMUSessionRecorder.Output,
+            SessionStats?
+        ) async -> Void = { _, _ in },
+        onChewPulse: @escaping @MainActor () -> Void = {}
+    ) -> MealSessionRuntimeStore {
         MealSessionRuntimeStore(
             analytics: NoopAnalytics(),
-            onChewPulse: {},
+            onChewPulse: onChewPulse,
             onPersistSnapshot: {},
-            onSessionReadyForUpload: { _, _ in },
+            onSessionReadyForUpload: onSessionReadyForUpload,
             runtimeServices: runtime.services
+        )
+    }
+
+    private func emitChewingMotionSamples(_ motion: FakeAirPodsMotionService) {
+        for index in 0..<500 {
+            motion.emit(makeSample(index: index, rotationY: chewingRotationY(index: index)))
+        }
+    }
+
+    private func chewingRotationY(index: Int) -> Double {
+        let elapsed = Double(index) / 50.0
+        return 0.08 * sin(2 * Double.pi * 1.4 * elapsed)
+    }
+
+    private func makeSample(index: Int, rotationY: Double) -> HeadphoneMotionSample {
+        HeadphoneMotionSample(
+            timestamp: Double(index) / 50.0,
+            rotationRateMagnitude: abs(rotationY),
+            userAccelerationMagnitude: 0,
+            attitudeRoll: 0,
+            attitudePitch: 0,
+            attitudeYaw: 0,
+            rotationX: 0,
+            rotationY: rotationY,
+            rotationZ: 0,
+            gravityX: 0,
+            gravityY: 0,
+            gravityZ: 0,
+            userAccelX: 0,
+            userAccelY: 0,
+            userAccelZ: 0,
+            magneticFieldX: 0,
+            magneticFieldY: 0,
+            magneticFieldZ: 0,
+            sensorLocation: "headphone_right"
         )
     }
 }
@@ -86,13 +217,22 @@ private final class FakeAirPodsMotionService: MealMotionServicing {
     var liveMotionUnavailableSource: IMUWaveformSource?
     var isDeviceMotionAvailable = true
     var authorizationStatus = CMAuthorizationStatus.authorized
+    private var onSample: ((HeadphoneMotionSample) -> Void)?
 
     func start(
         onSample: @escaping (HeadphoneMotionSample) -> Void,
         onError: @escaping (String) -> Void
-    ) {}
+    ) {
+        self.onSample = onSample
+    }
 
-    func stop() {}
+    func stop() {
+        onSample = nil
+    }
+
+    func emit(_ sample: HeadphoneMotionSample) {
+        onSample?(sample)
+    }
 }
 
 private final class FakeAirPodsAudioFeedbackService: MealAudioFeedbackServicing {

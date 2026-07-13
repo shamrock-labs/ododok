@@ -1,6 +1,6 @@
 import Foundation
 
-struct ChewCounterSnapshot: Sendable {
+struct ChewDetectionSnapshot: Sendable, Equatable {
     let chewCount: Int
     let chewTimestamps: [Double]
     let chewAmplitudes: [Double]
@@ -9,13 +9,85 @@ struct ChewCounterSnapshot: Sendable {
     let intervalCV: Double
 }
 
+struct ChewDetectionEvent: Sendable, Equatable {
+    let count: Int
+    let timestamp: Double
+    let amplitude: Double
+}
+
+struct ChewDetectionSample {
+    let timestamp: TimeInterval
+    let rotX: Double
+    let rotY: Double
+    let rotZ: Double
+    let accelX: Double
+    let accelY: Double
+    let accelZ: Double
+}
+
+struct ChewPeak: Equatable {
+    let timestamp: TimeInterval
+    let amplitude: Double
+}
+
+private struct PeakWindowCandidate {
+    let windowStartedAt: TimeInterval
+    var strongestPeak: ChewPeak
+}
+
+struct RepresentativePeakWindow {
+    private let windowDuration: TimeInterval
+    private var activeCandidate: PeakWindowCandidate?
+
+    init(windowDuration: TimeInterval = 0.30) {
+        self.windowDuration = windowDuration
+    }
+
+    mutating func collect(_ peak: ChewPeak) -> ChewPeak? {
+        guard var current = activeCandidate else {
+            activeCandidate = PeakWindowCandidate(windowStartedAt: peak.timestamp, strongestPeak: peak)
+            return nil
+        }
+
+        guard peak.timestamp - current.windowStartedAt < windowDuration else {
+            activeCandidate = PeakWindowCandidate(windowStartedAt: peak.timestamp, strongestPeak: peak)
+            return current.strongestPeak
+        }
+
+        if peak.amplitude > current.strongestPeak.amplitude {
+            current.strongestPeak = peak
+            activeCandidate = current
+        }
+        return nil
+    }
+
+    mutating func flushIfExpired(at timestamp: TimeInterval) -> ChewPeak? {
+        guard let current = activeCandidate,
+              timestamp - current.windowStartedAt >= windowDuration else {
+            return nil
+        }
+        activeCandidate = nil
+        return current.strongestPeak
+    }
+
+    mutating func flush() -> ChewPeak? {
+        defer { activeCandidate = nil }
+        return activeCandidate?.strongestPeak
+    }
+
+    mutating func reset() {
+        activeCandidate = nil
+    }
+}
+
 /// Real-time chew counter using a band-pass IIR filter (0.5–3 Hz) + peak detection.
 ///
 /// Feed every raw IMU sample via `feed(_:)`.
-/// `isChewing`은 feed()가 DSP 저작상태 검출기(ChewingStateDetector) 출력을 매 샘플 반영한다 —
-/// keep-alive 신호등 톤 등 외부가 "지금 씹는지"를 읽는 단일 통로다.
+/// `isChewingGateOpen`은 feed()가 DSP 활동 Gate 출력을 매 샘플 반영한다.
+/// keep-alive 신호등 톤 등 외부가 "현재 peak를 셀 수 있는 구간인지"를 읽는 단일 통로다.
 /// 최근 신호가 씹기 상태로 판단될 때만 후보 피크를 카운트한다.
-actor ChewCounter {
+actor ChewDetectionEngine {
+    static let modelVersion = "dsp-chewcounter-2"
 
     // 1st-order IIR high-pass: y[n] = α*(y[n-1] + x[n] - x[n-1])
     // α = exp(-2π*fc/fs), fc=0.5 Hz, fs=50 Hz → α ≈ 0.9391
@@ -33,29 +105,33 @@ actor ChewCounter {
     private var f1: Double = 0
 
     private var sampleCount: Int = 0
-    private var lastPeakSample: Int = 0
-    // 0.64 s at 50 Hz — 한 번 씹을 때 여러 피크가 생기는 과카운트를 줄인다.
-    private let minPeakGap = 32
+    private var firstTimestamp: TimeInterval?
+    private var lastInputTimestamp: TimeInterval?
+    private var f1Timestamp: TimeInterval?
+    private var lastPeakTimestamp: TimeInterval?
+    private var peakSelectionWindow = RepresentativePeakWindow()
+    private let minPeakGapSeconds: TimeInterval = 0.32
     // Filters idle sensor noise floor; tune down if micro-chewing is suppressed,
     // up if non-eating motion contributes false positives.
     private let minPeakAmplitude: Double = 0.006
     // Heading-motion guard: rotation magnitude above this threshold (rad/s) indicates
     // a deliberate head turn/nod rather than a jaw chew — peaks are suppressed.
     private let headingMotionThreshold: Double = 0.12
-    private var chewingStateDetector = ChewingStateDetector()
+    private var chewingActivityGate = ChewingActivityGate()
+    private var isSessionFinished = false
 
-    // 지속 씹기 알림: ChewingStateDetector의 씹기 상태가 3초(150샘플 @50Hz) 이어질 때마다
+    // 지속 씹기 알림: ChewingActivityGate가 열린 상태가 3초(150샘플 @50Hz) 이어질 때마다
     // handler를 1회 호출하고 누적을 0으로 되돌린다. 계속 씹으면 3초 간격으로 반복 발화.
     // 씹기 상태가 풀리면(detector exit) 누적도 리셋 — 3초 미만 구간은 발화하지 않는다.
     private let sustainedAlertSamples = 150
     private var sustainedChewingSamples = 0
     private var onSustainedChewing: (@Sendable () -> Void)?
 
-    private(set) var isChewing: Bool = false
-    private(set) var chewCount: Int = 0
+    private(set) var isChewingGateOpen: Bool = false
+    private(set) var confirmedChewCount: Int = 0
     private(set) var chewTimestamps: [Double] = []
     private(set) var chewAmplitudes: [Double] = []
-    // 세션 통계용: ChewingStateDetector가 씹기 상태로 판단한 누적 샘플 수(/50 = 초).
+    // 세션 통계용: ChewingActivityGate가 열린 누적 샘플 수(/50 = 초).
     private var chewingSamples: Int = 0
     // 저작 타임라인: 1초(50샘플) 버킷마다 isChewing 과반을 '1'/'0'로 누적한다.
     // 서버 chewing_session.chewing_timeline 칼럼(문자열 인덱스 = 경과 초)과 1:1.
@@ -66,32 +142,19 @@ actor ChewCounter {
         onSustainedChewing = handler
     }
 
-    func feed(rotX: Double, rotY: Double, rotZ: Double) {
-        feed(rotX: rotX, rotY: rotY, rotZ: rotZ, accelX: 0, accelY: 0, accelZ: 0)
-    }
-
-    func feed(
-        rotX: Double,
-        rotY: Double,
-        rotZ: Double,
-        accelX: Double,
-        accelY: Double,
-        accelZ: Double
-    ) {
+    @discardableResult
+    func feed(_ input: ChewDetectionSample) -> ChewDetectionEvent? {
+        guard !isSessionFinished else { return nil }
+        let timestamp = input.timestamp
+        guard lastInputTimestamp.map({ timestamp > $0 }) ?? true else { return nil }
+        firstTimestamp = firstTimestamp ?? timestamp
+        lastInputTimestamp = timestamp
         sampleCount += 1
-        let chewingState = chewingStateDetector.feed(
-            rotX: rotX,
-            rotY: rotY,
-            rotZ: rotZ,
-            accelX: accelX,
-            accelY: accelY,
-            accelZ: accelZ
-        )
-        if chewingState.isChewing { chewingSamples += 1 }
-        // DSP 검출기의 실시간 저작 상태를 actor 프로퍼티에 반영 — 외부(keep-alive 신호등 톤)가 읽는 값.
-        isChewing = chewingState.isChewing
+        let gateState = chewingActivityGate.feed(input)
+        if gateState.isOpen { chewingSamples += 1 }
+        isChewingGateOpen = gateState.isOpen
         // 지속 씹기 알림 누적 — 3초(150샘플)마다 발화 후 리셋, 씹기 끊기면 리셋.
-        if chewingState.isChewing {
+        if gateState.isOpen {
             sustainedChewingSamples += 1
             if sustainedChewingSamples >= sustainedAlertSamples {
                 sustainedChewingSamples = 0
@@ -101,48 +164,61 @@ actor ChewCounter {
             sustainedChewingSamples = 0
         }
         // 초당 타임라인은 sampleCount·chewingSamples와 동일 시점에 누적한다(heading-guard return 이전).
-        timelineAccumulator.feed(isChewing: chewingState.isChewing)
+        timelineAccumulator.feed(isChewing: gateState.isOpen)
 
         // Heading-motion guard: large rotation across any axis = head turn/nod, not a chew.
-        let rotMag = (rotX * rotX + rotY * rotY + rotZ * rotZ).squareRoot()
+        let rotMag = (
+            input.rotX * input.rotX +
+                input.rotY * input.rotY +
+                input.rotZ * input.rotZ
+        ).squareRoot()
         if rotMag > headingMotionThreshold {
             f0 = 0; f1 = 0  // reset sliding window to prevent phantom peaks after motion
-            return
+            f1Timestamp = nil
+            peakSelectionWindow.reset()
+            return nil
         }
 
+        let expiredPeakEvent = finalizePeakCandidateIfNeeded(at: timestamp)
+
         // High-pass (removes DC / slow head-pose drift)
-        let hp = hpAlpha * (hpPrev + rotY - hpPrevInput)
-        hpPrevInput = rotY
+        let hp = hpAlpha * (hpPrev + input.rotY - hpPrevInput)
+        hpPrevInput = input.rotY
         hpPrev = hp
 
         // Low-pass (removes high-frequency noise / impact spikes)
         lpState = lpBeta * lpState + (1 - lpBeta) * hp
         let f2 = lpState
 
-        defer { f0 = f1; f1 = f2 }
+        defer {
+            f0 = f1
+            f1 = f2
+            f1Timestamp = timestamp
+        }
 
-        guard sampleCount >= 3 else { return }
+        guard sampleCount >= 3 else {
+            return expiredPeakEvent
+        }
 
         // f1 is a local maximum: f1 > f0, f1 > f2, above zero (one chew oscillation peak).
         // 단발 피크는 버리고, 짧은 시간 동안 씹기형 신호가 지속될 때만 카운트한다.
-        if f1 > f0 &&
-            f1 > f2 &&
-            f1 > minPeakAmplitude &&
-            (sampleCount - lastPeakSample) >= minPeakGap &&
-            chewingState.isChewing {
-            chewCount += 1
-            chewTimestamps.append(Double(sampleCount) / 50.0)
-            chewAmplitudes.append(f1)
-            lastPeakSample = sampleCount
+        let isLocalPeakCandidate = f1 > f0 && f1 > f2 && f1 > minPeakAmplitude
+        guard isLocalPeakCandidate, gateState.isOpen, let peakTimestamp = f1Timestamp else {
+            return expiredPeakEvent
         }
+        return collectPeak(ChewPeak(timestamp: peakTimestamp, amplitude: f1)) ?? expiredPeakEvent
     }
 
     func reset() {
         hpPrev = 0; hpPrevInput = 0; lpState = 0
         f0 = 0; f1 = 0
-        chewingStateDetector.reset()
-        sampleCount = 0; lastPeakSample = 0
-        chewCount = 0; isChewing = false
+        f1Timestamp = nil
+        chewingActivityGate.reset()
+        sampleCount = 0
+        firstTimestamp = nil; lastInputTimestamp = nil; lastPeakTimestamp = nil
+        peakSelectionWindow.reset()
+        confirmedChewCount = 0; isChewingGateOpen = false
+        isSessionFinished = false
         chewingSamples = 0
         sustainedChewingSamples = 0
         onSustainedChewing = nil
@@ -151,15 +227,23 @@ actor ChewCounter {
         chewAmplitudes.removeAll()
     }
 
-    func snapshot() -> ChewCounterSnapshot {
-        ChewCounterSnapshot(
-            chewCount: chewCount,
+    func snapshot() -> ChewDetectionSnapshot {
+        ChewDetectionSnapshot(
+            chewCount: confirmedChewCount,
             chewTimestamps: chewTimestamps,
             chewAmplitudes: chewAmplitudes,
             avgInterval: avgInterval,
             intervalStd: intervalStd,
             intervalCV: intervalCV
         )
+    }
+
+    /// 입력 Queue가 모두 비워진 뒤 마지막 peak 후보를 한 번만 확정한다.
+    @discardableResult
+    func finishSession() -> ChewDetectionEvent? {
+        guard !isSessionFinished else { return nil }
+        isSessionFinished = true
+        return finalizePeakCandidate()
     }
 
     // inter-chew intervals (N-1개)
@@ -189,9 +273,9 @@ actor ChewCounter {
     }
 
     /// 세션 종료 시 chewing_session 분석 6필드를 산출한다.
-    /// chewing/rest 초는 ChewingStateDetector가 씹기로 판단한 샘플 비율(50Hz 가정)로,
+    /// chewing/rest 초는 ChewingActivityGate가 열린 샘플 비율(50Hz 가정)로,
     /// estimatedTotalChews는 DSP 피크 카운트로, chewingTimeline은 1초 버킷 과반으로 채운다.
-    func sessionStats(modelVersion: String) -> SessionStats {
+    func sessionStats() -> SessionStats {
         let chewingSeconds = Double(chewingSamples) / 50.0
         let restSeconds = Double(max(0, sampleCount - chewingSamples)) / 50.0
         let fraction = sampleCount > 0 ? Double(chewingSamples) / Double(sampleCount) : 0
@@ -199,9 +283,47 @@ actor ChewCounter {
             chewingSeconds: chewingSeconds,
             restSeconds: restSeconds,
             chewingFraction: fraction,
-            estimatedTotalChews: chewCount,
-            modelVersion: modelVersion,
+            estimatedTotalChews: confirmedChewCount,
+            modelVersion: Self.modelVersion,
             chewingTimeline: timelineAccumulator.makeTimeline()
+        )
+    }
+
+    private func collectPeak(_ peak: ChewPeak) -> ChewDetectionEvent? {
+        if let lastPeakTimestamp,
+           peak.timestamp - lastPeakTimestamp < minPeakGapSeconds {
+            return nil
+        }
+
+        guard let selected = peakSelectionWindow.collect(peak) else { return nil }
+        return confirmChew(selected)
+    }
+
+    private func finalizePeakCandidateIfNeeded(at timestamp: TimeInterval) -> ChewDetectionEvent? {
+        guard let selected = peakSelectionWindow.flushIfExpired(at: timestamp) else { return nil }
+        return confirmChew(selected)
+    }
+
+    private func finalizePeakCandidate() -> ChewDetectionEvent? {
+        guard let selected = peakSelectionWindow.flush() else { return nil }
+        return confirmChew(selected)
+    }
+
+    private func confirmChew(_ peak: ChewPeak) -> ChewDetectionEvent? {
+        if let lastPeakTimestamp,
+           peak.timestamp - lastPeakTimestamp < minPeakGapSeconds {
+            return nil
+        }
+
+        let relativeTimestamp = peak.timestamp - (firstTimestamp ?? peak.timestamp)
+        confirmedChewCount += 1
+        chewTimestamps.append(relativeTimestamp)
+        chewAmplitudes.append(peak.amplitude)
+        lastPeakTimestamp = peak.timestamp
+        return ChewDetectionEvent(
+            count: confirmedChewCount,
+            timestamp: relativeTimestamp,
+            amplitude: peak.amplitude
         )
     }
 }
@@ -252,7 +374,7 @@ struct ChewingTimelineAccumulator {
         if bucketSamples > 0 && result.count < maxSeconds {
             result.append(majoritySymbol(chewing: bucketChewing, total: bucketSamples))
         }
-        return result.isEmpty ? nil : String(decoding: result, as: UTF8.self)
+        return result.isEmpty ? nil : String(bytes: result, encoding: .utf8)
     }
 
     mutating func reset() {
@@ -266,11 +388,11 @@ struct ChewingTimelineAccumulator {
     }
 }
 
-private struct ChewingState {
-    let isChewing: Bool
+private struct ChewingGateState {
+    let isOpen: Bool
 }
 
-private struct ChewingStateDetector {
+private struct ChewingActivityGate {
     private var rotationXOneToFive = BiquadBandpass(lowCutHz: 1.0, highCutHz: 5.0)
     private var rotationYOneToFive = BiquadBandpass(lowCutHz: 1.0, highCutHz: 5.0)
     private var rotationZOneToFive = BiquadBandpass(lowCutHz: 1.0, highCutHz: 5.0)
@@ -294,9 +416,9 @@ private struct ChewingStateDetector {
 
     private var rotationYMean = 0.0
     private var rotationYVariance = 0.0
-    private var consecutiveChewingLikeSamples = 0
-    private var consecutiveNonChewingLikeSamples = 0
-    private var isChewing = false
+    private var matchingSampleStreak = 0
+    private var nonMatchingSampleStreak = 0
+    private var isOpen = false
 
     // 0.8초 EWMA: 너무 짧은 단발 피크는 버리고, 2초 안팎의 지속 신호는 빠르게 따라간다.
     private let featureAlpha = exp(-1.0 / (50.0 * 0.8))
@@ -307,32 +429,15 @@ private struct ChewingStateDetector {
     private let minimumRotationYJitterBandDominance = 0.15
     private let maximumAccelToRotation = 0.050
     private let hardJitterAccelToRotation = 0.060
-    private let enterSampleCount = 10
-    private let exitSampleCount = 90
+    private let samplesRequiredToOpen = 10
+    private let samplesRequiredToClose = 30
     private let epsilon = 1e-12
 
-    mutating func feed(
-        rotX: Double,
-        rotY: Double,
-        rotZ: Double,
-        accelX: Double,
-        accelY: Double,
-        accelZ: Double
-    ) -> ChewingState {
-        let delta = rotY - rotationYMean
+    mutating func feed(_ sample: ChewDetectionSample) -> ChewingGateState {
+        let delta = sample.rotY - rotationYMean
         rotationYMean += (1 - featureAlpha) * delta
         rotationYVariance = featureAlpha * (rotationYVariance + (1 - featureAlpha) * delta * delta)
-
-        rotationXOneToFiveEnergy = smoothEnergy(rotationXOneToFive.feed(rotX), previous: rotationXOneToFiveEnergy)
-        rotationYOneToFiveEnergy = smoothEnergy(rotationYOneToFive.feed(rotY), previous: rotationYOneToFiveEnergy)
-        rotationZOneToFiveEnergy = smoothEnergy(rotationZOneToFive.feed(rotZ), previous: rotationZOneToFiveEnergy)
-
-        rotationXJitterBandEnergy = smoothEnergy(rotationXJitterBand.feed(rotX), previous: rotationXJitterBandEnergy)
-        rotationYJitterBandEnergy = smoothEnergy(rotationYJitterBand.feed(rotY), previous: rotationYJitterBandEnergy)
-        rotationZJitterBandEnergy = smoothEnergy(rotationZJitterBand.feed(rotZ), previous: rotationZJitterBandEnergy)
-        accelXJitterBandEnergy = smoothEnergy(accelXJitterBand.feed(accelX), previous: accelXJitterBandEnergy)
-        accelYJitterBandEnergy = smoothEnergy(accelYJitterBand.feed(accelY), previous: accelYJitterBandEnergy)
-        accelZJitterBandEnergy = smoothEnergy(accelZJitterBand.feed(accelZ), previous: accelZJitterBandEnergy)
+        updateFilteredEnergies(with: sample)
 
         let rotationOneToFiveEnergy = rotationXOneToFiveEnergy +
             rotationYOneToFiveEnergy +
@@ -349,35 +454,65 @@ private struct ChewingStateDetector {
         let rotationYJitterBandDominance = rotationYJitterBandEnergy / (rotationJitterBandEnergy + epsilon)
         let accelToRotation = accelJitterBandEnergy / (rotationJitterBandEnergy + epsilon)
         let hardJitterLike = accelToRotation >= hardJitterAccelToRotation
-        let chewingLike = rotationYStd >= minimumRotationYStd &&
+        let matchesChewingGate = rotationYStd >= minimumRotationYStd &&
             rotationYDominance >= minimumRotationYDominance &&
             rotationYJitterBandDominance >= minimumRotationYJitterBandDominance &&
             accelToRotation <= maximumAccelToRotation
 
         if hardJitterLike {
-            isChewing = false
-            consecutiveChewingLikeSamples = 0
-            consecutiveNonChewingLikeSamples = exitSampleCount
-        } else if chewingLike {
-            consecutiveChewingLikeSamples += 1
-            consecutiveNonChewingLikeSamples = 0
+            isOpen = false
+            matchingSampleStreak = 0
+            nonMatchingSampleStreak = samplesRequiredToClose
+        } else if matchesChewingGate {
+            matchingSampleStreak += 1
+            nonMatchingSampleStreak = 0
         } else {
-            consecutiveNonChewingLikeSamples += 1
-            consecutiveChewingLikeSamples = 0
+            nonMatchingSampleStreak += 1
+            matchingSampleStreak = 0
         }
 
-        if !isChewing && consecutiveChewingLikeSamples >= enterSampleCount {
-            isChewing = true
+        if !isOpen && matchingSampleStreak >= samplesRequiredToOpen {
+            isOpen = true
         }
-        if isChewing && consecutiveNonChewingLikeSamples >= exitSampleCount {
-            isChewing = false
+        if isOpen && nonMatchingSampleStreak >= samplesRequiredToClose {
+            isOpen = false
         }
 
-        return ChewingState(isChewing: isChewing)
+        return ChewingGateState(isOpen: isOpen)
     }
 
     mutating func reset() {
-        self = ChewingStateDetector()
+        self = ChewingActivityGate()
+    }
+
+    private mutating func updateFilteredEnergies(with sample: ChewDetectionSample) {
+        rotationXOneToFiveEnergy = smoothEnergy(
+            rotationXOneToFive.feed(sample.rotX), previous: rotationXOneToFiveEnergy
+        )
+        rotationYOneToFiveEnergy = smoothEnergy(
+            rotationYOneToFive.feed(sample.rotY), previous: rotationYOneToFiveEnergy
+        )
+        rotationZOneToFiveEnergy = smoothEnergy(
+            rotationZOneToFive.feed(sample.rotZ), previous: rotationZOneToFiveEnergy
+        )
+        rotationXJitterBandEnergy = smoothEnergy(
+            rotationXJitterBand.feed(sample.rotX), previous: rotationXJitterBandEnergy
+        )
+        rotationYJitterBandEnergy = smoothEnergy(
+            rotationYJitterBand.feed(sample.rotY), previous: rotationYJitterBandEnergy
+        )
+        rotationZJitterBandEnergy = smoothEnergy(
+            rotationZJitterBand.feed(sample.rotZ), previous: rotationZJitterBandEnergy
+        )
+        accelXJitterBandEnergy = smoothEnergy(
+            accelXJitterBand.feed(sample.accelX), previous: accelXJitterBandEnergy
+        )
+        accelYJitterBandEnergy = smoothEnergy(
+            accelYJitterBand.feed(sample.accelY), previous: accelYJitterBandEnergy
+        )
+        accelZJitterBandEnergy = smoothEnergy(
+            accelZJitterBand.feed(sample.accelZ), previous: accelZJitterBandEnergy
+        )
     }
 
     private func smoothEnergy(_ value: Double, previous: Double) -> Double {
@@ -399,9 +534,9 @@ private struct BiquadBandpass {
 
     init(lowCutHz: Double, highCutHz: Double, sampleRateHz: Double = 50.0) {
         let centerHz = (lowCutHz * highCutHz).squareRoot()
-        let q = centerHz / (highCutHz - lowCutHz)
+        let qualityFactor = centerHz / (highCutHz - lowCutHz)
         let omega = 2 * Double.pi * centerHz / sampleRateHz
-        let alpha = sin(omega) / (2 * q)
+        let alpha = sin(omega) / (2 * qualityFactor)
         let a0 = 1 + alpha
 
         b0 = alpha / a0

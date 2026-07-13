@@ -81,17 +81,17 @@ final class ReportCardModelTests: XCTestCase {
         }
     }
 
-    // MARK: - 60초 가드
+    // MARK: - 30초 가드
 
-    func testFrom_nil_when_durationSec_59() {
-        // 59초 세션 — 분석 필드가 있어도 nil 반환해야 함
-        let dto = makeDTO(chews: 300, fraction: 0.7, durationSec: 59)
+    func testFrom_nil_when_durationSec_29() {
+        // 29초 세션 — 분석 필드가 있어도 nil 반환해야 함
+        let dto = makeDTO(chews: 300, fraction: 0.7, durationSec: 29)
         XCTAssertNil(ReportCardModel.from(dto))
     }
 
-    func testFrom_nonNil_when_durationSec_60() {
-        // 경계: 60초 세션 — non-nil이어야 함
-        let dto = makeDTO(chews: 300, fraction: 0.7, durationSec: 60)
+    func testFrom_nonNil_when_durationSec_30() {
+        // 경계: 30초 세션 — non-nil이어야 함
+        let dto = makeDTO(chews: 300, fraction: 0.7, durationSec: 30)
         XCTAssertNotNil(ReportCardModel.from(dto))
     }
 
