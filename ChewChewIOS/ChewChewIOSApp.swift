@@ -143,6 +143,9 @@ struct ChewChewIOSApp: App {
                     guard status == .available else { return }
                     Task { await appState.startStartupTasks() }
                 }
+                .onChange(of: appState.mealSession.isEating, initial: true) { _, isEating in
+                    UIApplication.shared.isIdleTimerDisabled = isEating
+                }
         }
         // `initial: true` — 콜드 스타트 시 첫 .active 도달도 콜백으로 받기 위함.
         // 기본 onChange는 변경 시에만 호출돼, 앱 launch 직후 phase가 .active로
