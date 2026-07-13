@@ -7,56 +7,80 @@ final class MeasurementOnboardingStore {
     enum Stage: String, CaseIterable {
         case intro
         case connection
-        case rest
-        case chew
+        case calibration
+        case validation
         case ready
         case signalIssue
 
         var progressIndex: Int {
             switch self {
             case .intro, .connection: 0
-            case .rest: 1
-            case .chew: 2
+            case .calibration: 1
+            case .validation: 2
             case .ready: 3
             case .signalIssue: 2
             }
         }
     }
 
-    struct Timing {
-        let tickCount: Int
-        let tickInterval: Duration
+    enum Issue: Equatable {
+        case motionUnavailable
+        case insufficientCalibration(detected: Int)
+        case validationOutOfRange(detected: Int)
+        case sensor(String)
 
-        static let live = Timing(tickCount: 100, tickInterval: .milliseconds(100))
+        var message: String {
+            switch self {
+            case .motionUnavailable:
+                return "AirPods 움직임 센서를 사용할 수 없어요."
+            case let .insufficientCalibration(detected):
+                return "10번 중 \(detected)번만 기준 신호를 찾았어요."
+            case let .validationOutOfRange(detected):
+                return "10번을 씹는 동안 \(detected)번 감지했어요."
+            case let .sensor(message):
+                return message
+            }
+        }
+    }
+
+    struct Timing {
+        let cueCount: Int
+        let cueInterval: Duration
+
+        static let live = Timing(cueCount: 10, cueInterval: .seconds(1))
     }
 
     private(set) var stage: Stage
-    private(set) var progress = 0.0
+    private(set) var cueIndex = 0
+    private(set) var cuePulseID = 0
     private(set) var isMeasuring = false
     private(set) var measurementCompleted = false
     private(set) var isAirPodsConnected: Bool
+    private(set) var calibrationAmplitudes: [Double] = []
+    private(set) var candidateMinPeakAmplitude: Double?
+    private(set) var validationDetectedCount = 0
+    private(set) var profile: MeasurementCalibrationProfile?
+    private(set) var issue: Issue?
 
     private let timing: Timing
+    private let sampler: any MeasurementCalibrationSampling
     private var measurementTask: Task<Void, Never>?
+    private var strongestPeakInCurrentCue: Double?
 
     init(
         stage: Stage = .intro,
         isAirPodsConnected: Bool = false,
-        timing: Timing = .live
+        timing: Timing = .live,
+        sampler: (any MeasurementCalibrationSampling)? = nil
     ) {
         self.stage = stage
         self.isAirPodsConnected = isAirPodsConnected
         self.timing = timing
-
-        if stage == .ready {
-            progress = 1
-            measurementCompleted = true
-        }
+        self.sampler = sampler ?? LocalMeasurementCalibrationSampler()
     }
 
-    var remainingSeconds: Int {
-        max(0, Int(ceil((1 - progress) * 10)))
-    }
+    var cueCount: Int { timing.cueCount }
+    var progress: Double { Double(cueIndex) / Double(timing.cueCount) }
 
     func setAirPodsConnected(_ connected: Bool) {
         isAirPodsConnected = connected
@@ -69,66 +93,188 @@ final class MeasurementOnboardingStore {
         case .intro:
             setStage(.connection)
         case .connection where isAirPodsConnected:
-            setStage(.rest)
-        case .rest where measurementCompleted:
-            setStage(.chew)
-        case .chew where measurementCompleted:
-            setStage(.ready)
-        case .signalIssue:
-            setStage(.chew)
+            setStage(.calibration)
+        case .calibration where measurementCompleted:
+            setStage(.validation)
         default:
             break
         }
     }
 
     func startMeasurement() {
-        guard stage == .rest || stage == .chew, !isMeasuring else { return }
+        guard stage == .calibration || stage == .validation, !isMeasuring else { return }
+        guard sampler.isDeviceMotionAvailable else {
+            showIssue(.motionUnavailable)
+            return
+        }
+        guard stage != .validation || candidateMinPeakAmplitude != nil else { return }
 
         measurementTask?.cancel()
-        progress = 0
-        measurementCompleted = false
+        resetCurrentRun()
         isMeasuring = true
 
+        let threshold = stage == .calibration
+            ? ChewDetectionConfiguration.calibrationProbe.minPeakAmplitude
+            : candidateMinPeakAmplitude ?? ChewDetectionConfiguration.standard.minPeakAmplitude
+
+        sampler.start(
+            minPeakAmplitude: threshold,
+            onEvent: { [weak self] event in self?.handle(event) },
+            onError: { [weak self] message in self?.showIssue(.sensor(message)) }
+        )
+
         measurementTask = Task { [weak self] in
-            guard let self else { return }
-
-            for tick in 1...timing.tickCount {
-                do {
-                    try await Task.sleep(for: timing.tickInterval)
-                } catch {
-                    return
-                }
-                guard !Task.isCancelled else { return }
-                progress = Double(tick) / Double(timing.tickCount)
-            }
-
-            isMeasuring = false
-            measurementCompleted = true
+            await self?.runCues()
         }
     }
 
-    func showSignalIssue() {
-        measurementTask?.cancel()
-        isMeasuring = false
-        measurementCompleted = false
-        setStage(.signalIssue)
-    }
-
-    func retryChewMeasurement() {
-        setStage(.chew)
+    func retryMeasurement() {
+        resetExperiment()
+        setStage(.calibration)
         startMeasurement()
     }
 
     func cancelMeasurement() {
         measurementTask?.cancel()
+        measurementTask = nil
         isMeasuring = false
+        Task { await sampler.stop() }
+    }
+
+    private func runCues() async {
+        for cue in 1...timing.cueCount {
+            guard !Task.isCancelled else { return }
+            cueIndex = cue
+            cuePulseID += 1
+            strongestPeakInCurrentCue = nil
+
+            do {
+                try await Task.sleep(for: timing.cueInterval)
+            } catch {
+                return
+            }
+
+            if stage == .calibration, let strongestPeakInCurrentCue {
+                calibrationAmplitudes.append(strongestPeakInCurrentCue)
+            }
+        }
+
+        await sampler.stop()
+        guard !Task.isCancelled else { return }
+        isMeasuring = false
+
+        switch stage {
+        case .calibration:
+            finishCalibration()
+        case .validation:
+            finishValidation()
+        default:
+            break
+        }
+    }
+
+    private func handle(_ event: ChewDetectionEvent) {
+        guard isMeasuring else { return }
+        switch stage {
+        case .calibration:
+            strongestPeakInCurrentCue = max(strongestPeakInCurrentCue ?? 0, event.amplitude)
+        case .validation:
+            validationDetectedCount += 1
+        default:
+            break
+        }
+    }
+
+    private func finishCalibration() {
+        guard let threshold = PeakAmplitudeCalibration.personalizedThreshold(from: calibrationAmplitudes) else {
+            showIssue(.insufficientCalibration(detected: calibrationAmplitudes.count))
+            return
+        }
+        candidateMinPeakAmplitude = threshold
+        measurementCompleted = true
+    }
+
+    private func finishValidation() {
+        guard PeakAmplitudeCalibration.validationPassed(detectedCount: validationDetectedCount),
+              let candidateMinPeakAmplitude else {
+            showIssue(.validationOutOfRange(detected: validationDetectedCount))
+            return
+        }
+
+        profile = MeasurementCalibrationProfile(
+            minPeakAmplitude: candidateMinPeakAmplitude,
+            calibrationAmplitudes: calibrationAmplitudes,
+            validationDetectedCount: validationDetectedCount
+        )
+        setStage(.ready)
+    }
+
+    private func resetCurrentRun() {
+        cueIndex = 0
+        measurementCompleted = false
+        issue = nil
+        strongestPeakInCurrentCue = nil
+        if stage == .calibration {
+            calibrationAmplitudes = []
+            candidateMinPeakAmplitude = nil
+            profile = nil
+        } else {
+            validationDetectedCount = 0
+        }
+    }
+
+    private func resetExperiment() {
+        calibrationAmplitudes = []
+        candidateMinPeakAmplitude = nil
+        validationDetectedCount = 0
+        profile = nil
+        issue = nil
+    }
+
+    private func showIssue(_ issue: Issue) {
+        measurementTask?.cancel()
+        measurementTask = nil
+        isMeasuring = false
+        measurementCompleted = false
+        self.issue = issue
+        stage = .signalIssue
+        Task { await sampler.stop() }
     }
 
     private func setStage(_ newStage: Stage) {
         measurementTask?.cancel()
         stage = newStage
-        progress = newStage == .ready ? 1 : 0
+        cueIndex = 0
         measurementCompleted = newStage == .ready
         isMeasuring = false
     }
 }
+
+#if DEBUG
+extension MeasurementOnboardingStore {
+    static func preview(
+        stage: Stage,
+        sampler: any MeasurementCalibrationSampling
+    ) -> MeasurementOnboardingStore {
+        let store = MeasurementOnboardingStore(
+            stage: stage,
+            isAirPodsConnected: true,
+            sampler: sampler
+        )
+        guard stage == .validation || stage == .ready else { return store }
+
+        let amplitudes = [0.031, 0.028, 0.034, 0.041, 0.029, 0.036, 0.033, 0.039, 0.030, 0.037]
+        store.calibrationAmplitudes = amplitudes
+        store.candidateMinPeakAmplitude = PeakAmplitudeCalibration.personalizedThreshold(from: amplitudes)
+        if stage == .ready, let threshold = store.candidateMinPeakAmplitude {
+            store.validationDetectedCount = 10
+            store.profile = MeasurementCalibrationProfile(
+                minPeakAmplitude: threshold,
+                calibrationAmplitudes: amplitudes,
+                validationDetectedCount: 10
+            )
+        }
+        return store
+    }
+}
+#endif

@@ -96,15 +96,21 @@ struct MeasurementOnboardingView: View {
             IntroSignalVisual(reduceMotion: reduceMotion)
         case .connection:
             ConnectionVisual(isConnected: store.isAirPodsConnected)
-        case .rest:
-            MeasurementProgressVisual(
+        case .calibration:
+            GuidedChewVisual(
                 progress: store.progress,
-                remainingSeconds: store.remainingSeconds,
-                symbol: "figure.mind.and.body",
-                tint: .dataTime
+                cueIndex: store.cueIndex,
+                cueCount: store.cueCount,
+                cuePulseID: store.cuePulseID,
+                reduceMotion: reduceMotion
             )
-        case .chew:
-            ChewRhythmVisual(progress: store.progress, reduceMotion: reduceMotion)
+        case .validation:
+            ValidationChewVisual(
+                progress: store.progress,
+                cueIndex: store.cueIndex,
+                cueCount: store.cueCount,
+                detectedCount: store.validationDetectedCount
+            )
         case .ready:
             ReadyVisual()
         case .signalIssue:
@@ -118,22 +124,19 @@ struct MeasurementOnboardingView: View {
         case .intro:
             detailRows([
                 ("airpodspro", "AirPods 연결을 확인해요"),
-                ("figure.stand", "10초 동안 편한 자세를 읽어요"),
-                ("waveform.path", "평소 씹기 리듬을 확인해요"),
+                ("metronome", "박자에 맞춰 10번 씹어 기준을 맞춰요"),
+                ("checkmark.circle", "다시 10번 씹어 감지가 맞는지 확인해요"),
             ])
         case .connection:
             connectionStatus
-        case .rest, .chew:
+        case .calibration, .validation:
             measurementStatus
         case .ready:
-            detailRows([
-                ("checkmark.circle", "내 움직임의 기준을 준비했어요"),
-                ("fork.knife", "이제 평소처럼 식사하면 돼요"),
-            ])
+            readyDetails
         case .signalIssue:
             detailRows([
-                ("airpodspro", "AirPods를 귀에 착용해 주세요"),
-                ("arrow.clockwise", "같은 자세에서 한 번 더 해볼게요"),
+                ("airpodspro", store.issue?.message ?? "AirPods 신호를 확인해 주세요"),
+                ("arrow.clockwise", "처음 10회 보정부터 다시 해볼게요"),
             ])
         }
     }
@@ -174,6 +177,16 @@ struct MeasurementOnboardingView: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("측정 상태")
         .accessibilityValue(measurementStatusText)
+    }
+
+    private var readyDetails: some View {
+        let threshold = store.profile?.minPeakAmplitude ?? 0
+        let detectedCount = store.profile?.validationDetectedCount ?? 0
+        return detailRows([
+            ("slider.horizontal.3", String(format: "개인 진폭 기준 %.4f", threshold)),
+            ("checkmark.circle", "검증 10회 중 \(detectedCount)회 감지했어요"),
+            ("iphone", "결과는 이 기기에서만 확인해요"),
+        ])
     }
 
     private func detailRows(_ rows: [(String, String)]) -> some View {
@@ -230,9 +243,9 @@ struct MeasurementOnboardingView: View {
         switch store.stage {
         case .intro: "내 리듬에 맞춰\n측정해볼까요?"
         case .connection: "먼저 AirPods를\n확인할게요"
-        case .rest: "10초만 편하게\n있어볼까요?"
-        case .chew: "평소처럼\n씹어볼까요?"
-        case .ready: "내 리듬을 읽을\n준비가 됐어요"
+        case .calibration: "박자에 맞춰\n10번 씹어볼까요?"
+        case .validation: "같은 리듬으로\n10번 더 확인할게요"
+        case .ready: "내 씹기 기준을\n확인했어요"
         case .signalIssue: "신호를 충분히\n읽지 못했어요"
         }
     }
@@ -241,22 +254,26 @@ struct MeasurementOnboardingView: View {
         switch store.stage {
         case .intro: "사람마다 움직임과 씹는 속도가 달라요.\n식사 전에 짧게 나만의 기준을 맞춰요."
         case .connection: "연결된 AirPods의 움직임 센서를 확인해요."
-        case .rest: "고개와 턱에 힘을 빼고 정면을 봐주세요."
-        case .chew: "준비한 음식을 평소 속도로 씹어주세요."
-        case .ready: "다음 화면부터 평소처럼 식사하면 돼요."
-        case .signalIssue: "괜찮아요. 착용 상태를 확인하고 다시 해볼게요."
+        case .calibration: "화면의 박자가 움직일 때 한 번씩 씹어주세요.\n10회의 신호로 내 기준을 계산해요."
+        case .validation: "방금 만든 기준으로 실제 감지 횟수를 확인해요."
+        case .ready: "서버에 저장하지 않은 로컬 실험 결과예요."
+        case .signalIssue: "괜찮아요. 착용 상태와 씹는 리듬을 확인해요."
         }
     }
 
     private var measurementStatusText: String {
         if store.measurementCompleted {
-            return store.stage == .rest ? "편한 자세의 기준을 확인했어요" : "평소 씹기 리듬을 확인했어요"
+            return "10회의 신호로 개인 기준을 만들었어요"
         }
         if store.isMeasuring {
-            let subject = store.stage == .chew ? "씹기 리듬" : "움직임"
-            return "\(subject)을 읽고 있어요 · \(store.remainingSeconds)초"
+            if store.stage == .calibration {
+                return "기준 신호 \(store.calibrationAmplitudes.count)/10개 확보"
+            }
+            return "DSP가 \(store.validationDetectedCount)회 감지했어요"
         }
-        return store.stage == .rest ? "준비되면 편하게 있어주세요" : "준비되면 평소처럼 씹어주세요"
+        return store.stage == .calibration
+            ? "준비되면 10회 보정을 시작해요"
+            : "준비되면 새 기준으로 10회를 확인해요"
     }
 
     private var primaryTitle: String {
@@ -265,13 +282,16 @@ struct MeasurementOnboardingView: View {
             return "맞춤 측정 준비하기"
         case .connection:
             return "다음"
-        case .rest, .chew:
-            if store.isMeasuring { return "측정 중 · \(store.remainingSeconds)초" }
-            return store.measurementCompleted ? "다음" : "10초 측정 시작"
+        case .calibration:
+            if store.isMeasuring { return "보정 중 · \(store.cueIndex)/10" }
+            return store.measurementCompleted ? "검증 10회로 이동" : "10회 보정 시작"
+        case .validation:
+            if store.isMeasuring { return "검증 중 · \(store.cueIndex)/10" }
+            return "10회 검증 시작"
         case .ready:
-            return "식사 측정 시작"
+            return "결과 확인"
         case .signalIssue:
-            return "다시 측정"
+            return "처음부터 다시"
         }
     }
 
@@ -279,8 +299,8 @@ struct MeasurementOnboardingView: View {
         switch store.stage {
         case .intro: "waveform.path.ecg"
         case .connection: "arrow.right"
-        case .rest, .chew: store.measurementCompleted ? "arrow.right" : "record.circle"
-        case .ready: "fork.knife"
+        case .calibration, .validation: store.measurementCompleted ? "arrow.right" : "record.circle"
+        case .ready: "checkmark"
         case .signalIssue: "arrow.clockwise"
         }
     }
@@ -291,12 +311,12 @@ struct MeasurementOnboardingView: View {
 
     private func handlePrimaryAction() {
         switch store.stage {
-        case .rest, .chew where !store.measurementCompleted:
+        case .calibration, .validation where !store.measurementCompleted:
             store.startMeasurement()
         case .ready:
             onComplete()
         case .signalIssue:
-            store.retryChewMeasurement()
+            store.retryMeasurement()
         default:
             withAnimation(.easeInOut(duration: AppMotion.durationPageChange)) {
                 store.moveForward()
@@ -319,7 +339,15 @@ struct MeasurementOnboardingPreviewHost: View {
         } else {
             stage = .intro
         }
-        _store = State(initialValue: MeasurementOnboardingStore(stage: stage, isAirPodsConnected: true))
+        #if targetEnvironment(simulator)
+        let sampler: any MeasurementCalibrationSampling = SimulatedMeasurementCalibrationSampler()
+        #else
+        let sampler: any MeasurementCalibrationSampling = LocalMeasurementCalibrationSampler()
+        #endif
+        _store = State(initialValue: MeasurementOnboardingStore.preview(
+            stage: stage,
+            sampler: sampler
+        ))
     }
 
     var body: some View {
@@ -330,7 +358,7 @@ struct MeasurementOnboardingPreviewHost: View {
             onRetryConnection: { store.setAirPodsConnected(true) }
         )
         .task {
-            if store.stage == .rest || store.stage == .chew {
+            if store.stage == .calibration || store.stage == .validation {
                 store.startMeasurement()
             }
         }
@@ -392,11 +420,13 @@ private struct ConnectionVisual: View {
     }
 }
 
-private struct MeasurementProgressVisual: View {
+private struct GuidedChewVisual: View {
     let progress: Double
-    let remainingSeconds: Int
-    let symbol: String
-    let tint: Color
+    let cueIndex: Int
+    let cueCount: Int
+    let cuePulseID: Int
+    let reduceMotion: Bool
+    @State private var isCueExpanded = false
 
     var body: some View {
         ZStack {
@@ -404,56 +434,75 @@ private struct MeasurementProgressVisual: View {
                 .stroke(Color.borderDefault, lineWidth: Metrics.ringWidth)
             Circle()
                 .trim(from: 0, to: progress)
-                .stroke(tint, style: StrokeStyle(lineWidth: Metrics.ringWidth, lineCap: .round))
+                .stroke(Color.tintInteractive, style: StrokeStyle(lineWidth: Metrics.ringWidth, lineCap: .round))
                 .rotationEffect(.degrees(-90))
                 .animation(.linear(duration: AppMotion.durationSignal), value: progress)
-
-            VStack(spacing: AppSpacing.one) {
-                Image(systemName: symbol)
-                    .font(.appFont(.regular, size: Metrics.progressIcon))
-                    .foregroundStyle(tint)
-                Text("\(remainingSeconds)")
-                    .font(.appFont(.heavyTitleLarge))
-                    .foregroundStyle(Color.textDefault)
-                    .monospacedDigit()
-                Text("초")
-                    .font(.appFont(.boldCaption))
-                    .foregroundStyle(Color.textMuted)
-            }
-        }
-        .frame(width: Metrics.progressRing, height: Metrics.progressRing)
-    }
-}
-
-private struct ChewRhythmVisual: View {
-    let progress: Double
-    let reduceMotion: Bool
-    @State private var chewing = false
-
-    var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            Circle()
-                .fill(Color.bgSurface)
-                .frame(width: Metrics.signalCore, height: Metrics.signalCore)
 
             Image("DaramEating")
                 .resizable()
                 .scaledToFit()
                 .frame(width: Metrics.squirrel, height: Metrics.squirrel)
-                .scaleEffect(chewing && !reduceMotion ? 1.035 : 0.985)
-                .animation(
-                    .easeInOut(duration: AppMotion.durationChew).repeatForever(autoreverses: true),
-                    value: chewing
-                )
+                .scaleEffect(isCueExpanded && !reduceMotion ? 1.07 : 0.96)
 
-            Text("\(max(0, 10 - Int(progress * 10)))초")
+            Text("\(cueIndex) / \(cueCount)")
                 .font(.appFont(.boldCaption))
                 .foregroundStyle(Color.textAction)
+                .monospacedDigit()
                 .padding(.horizontal, AppSpacing.inner)
                 .padding(.vertical, AppSpacing.oneHalf)
                 .background(Color.bgSelected, in: Capsule())
+                .offset(y: Metrics.counterOffset)
         }
-        .onAppear { chewing = true }
+        .frame(width: Metrics.progressRing, height: Metrics.progressRing)
+        .onChange(of: cuePulseID) { _, _ in
+            guard !reduceMotion else { return }
+            isCueExpanded = true
+            withAnimation(.easeOut(duration: AppMotion.durationChew)) {
+                isCueExpanded = false
+            }
+        }
+    }
+}
+
+private struct ValidationChewVisual: View {
+    let progress: Double
+    let cueIndex: Int
+    let cueCount: Int
+    let detectedCount: Int
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Color.borderDefault, lineWidth: Metrics.ringWidth)
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(Color.dataTime, style: StrokeStyle(lineWidth: Metrics.ringWidth, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .animation(.linear(duration: AppMotion.durationSignal), value: progress)
+
+            VStack(spacing: AppSpacing.one) {
+                Image(systemName: "waveform.path.ecg")
+                    .font(.appFont(.regular, size: Metrics.progressIcon))
+                    .foregroundStyle(Color.dataTime)
+                Text("\(detectedCount)")
+                    .font(.appFont(.heavyTitleLarge))
+                    .foregroundStyle(Color.textDefault)
+                    .monospacedDigit()
+                Text("감지")
+                    .font(.appFont(.boldCaption))
+                    .foregroundStyle(Color.textMuted)
+            }
+
+            Text("\(cueIndex) / \(cueCount)")
+                .font(.appFont(.boldCaption))
+                .foregroundStyle(Color.dataTime)
+                .monospacedDigit()
+                .padding(.horizontal, AppSpacing.inner)
+                .padding(.vertical, AppSpacing.oneHalf)
+                .background(Color.bgSurface, in: Capsule())
+                .offset(y: Metrics.counterOffset)
+        }
+        .frame(width: Metrics.progressRing, height: Metrics.progressRing)
     }
 }
 
@@ -493,5 +542,6 @@ private enum Metrics {
     static let ringWidth: CGFloat = 9
     static let progressIcon: CGFloat = 28
     static let squirrel: CGFloat = 126
+    static let counterOffset: CGFloat = 92
     static let progressHeight: CGFloat = 5
 }

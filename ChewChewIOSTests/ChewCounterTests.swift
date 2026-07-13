@@ -40,6 +40,18 @@ final class ChewDetectionEngineTests: XCTestCase {
         XCTAssertTrue(snapshot.chewAmplitudes.isEmpty)
     }
 
+    func testConfiguredPeakAmplitudeSuppressesPeaksBelowPersonalThreshold() async {
+        let engine = ChewDetectionEngine(
+            configuration: ChewDetectionConfiguration(minPeakAmplitude: 1)
+        )
+
+        await feedChewingSamples(to: engine)
+        _ = await engine.finishSession()
+
+        let snapshot = await engine.snapshot()
+        XCTAssertEqual(snapshot.chewCount, 0)
+    }
+
     func testRepresentativePeakWindowKeepsStrongestPeak() {
         var selector = RepresentativePeakWindow(windowDuration: 0.30)
 

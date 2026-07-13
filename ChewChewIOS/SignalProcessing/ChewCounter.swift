@@ -30,6 +30,13 @@ struct ChewPeak: Equatable {
     let amplitude: Double
 }
 
+struct ChewDetectionConfiguration: Sendable, Equatable {
+    let minPeakAmplitude: Double
+
+    static let standard = ChewDetectionConfiguration(minPeakAmplitude: 0.006)
+    static let calibrationProbe = ChewDetectionConfiguration(minPeakAmplitude: 0.001)
+}
+
 private struct PeakWindowCandidate {
     let windowStartedAt: TimeInterval
     var strongestPeak: ChewPeak
@@ -111,9 +118,8 @@ actor ChewDetectionEngine {
     private var lastPeakTimestamp: TimeInterval?
     private var peakSelectionWindow = RepresentativePeakWindow()
     private let minPeakGapSeconds: TimeInterval = 0.32
-    // Filters idle sensor noise floor; tune down if micro-chewing is suppressed,
-    // up if non-eating motion contributes false positives.
-    private let minPeakAmplitude: Double = 0.006
+    // Filters idle sensor noise floor. 온보딩 로컬 실험은 configuration으로 사용자별 값을 주입한다.
+    private let configuration: ChewDetectionConfiguration
     // Heading-motion guard: rotation magnitude above this threshold (rad/s) indicates
     // a deliberate head turn/nod rather than a jaw chew — peaks are suppressed.
     private let headingMotionThreshold: Double = 0.12
@@ -136,6 +142,10 @@ actor ChewDetectionEngine {
     // 저작 타임라인: 1초(50샘플) 버킷마다 isChewing 과반을 '1'/'0'로 누적한다.
     // 서버 chewing_session.chewing_timeline 칼럼(문자열 인덱스 = 경과 초)과 1:1.
     private var timelineAccumulator = ChewingTimelineAccumulator()
+
+    init(configuration: ChewDetectionConfiguration = .standard) {
+        self.configuration = configuration
+    }
 
     /// 씹기 3초 지속마다 호출될 handler 등록. actor 밖(오디오 등)으로 신호를 보내는 유일한 통로.
     func setSustainedChewingHandler(_ handler: (@Sendable () -> Void)?) {
@@ -202,7 +212,7 @@ actor ChewDetectionEngine {
 
         // f1 is a local maximum: f1 > f0, f1 > f2, above zero (one chew oscillation peak).
         // 단발 피크는 버리고, 짧은 시간 동안 씹기형 신호가 지속될 때만 카운트한다.
-        let isLocalPeakCandidate = f1 > f0 && f1 > f2 && f1 > minPeakAmplitude
+        let isLocalPeakCandidate = f1 > f0 && f1 > f2 && f1 > configuration.minPeakAmplitude
         guard isLocalPeakCandidate, gateState.isOpen, let peakTimestamp = f1Timestamp else {
             return expiredPeakEvent
         }
