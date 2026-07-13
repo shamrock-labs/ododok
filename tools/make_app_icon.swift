@@ -2,14 +2,15 @@
 import AppKit
 import CoreGraphics
 
-// Usage: swift tools/make_app_icon.swift <output.png> [source-mood-png]
-// Default source: ChewChewIOS/Resources/Assets.xcassets/DaramHappy.imageset/daram_happy.png
+// Usage: swift tools/make_app_icon.swift <output.png> <source-mascot-png>
+// The checked-in app icon is intentionally independent from runtime mascot assets.
 
 let args = CommandLine.arguments
-let outPath = args.count > 1 ? args[1] : "AppIcon.png"
-let srcPath = args.count > 2
-    ? args[2]
-    : "ChewChewIOS/Resources/Assets.xcassets/DaramHappy.imageset/daram_happy.png"
+guard args.count > 2 else {
+    fatalError("usage: swift tools/make_app_icon.swift <output.png> <source-mascot-png>")
+}
+let outPath = args[1]
+let srcPath = args[2]
 
 let size: CGFloat = 1024
 let width = Int(size), height = Int(size)

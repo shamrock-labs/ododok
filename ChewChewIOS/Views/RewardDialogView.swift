@@ -126,12 +126,7 @@ struct RewardGrant: Equatable {
 
         /// 보상 종류별 다람이 일러스트. 매핑이 없으면 기본 happy.
         var imageName: String {
-            switch self {
-            case .attendance:      "DaramHeart"
-            case .sessionComplete: "DaramDotori"
-            case .streakReset:     "DaramSad"
-            case .streakMilestone, .streakSaved, .streakFirstDay: Mood.happy.imageName
-            }
+            "RealDaram"
         }
     }
 }

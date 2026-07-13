@@ -7,7 +7,7 @@ struct AirPodsPromptDialogView: View {
     var body: some View {
         ZStack(alignment: .topTrailing) {
             VStack(spacing: AppSpacing.cell) {
-                Image("DaramHi")
+                Image("RealDaram")
                     .resizable()
                     .scaledToFit()
                     .frame(width: Metrics.image, height: Metrics.image)

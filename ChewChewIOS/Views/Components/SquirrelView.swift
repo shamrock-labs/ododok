@@ -16,9 +16,7 @@ struct SquirrelView: View {
     @State private var idleSway = false
 
     private var currentImageName: String {
-        if isEating { return "DaramEating" }
-        if isNight  { return "DaramSleeping" }
-        return mood.imageName
+        "RealDaram"
     }
 
     var body: some View {

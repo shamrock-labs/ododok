@@ -209,9 +209,9 @@ struct HomeView: View {
                         .rotationEffect(.degrees(-90))
                 }
                 SquirrelView(
-                    // 식사 중엔 isEating이 다람이를 DaramEating(우물거리는 모습)으로 바꾸고
-                    // animKey 펄스가 씹는 모션을 준다. status.mood는 실시간 값이 아니라(완료 세션
-                    // 기준) 식사 중엔 0=sleepy로 떨어져 💤이 끼므로, 여기선 happy로 고정한다.
+                    // 식사 중에는 animKey 펄스로 씹는 모션을 준다. status.mood는 실시간 값이
+                    // 아니라(완료 세션 기준) 식사 중엔 0=sleepy로 떨어져 💤이 끼므로,
+                    // 여기서는 happy로 고정한다.
                     mood: .happy,
                     hat: state.equippedHatItem,
                     glasses: state.equippedGlassesItem,

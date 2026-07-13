@@ -14,7 +14,7 @@ struct OnboardingNameView: View {
         VStack(spacing: 24) {
             Spacer()
 
-            Image("DaramHi")
+            Image("RealDaram")
                 .resizable()
                 .scaledToFit()
                 .frame(width: Metrics.heroImage, height: Metrics.heroImage)

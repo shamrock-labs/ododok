@@ -47,7 +47,7 @@ private struct ShopPlaceholderView: View {
                 titleFont: .heavyTitleLarge,
                 messageFont: .semiboldLabel
             ) {
-                Image("DaramDotori")
+                Image("RealDaram")
                     .resizable()
                     .scaledToFit()
                     .frame(height: Metrics.heroImageHeight)

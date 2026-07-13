@@ -547,7 +547,7 @@ struct ReportHubView: View {
                 minuteDeltaText: "기록 대기",
                 mealDeltaText: "기록 대기",
                 accent: .ink400,
-                imageName: "DaramHi"
+                imageName: "RealDaram"
             )
         }
 
@@ -566,7 +566,7 @@ struct ReportHubView: View {
                 minuteDeltaText: "0분",
                 mealDeltaText: "0끼",
                 accent: .ink400,
-                imageName: "DaramHi"
+                imageName: "RealDaram"
             )
         }
 

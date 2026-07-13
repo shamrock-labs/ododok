@@ -216,7 +216,7 @@ private struct ChewDemo: View {
 
     var body: some View {
         VStack(spacing: AppSpacing.inner) {
-            Image("DaramEating")
+            Image("RealDaram")
                 .resizable()
                 .scaledToFit()
                 .frame(height: Metrics.demoImageHeight)

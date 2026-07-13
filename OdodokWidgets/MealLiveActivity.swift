@@ -21,7 +21,7 @@ struct MealLiveActivity: Widget {
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
                     HStack(spacing: 6) {
-                        Image("DaramAvatar")
+                        Image("RealDaram")
                             .resizable()
                             .scaledToFit()
                             .frame(width: 22, height: 22)
@@ -182,7 +182,7 @@ struct MealLiveActivity: Widget {
 
     private var avatar: some View {
         // 배경 박스·테두리 없이 다람이(앱 아이콘 마스코트)만 — 라이트/다크 카드 공통으로 자연스럽게 얹힌다.
-        Image("DaramAvatar")
+        Image("RealDaram")
             .resizable()
             .scaledToFit()
             .frame(width: 48, height: 48)

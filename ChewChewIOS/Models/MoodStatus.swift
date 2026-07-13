@@ -4,12 +4,7 @@ enum Mood: String {
     case sleepy, happy, puffy, champ
 
     var imageName: String {
-        switch self {
-        case .sleepy: "DaramSleepy"
-        case .happy:  "DaramHappy"
-        case .puffy:  "DaramPuffy"
-        case .champ:  "DaramChamp"
-        }
+        "RealDaram"
     }
 }
 
