@@ -9,6 +9,12 @@ struct ChewCounterSnapshot: Sendable {
     let intervalCV: Double
 }
 
+struct ChewDetectionEvent: Sendable, Equatable {
+    let count: Int
+    let timestamp: Double
+    let amplitude: Double
+}
+
 /// Real-time chew counter using a band-pass IIR filter (0.5–3 Hz) + peak detection.
 ///
 /// Feed every raw IMU sample via `feed(_:)`.
@@ -66,10 +72,12 @@ actor ChewCounter {
         onSustainedChewing = handler
     }
 
-    func feed(rotX: Double, rotY: Double, rotZ: Double) {
+    @discardableResult
+    func feed(rotX: Double, rotY: Double, rotZ: Double) -> ChewDetectionEvent? {
         feed(rotX: rotX, rotY: rotY, rotZ: rotZ, accelX: 0, accelY: 0, accelZ: 0)
     }
 
+    @discardableResult
     func feed(
         rotX: Double,
         rotY: Double,
@@ -77,7 +85,7 @@ actor ChewCounter {
         accelX: Double,
         accelY: Double,
         accelZ: Double
-    ) {
+    ) -> ChewDetectionEvent? {
         sampleCount += 1
         let chewingState = chewingStateDetector.feed(
             rotX: rotX,
@@ -107,7 +115,7 @@ actor ChewCounter {
         let rotMag = (rotX * rotX + rotY * rotY + rotZ * rotZ).squareRoot()
         if rotMag > headingMotionThreshold {
             f0 = 0; f1 = 0  // reset sliding window to prevent phantom peaks after motion
-            return
+            return nil
         }
 
         // High-pass (removes DC / slow head-pose drift)
@@ -121,7 +129,7 @@ actor ChewCounter {
 
         defer { f0 = f1; f1 = f2 }
 
-        guard sampleCount >= 3 else { return }
+        guard sampleCount >= 3 else { return nil }
 
         // f1 is a local maximum: f1 > f0, f1 > f2, above zero (one chew oscillation peak).
         // 단발 피크는 버리고, 짧은 시간 동안 씹기형 신호가 지속될 때만 카운트한다.
@@ -131,10 +139,13 @@ actor ChewCounter {
             (sampleCount - lastPeakSample) >= minPeakGap &&
             chewingState.isChewing {
             chewCount += 1
-            chewTimestamps.append(Double(sampleCount) / 50.0)
+            let timestamp = Double(sampleCount) / 50.0
+            chewTimestamps.append(timestamp)
             chewAmplitudes.append(f1)
             lastPeakSample = sampleCount
+            return ChewDetectionEvent(count: chewCount, timestamp: timestamp, amplitude: f1)
         }
+        return nil
     }
 
     func reset() {
