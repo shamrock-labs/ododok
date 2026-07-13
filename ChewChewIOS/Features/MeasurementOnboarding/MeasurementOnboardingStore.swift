@@ -80,7 +80,6 @@ final class MeasurementOnboardingStore {
     }
 
     var cueCount: Int { timing.cueCount }
-    var progress: Double { Double(cueIndex) / Double(timing.cueCount) }
 
     func setAirPodsConnected(_ connected: Bool) {
         isAirPodsConnected = connected
