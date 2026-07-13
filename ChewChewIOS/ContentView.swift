@@ -41,13 +41,7 @@ struct ContentView: View {
     }
 
     var body: some View {
-        Group {
-            if state.isLoggedIn {
-                mainTabs
-            } else {
-                LoginView(store: state.auth)
-            }
-        }
+        rootContent
         // 로그인 직후 프로필 로딩/온보딩 진입 전엔 홈을 크림+스피너로 덮어 홈 깜빡임을 차단한다.
         // 홈(mainTabs)은 그대로 렌더돼 온보딩 시트가 그 위로 정상 표시되고, 이 커버는 시각적으로만 가린다.
         // (홈을 replace하면 시트가 뜰 base가 사라져 신규 유저가 스피너에 갇히는 회귀가 있어, overlay로 덮기만 한다.)
@@ -68,6 +62,30 @@ struct ContentView: View {
         .onChange(of: state.friendsTabRequestID) { _, requestID in
             guard requestID > 0 else { return }
             tab = .friends
+        }
+    }
+
+    @ViewBuilder
+    private var rootContent: some View {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-showMeasurementOnboarding") {
+            MeasurementOnboardingPreviewHost()
+        } else {
+            authenticatedContent
+        }
+        #else
+        authenticatedContent
+        #endif
+    }
+
+    @ViewBuilder
+    private var authenticatedContent: some View {
+        Group {
+            if state.isLoggedIn {
+                mainTabs
+            } else {
+                LoginView(store: state.auth)
+            }
         }
     }
 
