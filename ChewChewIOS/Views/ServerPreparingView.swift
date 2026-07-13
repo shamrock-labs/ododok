@@ -21,10 +21,6 @@ struct ServerPreparingView: View {
             }
             .multilineTextAlignment(.center)
 
-            ProgressView()
-                .controlSize(.large)
-                .tint(Color.tintInteractive)
-
             AppTextActionButton(
                 title: "다시 시도",
                 icon: "arrow.clockwise",
