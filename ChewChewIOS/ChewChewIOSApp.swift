@@ -141,6 +141,7 @@ struct ChewChewIOSApp: App {
                 }
                 .onChange(of: serverAvailability.status) { _, status in
                     guard status == .available else { return }
+                    appState.sceneDidChange(toForeground: scenePhase == .active)
                     Task { await appState.startStartupTasks() }
                 }
                 .onChange(of: appState.mealSession.isEating, initial: true) { _, isEating in
