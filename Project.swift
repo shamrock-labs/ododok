@@ -30,6 +30,7 @@ let appInfoPlist: [String: Plist.Value] = [
     "SentryDSN": "$(SENTRY_DSN)",
     "AmplitudeAPIKey": "$(AMPLITUDE_API_KEY)",
     "BackendBaseURL": "$(BACKEND_BASE_URL)",
+    "AppRuntimeEnvironment": "$(APP_RUNTIME_ENVIRONMENT)",
     "KakaoInviteMobileWebURL": "$(KAKAO_INVITE_MOBILE_WEB_URL)",
     // HTTPS/Firebase/Apple 기본 보안 외 자체 비면제 암호화를 사용하지 않는다.
     // 이 값이 없으면 App Store Connect가 빌드마다 수출 규정 확인을 요구할 수 있다.
@@ -123,6 +124,7 @@ func signingSettings(
 func targetSettings(
     base: SettingsDictionary = [:],
     debug: SettingsDictionary = [:],
+    testFlight: SettingsDictionary = [:],
     release: SettingsDictionary = [:]
 ) -> Settings {
     .settings(
@@ -131,6 +133,11 @@ func targetSettings(
             .debug(
                 name: "Debug",
                 settings: debug,
+                xcconfig: secretsConfig
+            ),
+            .release(
+                name: "TestFlight",
+                settings: testFlight,
                 xcconfig: secretsConfig
             ),
             .release(
@@ -144,7 +151,7 @@ func targetSettings(
 }
 
 let sentryDSYMUploadScript = """
-if [ "${CONFIGURATION}" != "Release" ]; then echo "dSYM upload: skip (not Release)"; exit 0; fi
+case "${CONFIGURATION}" in Release|TestFlight) ;; *) echo "dSYM upload: skip (not distribution)"; exit 0;; esac
 # token, org, project가 모두 채워졌고 placeholder가 아닐 때만 업로드한다.
 for v in "${SENTRY_AUTH_TOKEN}" "${SENTRY_ORG}" "${SENTRY_PROJECT}"; do
   case "$v" in ""|*REPLACE*) echo "dSYM upload: skip (Sentry token/org/project 미설정)"; exit 0;; esac
@@ -176,6 +183,7 @@ let project = Project(
         ],
         configurations: [
             .debug(name: "Debug", xcconfig: versionConfig),
+            .release(name: "TestFlight", xcconfig: versionConfig),
             .release(name: "Release", xcconfig: versionConfig),
         ],
         defaultSettings: .recommended
@@ -229,10 +237,20 @@ let project = Project(
                 debug: [
                     "APS_ENVIRONMENT": "development",
                     "BACKEND_BASE_URL": "https://api.dev.ododok.cloud",
+                    "APP_RUNTIME_ENVIRONMENT": "dev",
                 ],
+                testFlight: [
+                    "APS_ENVIRONMENT": "production",
+                    "BACKEND_BASE_URL": "https://api.dev.ododok.cloud",
+                    "APP_RUNTIME_ENVIRONMENT": "dev",
+                ].merging(signingSettings(
+                    profileSpecifier: "match AppStore com.shamrock.ododok",
+                    codeSignIdentity: "iPhone Distribution"
+                )) { _, new in new },
                 release: [
                     "APS_ENVIRONMENT": "production",
                     "BACKEND_BASE_URL": "https://api.ododok.cloud",
+                    "APP_RUNTIME_ENVIRONMENT": "prod",
                 ].merging(signingSettings(
                     profileSpecifier: "match AppStore com.shamrock.ododok",
                     codeSignIdentity: "iPhone Distribution"
@@ -264,6 +282,10 @@ let project = Project(
                         "@executable_path/../../Frameworks",
                     ],
                 ].merging(signingSettings(profileSpecifier: "match Development com.shamrock.ododok.OdodokWidgets")) { _, new in new },
+                testFlight: signingSettings(
+                    profileSpecifier: "match AppStore com.shamrock.ododok.OdodokWidgets",
+                    codeSignIdentity: "iPhone Distribution"
+                ),
                 release: signingSettings(
                     profileSpecifier: "match AppStore com.shamrock.ododok.OdodokWidgets",
                     codeSignIdentity: "iPhone Distribution"
@@ -295,6 +317,10 @@ let project = Project(
                         "@executable_path/../../Frameworks",
                     ],
                 ].merging(signingSettings(profileSpecifier: "match Development com.shamrock.ododok.OdodokNotificationContent")) { _, new in new },
+                testFlight: signingSettings(
+                    profileSpecifier: "match AppStore com.shamrock.ododok.OdodokNotificationContent",
+                    codeSignIdentity: "iPhone Distribution"
+                ),
                 release: signingSettings(
                     profileSpecifier: "match AppStore com.shamrock.ododok.OdodokNotificationContent",
                     codeSignIdentity: "iPhone Distribution"
@@ -376,6 +402,13 @@ let project = Project(
             archiveAction: .archiveAction(configuration: "Release"),
             profileAction: .profileAction(configuration: "Release"),
             analyzeAction: .analyzeAction(configuration: "Debug")
+        ),
+        .scheme(
+            name: "ChewChewIOSTestFlight",
+            shared: true,
+            buildAction: .buildAction(targets: ["ChewChewIOS"]),
+            archiveAction: .archiveAction(configuration: "TestFlight"),
+            profileAction: .profileAction(configuration: "TestFlight")
         ),
         // 테스트 전용 스킴. 앱 스킴에서 떼어내 실기기 서명과 얽히지 않게 한다(시뮬레이터에서 실행).
         .scheme(
