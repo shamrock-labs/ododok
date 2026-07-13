@@ -238,6 +238,7 @@ final class AppState {
 
     @ObservationIgnored private let authSessionManager: AuthSessionManaging
     @ObservationIgnored private let authRepository: AuthRepository
+    @ObservationIgnored private var didStartStartupTasks = false
 
     /// 게임 상태 원격 동기화(upsert/delete) 직렬화 큐.
     /// 짧은 시간에 여러 mutate가 일어나면 detached Task들의 네트워크 도착 순서가 뒤집혀
@@ -278,14 +279,23 @@ final class AppState {
         }
         // 서버 응답 전 화면을 위한 로컬 fallback 캐시.
         loadPersistedSnapshot()
-        guard startStartupTasks else { return }
-        Task { [weak self] in
-            await self?.mealPushCoordinator.setAuthExpiredHandler { [weak self] in
-                Task { @MainActor in self?.handleRemoteError(RemoteStoreError.authExpired) }
+        if startStartupTasks {
+            Task { [weak self] in
+                await self?.startStartupTasks()
             }
-            await self?.refreshFromServerHome()
-            await self?.fetchAndApplyDisplayName()
         }
+    }
+
+    @MainActor
+    func startStartupTasks() async {
+        guard !didStartStartupTasks else { return }
+        didStartStartupTasks = true
+
+        await mealPushCoordinator.setAuthExpiredHandler { [weak self] in
+            Task { @MainActor in self?.handleRemoteError(RemoteStoreError.authExpired) }
+        }
+        await refreshFromServerHome()
+        await fetchAndApplyDisplayName()
     }
 
     // MARK: - Shop / Wardrobe actions

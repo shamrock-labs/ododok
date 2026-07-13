@@ -4,6 +4,7 @@ require_relative "versioning"
 
 WORKSPACE = "ChewChewIOS.xcworkspace"
 SCHEME = "ChewChewIOS"
+TESTFLIGHT_SCHEME = "ChewChewIOSTestFlight"
 VERSION_CONFIG = "Config/Version.xcconfig"
 
 APP_ID = "com.shamrock.ododok"
@@ -37,14 +38,14 @@ end
 
 # App Store용 아카이브를 만들어 .ipa 경로를 돌려준다.
 # 빌드/마케팅 버전은 xcodeproj를 수정하지 않고 xcargs로 주입한다(Tuist 생성 프로젝트라 매번 재생성됨).
-def build_appstore_ipa(build_number:, marketing_version: nil)
+def build_appstore_ipa(build_number:, marketing_version: nil, scheme: SCHEME, configuration: "Release")
   xcargs = ["CURRENT_PROJECT_VERSION=#{build_number}"]
   xcargs << "MARKETING_VERSION=#{marketing_version}" if marketing_version
 
   build_app(
     workspace: WORKSPACE,
-    scheme: SCHEME,
-    configuration: "Release",
+    scheme: scheme,
+    configuration: configuration,
     clean: true,
     export_method: "app-store",
     xcargs: xcargs.join(" "),
@@ -112,7 +113,12 @@ platform :ios do
     build_number = next_build_number(api_key)
     marketing_version = next_beta_marketing_version(api_key)
 
-    build_appstore_ipa(build_number: build_number, marketing_version: marketing_version)
+    build_appstore_ipa(
+      build_number: build_number,
+      marketing_version: marketing_version,
+      scheme: TESTFLIGHT_SCHEME,
+      configuration: "TestFlight"
+    )
 
     upload_to_testflight(
       api_key: api_key,
