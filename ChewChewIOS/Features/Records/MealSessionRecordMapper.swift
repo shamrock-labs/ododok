@@ -6,7 +6,7 @@ enum MealSessionRecordMapper {
         return MealSessionRecord(
             id: dto.id,
             startedAt: dto.startedAt,
-            durationSec: dto.durationSec,
+            durationSec: reportCard.totalDurationSec,
             reportCard: reportCard
         )
     }

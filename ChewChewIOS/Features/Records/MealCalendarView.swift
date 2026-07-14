@@ -265,6 +265,7 @@ struct MealCalendarView: View {
 /// 캘린더에서 push되는 단일 세션 리포트 화면.
 struct SessionReportDetailView: View {
     private let model: ReportCardModel?
+    private let unavailableContent: MealReportUnavailableContent?
 
     /// PNG 렌더는 ImageRenderer 호출 비용이 작지 않아 view 진입 시 1회만 만든다.
     /// 빈 상태(분석 5필드 nil) 세션에선 nil로 남아 공유 버튼이 자동 hidden.
@@ -272,10 +273,12 @@ struct SessionReportDetailView: View {
 
     init(dto: ChewingSessionDTO) {
         self.model = ReportCardModel.from(dto)
+        self.unavailableContent = model == nil ? .from(dto.mealReport) : nil
     }
 
     init(record: MealSessionRecord) {
         self.model = record.reportCard
+        self.unavailableContent = nil
     }
 
     var body: some View {
@@ -284,7 +287,11 @@ struct SessionReportDetailView: View {
                 if let model {
                     ReportCardView(model: model)
                 } else {
-                    EmptyReportCardView()
+                    EmptyReportCardView(
+                        emoji: unavailableContent?.emoji ?? "🐿️",
+                        title: unavailableContent?.title ?? "리포트를 표시할 수 없어요",
+                        subtitle: unavailableContent?.message ?? "저장된 식사 리포트가 없어요."
+                    )
                 }
             }
             // 식사 리포트 카드를 더 넓게 — 좌우 여백을 줄인다.

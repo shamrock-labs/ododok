@@ -26,6 +26,10 @@ struct DailyReportModel {
     let totalDurationSec: Double
     let avgChewsPerMinute: Double
     let avgChewingFraction: Double
+    let recommendedChewsPerMinute: Double
+    let recommendedChewingFraction: Double
+    let recommendedChewCount: Int
+    let recommendedDurationSec: Double
 
     // 5. 끼니별 비교 (기록된 슬롯만, 슬롯 순서)
     let mealSummaries: [MealSummary]
@@ -106,14 +110,16 @@ extension DailyReportModel {
         let count = entries.count
         let totalChews = entries.reduce(0) { $0 + $1.model.chewCount }
         let totalDuration = entries.reduce(0.0) { $0 + $1.model.totalDurationSec }
-        let totalChewSec = entries.reduce(0.0) { $0 + $1.model.chewingSeconds }
-        let totalRestSec = entries.reduce(0.0) { $0 + $1.model.restSeconds }
-
         let avgCpm = totalDuration > 0 ? Double(totalChews) / (totalDuration / 60) : 0
-        let fracDenom = totalChewSec + totalRestSec
-        let avgFraction = fracDenom > 0
-            ? totalChewSec / fracDenom
+        let avgFraction = totalDuration > 0
+            ? entries.reduce(0.0) { $0 + $1.model.chewingFraction * $1.model.totalDurationSec } / totalDuration
             : entries.map(\.model.chewingFraction).reduce(0, +) / Double(count)
+        let recommendedRate = entries.map(\.model.recommendedChewsPerMinute).reduce(0, +) / Double(count)
+        let recommendedRatio = entries.map(\.model.recommendedChewingFraction).reduce(0, +) / Double(count)
+        let recommendedChews = Int(
+            (Double(entries.map(\.model.recommendedChewCount).reduce(0, +)) / Double(count)).rounded()
+        )
+        let recommendedDuration = entries.map(\.model.recommendedDurationSec).reduce(0, +) / Double(count)
 
         let dayScore = roundedMean(entries.map(\.model.score))
         let grade: ReportCardModel.Grade = dayScore >= 80 ? .good : (dayScore >= 60 ? .soso : .bad)
@@ -132,10 +138,9 @@ extension DailyReportModel {
             guard let group = grouped[slot], !group.isEmpty else { return nil }
             let chews = group.reduce(0) { $0 + $1.model.chewCount }
             let dur = group.reduce(0.0) { $0 + $1.model.totalDurationSec }
-            let cs = group.reduce(0.0) { $0 + $1.model.chewingSeconds }
-            let rs = group.reduce(0.0) { $0 + $1.model.restSeconds }
-            let denom = cs + rs
-            let frac = denom > 0 ? cs / denom : group.map(\.model.chewingFraction).reduce(0, +) / Double(group.count)
+            let frac = dur > 0
+                ? group.reduce(0.0) { $0 + $1.model.chewingFraction * $1.model.totalDurationSec } / dur
+                : group.map(\.model.chewingFraction).reduce(0, +) / Double(group.count)
             // 대표 세션 = 그 슬롯에서 가장 점수 높은 세션(탭 → 단건 상세).
             let rep = group.max { $0.model.score < $1.model.score }!
             return MealSummary(
@@ -204,12 +209,21 @@ extension DailyReportModel {
             totalDurationSec: totalDuration,
             avgChewsPerMinute: avgCpm,
             avgChewingFraction: avgFraction,
+            recommendedChewsPerMinute: recommendedRate,
+            recommendedChewingFraction: recommendedRatio,
+            recommendedChewCount: recommendedChews,
+            recommendedDurationSec: recommendedDuration,
             mealSummaries: mealSummaries,
             bestMeal: bestMeal,
             worstMeal: worstMeal,
             yesterday: yesterday,
             causeText: weakest.causeText,
-            tomorrowGoal: weakest.goalText,
+            tomorrowGoal: weakest.goalText(
+                recommendedRate: recommendedRate,
+                recommendedRatio: recommendedRatio,
+                recommendedChews: recommendedChews,
+                recommendedDuration: recommendedDuration
+            ),
             coachMood: coachMood,
             coachMessage: makeCoachMessage(grade: grade),
             trust: trust
@@ -228,15 +242,36 @@ extension DailyReportModel {
             case .length:     "식사 시간이 짧아 빠르게 끝난 끼니가 있었어요. 시간이 짧으면 충분히 씹기 어려워요."
             }
         }
-        var goalText: String {
+        func goalText(
+            recommendedRate: Double,
+            recommendedRatio: Double,
+            recommendedChews: Int,
+            recommendedDuration: Double
+        ) -> String {
             switch self {
-            case .speed:      "내일은 첫 5분만 의식적으로 속도를 낮춰 시작해봐요."
-            case .rhythm:     "내일은 한 입을 끝까지 씹고 삼킨 뒤 다음 입을 떠봐요."
-            case .continuity: "내일은 한 끼 300회를 목표로 조금 더 씹어봐요."
-            case .length:     "내일은 한 끼를 12분까지 천천히 늘려봐요."
+            case .speed:
+                "내일은 첫 5분 동안 분당 약 \(formatDailyRecommended(recommendedRate))회를 의식해봐요."
+            case .rhythm:
+                "내일은 한 끼 씹기 비율 \(Int((recommendedRatio * 100).rounded()))%를 목표로 해봐요."
+            case .continuity:
+                "내일은 한 끼 \(recommendedChews.koLocale)회를 목표로 조금 더 씹어봐요."
+            case .length:
+                "내일은 한 끼를 \(formatDailyMinutes(recommendedDuration))까지 천천히 늘려봐요."
             }
         }
     }
+}
+
+private func formatDailyRecommended(_ value: Double) -> String {
+    formatRecommendedChewsPerMinute(value)
+}
+
+private func formatDailyMinutes(_ seconds: Double) -> String {
+    let minutes = seconds / 60
+    if minutes.rounded(.towardZero) == minutes {
+        return "\(Int(minutes))분"
+    }
+    return String(format: "%.1f분", locale: Locale(identifier: "ko_KR"), minutes)
 }
 
 // MARK: - 집계 보조 (private)
@@ -323,6 +358,7 @@ struct DailyReportView: View {
     let date: Date
     let sessions: [ChewingSessionDTO]
     let previousSessions: [ChewingSessionDTO]
+    var unavailableSessions: [ChewingSessionDTO] = []
 
     @Environment(AppState.self) private var state
     @Environment(\.dismiss) private var dismiss
@@ -338,9 +374,14 @@ struct DailyReportView: View {
                     if let model {
                         content(model)
                     } else {
+                        let unavailable = unavailableSessions.first?.mealReport
+                        let reason = MealReportUnavailableContent.from(unavailable)
                         EmptyReportCardView(
-                            title: "이 날은 일간 리포트가 없어요",
-                            subtitle: "분석된 식사 기록이 없어요. 식사를 기록하면 하루 종합 리포트가 만들어져요."
+                            emoji: unavailable == nil ? "🐿️" : reason.emoji,
+                            title: unavailable == nil ? "이 날은 일간 리포트가 없어요" : reason.title,
+                            subtitle: unavailable == nil
+                                ? "저장된 식사 리포트가 없어요. 식사를 기록하면 하루 종합 리포트가 만들어져요."
+                                : reason.message
                         )
                     }
                 }
@@ -464,12 +505,12 @@ struct DailyReportView: View {
                     metricCell(
                         label: "평균 속도",
                         value: "약 \(Int(model.avgChewsPerMinute.rounded()))회/분",
-                        sub: "권장 28회/분"
+                        sub: "권장 \(formatDailyRecommended(model.recommendedChewsPerMinute))회/분"
                     )
                     metricCell(
                         label: "씹기 비율",
                         value: "\(Int((model.avgChewingFraction * 100).rounded()))%",
-                        sub: "권장 60%"
+                        sub: "권장 \(Int((model.recommendedChewingFraction * 100).rounded()))%"
                     )
                 }
             }
@@ -806,15 +847,15 @@ struct DailyReportView: View {
     private func trackMealReportOpened(_ session: ChewingSessionDTO) {
         let sessionDate = mealCalendarCalendar.startOfDay(for: session.startedAt)
         let slot = DayMealSlot(hour: mealCalendarCalendar.component(.hour, from: session.startedAt))
-        let score = ReportCardModel.from(session)?.score
+        let report = ReportCardModel.from(session)
         state.analytics.track(.mealReportOpened(
             source: "daily_report",
             selectedDate: analyticsDateString(sessionDate),
             daysFromToday: daysFromToday(sessionDate),
             mealSlot: slot.analyticsValue,
-            score: score,
-            estimatedTotalChews: session.estimatedTotalChews,
-            durationSec: Int(session.durationSec.rounded())
+            score: report?.score,
+            estimatedTotalChews: report?.chewCount,
+            durationSec: report.map { Int($0.totalDurationSec.rounded()) } ?? 0
         ))
     }
 

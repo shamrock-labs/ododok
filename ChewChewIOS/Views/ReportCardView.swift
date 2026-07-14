@@ -233,7 +233,7 @@ struct ReportCardView: View {
             }
         }
         .sheet(isPresented: $showScoreGuide) {
-            ScoreGuideView()
+            ScoreGuideView(model: model)
         }
     }
 
@@ -259,7 +259,7 @@ struct ReportCardView: View {
         }
     }
 
-    // MARK: - 씹기 점수 (SessionScore 노출)
+    // MARK: - 씹기 점수 (서버 스냅샷 노출)
 
     /// 내부에서 계산만 하고 버리던 0~100 점수 + 4축(속도·리듬·연속·길이)을 실제로 노출한다.
     /// 흐리멍덩한 형용사 배지의 정량 근거가 된다.
@@ -684,9 +684,10 @@ private struct RecommendedDeltaBar: View {
 }
 
 /// 씹기 점수 산정 방식 가이드. "씹기 점수" 옆 ⓘ 버튼이 시트로 띄운다.
-/// 내용은 `SessionScore.compute(_:)`의 4요소(속도·리듬·연속·길이)와 등급 기준을 사용자 언어로 설명.
+/// 서버 리포트 스냅샷의 4요소와 권장 기준을 사용자 언어로 설명한다.
 private struct ScoreGuideView: View {
     @Environment(\.dismiss) private var dismiss
+    let model: ReportCardModel
 
     var body: some View {
         NavigationStack {
@@ -699,17 +700,17 @@ private struct ScoreGuideView: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     VStack(spacing: AppSpacing.inner) {
-                        guideRow("속도", "분당 저작 횟수예요. 권장(약 28회/분)에 가까울수록 높고, 너무 빠르거나 느리면 낮아져요.", .blush500)
-                        guideRow("비율", "식사 중 실제로 씹은 시간의 비율(씹기 비율)이에요. 50% 이상이면 만점에 가까워요.", .butter600)
-                        guideRow("횟수", "한 끼의 총 저작 횟수예요. 약 200회 이상이면 만점에 가까워요.", .acorn700)
-                        guideRow("시간", "식사에 들인 시간이에요. 약 12분 근처에서 가장 높아요.", .sage600)
+                        guideRow("속도", "서버 권장 기준은 분당 약 \(formatRecommendedChewsPerMinute(model.recommendedChewsPerMinute))회예요.", .blush500)
+                        guideRow("비율", "서버 권장 기준은 식사 중 씹기 비율 \(Int((model.recommendedChewingFraction * 100).rounded()))%예요.", .butter600)
+                        guideRow("횟수", "서버 권장 기준은 한 끼 \(model.recommendedChewCount.koLocale)회예요.", .acorn700)
+                        guideRow("시간", "서버 권장 기준은 한 끼 약 \(Int((model.recommendedDurationSec / 60).rounded()))분이에요.", .sage600)
                     }
 
                     VStack(alignment: .leading, spacing: AppSpacing.two) {
                         Text("등급 기준")
                             .font(.appFont(.heavyLabel))
                             .foregroundStyle(Color.textDefault)
-                        Text("80점 이상은 잘 씹은 식사, 60~79점은 보통, 60점 미만은 조금 빠른 편이에요.")
+                        Text("등급은 서버가 리포트를 생성한 시점의 점수 정책에 따라 저장된 값을 표시해요.")
                             .font(.appFont(.semiboldCallout))
                             .foregroundStyle(Color.textMuted)
                             .lineSpacing(2)
