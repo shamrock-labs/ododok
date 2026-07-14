@@ -55,7 +55,7 @@ final class NotificationViewController: UIViewController, UNNotificationContentE
         view.addSubview(cardView)
 
         avatarView.translatesAutoresizingMaskIntoConstraints = false
-        avatarView.image = UIImage(named: "DaramAvatar")
+        avatarView.image = UIImage(named: "RealDaram")
         avatarView.contentMode = .scaleAspectFit
         avatarView.backgroundColor = UIColor(red: 251/255, green: 243/255, blue: 232/255, alpha: 1)
         avatarView.layer.cornerRadius = 12
