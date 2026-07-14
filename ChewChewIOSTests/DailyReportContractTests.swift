@@ -54,6 +54,28 @@ final class DailyReportContractTests: XCTestCase {
         XCTAssertEqual(model.mealSummaries.first?.representative.mealReport, meal.mealReport)
     }
 
+    func testDailyModelDoesNotInferSignalTrustFromFabricatedSessionMetadata() throws {
+        let date = Date(timeIntervalSince1970: 1_725_000_000)
+        let meal = makeMeal(startedAt: date, score: 88, chews: 432)
+        let report = DailyReportDTO(
+            date: "2024-08-29",
+            timezone: "Asia/Seoul",
+            mealCount: 1,
+            totalEatingSeconds: 720,
+            totalChews: 432,
+            avgChewRatePerMin: 36,
+            avgChewingFraction: 0.6,
+            avgTotalScore: 88,
+            meals: [meal],
+            vsYesterday: nil
+        )
+
+        let model = try XCTUnwrap(DailyReportModel.from(date: date, report: report, previousReport: nil))
+
+        XCTAssertEqual(model.trust.badge, "저장 리포트")
+        XCTAssertFalse(model.trust.badge.contains("신호"))
+    }
+
     private func makeMeal(startedAt: Date, score: Int, chews: Int) -> DailyReportMealDTO {
         let sessionId = UUID()
         let report = MealReportDTO(

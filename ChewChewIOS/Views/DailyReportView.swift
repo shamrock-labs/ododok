@@ -73,10 +73,18 @@ struct DailyReportModel {
     }
 
     enum Trust {
-        case high, medium, low
+        case storedReport, high, medium, low
+
+        var title: String {
+            switch self {
+            case .storedReport: "데이터 기준"
+            case .high, .medium, .low: "데이터 신뢰"
+            }
+        }
 
         var badge: String {
             switch self {
+            case .storedReport: "저장 리포트"
             case .high:   "신뢰 양호"
             case .medium: "참고용"
             case .low:    "신호 약함"
@@ -86,6 +94,7 @@ struct DailyReportModel {
         // sage/blush는 상태 전용이라 여기 쓰지 않는다.
         var color: Color {
             switch self {
+            case .storedReport: .textSecondary
             case .high:   .textSecondary
             case .medium: .butter600
             case .low:    .butter600
@@ -196,10 +205,8 @@ extension DailyReportModel {
             )
         } ?? .init(state: .noData, chewDelta: 0, scoreDelta: 0, text: "어제는 기록이 없어 비교할 수 없어요.")
 
-        // 데이터 신뢰
-        let hasModel = entries.allSatisfy { $0.dto.modelVersion != nil }
-        let goodSignal = entries.allSatisfy { $0.dto.sampleRateHz > 0 && $0.dto.sampleCount > 50 }
-        let trust: Trust = (hasModel && goodSignal) ? .high : ((hasModel || goodSignal) ? .medium : .low)
+        // daily API에는 신호 품질 근거가 없으므로 저장 출처만 표시한다.
+        let trust: Trust = .storedReport
 
         let coachMood: Mood = {
             switch grade {
@@ -804,7 +811,7 @@ struct DailyReportView: View {
             Image(systemName: "checkmark.seal.fill")
                 .font(.appFont(.boldCaption))
                 .foregroundStyle(model.trust.color)
-            Text("데이터 신뢰")
+            Text(model.trust.title)
                 .font(.appFont(.boldCaption))
                 .foregroundStyle(Color.textMuted)
             Text(model.trust.badge)
