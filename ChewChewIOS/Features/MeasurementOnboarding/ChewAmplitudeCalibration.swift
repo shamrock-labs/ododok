@@ -120,10 +120,13 @@ final class SimulatedMeasurementCalibrationSampler: MeasurementCalibrationSampli
     ) {
         eventTask?.cancel()
         let amplitudes = [0.031, 0.028, 0.034, 0.041, 0.029, 0.036, 0.033, 0.039, 0.030, 0.037]
+        let initialDelay: Duration = minPeakAmplitude == ChewDetectionConfiguration.calibrationProbe.minPeakAmplitude
+            ? .milliseconds(1_300)
+            : .milliseconds(300)
         eventTask = Task {
             for (index, amplitude) in amplitudes.enumerated() {
                 do {
-                    try await Task.sleep(for: index == 0 ? .milliseconds(250) : .seconds(1))
+                    try await Task.sleep(for: index == 0 ? initialDelay : .milliseconds(1_200))
                 } catch {
                     return
                 }

@@ -47,21 +47,25 @@ final class MeasurementOnboardingStore {
         let cueCount: Int
         let cueInterval: Duration
         let cueApproachDuration: Duration
+        let cueResponseDuration: Duration
 
         init(
             cueCount: Int,
             cueInterval: Duration,
-            cueApproachDuration: Duration = .zero
+            cueApproachDuration: Duration = .zero,
+            cueResponseDuration: Duration? = nil
         ) {
             self.cueCount = cueCount
             self.cueInterval = cueInterval
             self.cueApproachDuration = cueApproachDuration
+            self.cueResponseDuration = cueResponseDuration ?? cueInterval
         }
 
         static let live = Timing(
             cueCount: 10,
-            cueInterval: .seconds(1),
-            cueApproachDuration: .milliseconds(400)
+            cueInterval: .milliseconds(1_200),
+            cueApproachDuration: .milliseconds(1_200),
+            cueResponseDuration: .milliseconds(600)
         )
     }
 
@@ -161,27 +165,10 @@ final class MeasurementOnboardingStore {
     }
 
     private func runCues() async {
-        for cue in 1...timing.cueCount {
-            guard !Task.isCancelled else { return }
-            cueIndex = cue
-            cuePulseID += 1
-
-            if stage == .calibration {
-                isAcceptingCalibrationSignal = false
-                strongestPeakInCurrentCue = nil
-                guard await wait(for: timing.cueApproachDuration) else { return }
-                cuePlayer?.playCalibrationCue()
-                cueHitID += 1
-                isAcceptingCalibrationSignal = true
-                guard await wait(for: timing.cueInterval - timing.cueApproachDuration) else { return }
-                isAcceptingCalibrationSignal = false
-            } else {
-                guard await wait(for: timing.cueInterval) else { return }
-            }
-
-            if stage == .calibration, let strongestPeakInCurrentCue {
-                calibrationAmplitudes.append(strongestPeakInCurrentCue)
-            }
+        if stage == .calibration {
+            guard await runCalibrationCues() else { return }
+        } else {
+            guard await runValidationCues() else { return }
         }
 
         await sampler.stop()
@@ -196,6 +183,48 @@ final class MeasurementOnboardingStore {
         default:
             break
         }
+    }
+
+    private func runCalibrationCues() async -> Bool {
+        cueIndex = 1
+        cuePulseID += 1
+        guard await wait(for: timing.cueApproachDuration) else { return false }
+
+        for cue in 1...timing.cueCount {
+            guard !Task.isCancelled else { return false }
+            cueIndex = cue
+            strongestPeakInCurrentCue = nil
+            cuePlayer?.playCalibrationCue()
+            cueHitID = cue
+            isAcceptingCalibrationSignal = true
+
+            if cue < timing.cueCount {
+                cuePulseID += 1
+            }
+
+            guard await wait(for: timing.cueResponseDuration) else { return false }
+            isAcceptingCalibrationSignal = false
+
+            if let strongestPeakInCurrentCue {
+                calibrationAmplitudes.append(strongestPeakInCurrentCue)
+            }
+
+            if cue < timing.cueCount {
+                let remainingInterval = timing.cueInterval - timing.cueResponseDuration
+                guard await wait(for: remainingInterval) else { return false }
+            }
+        }
+        return true
+    }
+
+    private func runValidationCues() async -> Bool {
+        for cue in 1...timing.cueCount {
+            guard !Task.isCancelled else { return false }
+            cueIndex = cue
+            cuePulseID += 1
+            guard await wait(for: timing.cueInterval) else { return false }
+        }
+        return true
     }
 
     private func wait(for duration: Duration) async -> Bool {

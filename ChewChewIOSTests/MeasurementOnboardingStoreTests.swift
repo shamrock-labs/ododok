@@ -73,6 +73,32 @@ final class MeasurementOnboardingStoreTests: XCTestCase {
         XCTAssertEqual(store.profile?.calibrationAmplitudes.count, 10)
     }
 
+    func testCalibrationIgnoresMotionBeforeNoteReachesTarget() async throws {
+        let sampler = ManualCalibrationSampler()
+        let store = MeasurementOnboardingStore(
+            stage: .calibration,
+            isAirPodsConnected: true,
+            timing: .init(
+                cueCount: 2,
+                cueInterval: .milliseconds(40),
+                cueApproachDuration: .milliseconds(20),
+                cueResponseDuration: .milliseconds(20)
+            ),
+            sampler: sampler,
+            cuePlayer: RecordingMeasurementCuePlayer()
+        )
+
+        store.startMeasurement()
+        await waitUntil { store.cueIndex == 1 }
+        sampler.emit(amplitude: 0.09)
+        await waitUntil { store.cueHitID == 1 }
+        sampler.emit(amplitude: 0.03)
+        await waitUntil { store.calibrationAmplitudes.count == 1 }
+        store.cancelMeasurement()
+
+        XCTAssertEqual(try XCTUnwrap(store.calibrationAmplitudes.first), 0.03, accuracy: 0.000_001)
+    }
+
     private func makeStore(isAirPodsConnected: Bool) -> MeasurementOnboardingStore {
         MeasurementOnboardingStore(
             isAirPodsConnected: isAirPodsConnected,

@@ -12,35 +12,39 @@ struct CalibrationRhythmTrackVisual: View {
     @State private var targetFlash = false
 
     var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: Metrics.trackRadius)
-                .fill(Color.bgSurface)
-                .overlay {
-                    RoundedRectangle(cornerRadius: Metrics.trackRadius)
-                        .stroke(Color.tintInteractive.opacity(0.14), lineWidth: AppSize.border)
-                }
+        GeometryReader { proxy in
+            ZStack {
+                RoundedRectangle(cornerRadius: Metrics.trackRadius)
+                    .fill(Color.bgSurface)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: Metrics.trackRadius)
+                            .stroke(Color.tintInteractive.opacity(0.14), lineWidth: AppSize.border)
+                    }
 
-            laneGuides
-            targetZone
-            rhythmNote
+                laneGuides(trackWidth: proxy.size.width)
+                targetZone(trackWidth: proxy.size.width)
+                rhythmNote(trackWidth: proxy.size.width)
 
-            VStack {
-                HStack {
-                    Text("\(max(cueIndex, 0)) / \(cueCount)")
-                        .font(.appFont(.boldCaption))
-                        .foregroundStyle(Color.textMuted)
-                        .monospacedDigit()
+                VStack {
+                    HStack {
+                        Text("\(max(cueIndex, 0)) / \(cueCount)")
+                            .font(.appFont(.boldCaption))
+                            .foregroundStyle(Color.textMuted)
+                            .monospacedDigit()
+                        Spacer()
+                        Label("\(detectedCount)", systemImage: "waveform.path")
+                            .font(.appFont(.boldCaption))
+                            .foregroundStyle(Color.tintInteractive)
+                            .monospacedDigit()
+                    }
                     Spacer()
-                    Label("\(detectedCount)", systemImage: "waveform.path")
-                        .font(.appFont(.boldCaption))
-                        .foregroundStyle(Color.tintInteractive)
-                        .monospacedDigit()
                 }
-                Spacer()
+                .padding(AppSpacing.inner)
             }
-            .padding(AppSpacing.inner)
+            .clipShape(RoundedRectangle(cornerRadius: Metrics.trackRadius))
         }
-        .frame(width: Metrics.trackWidth, height: Metrics.trackHeight)
+        .frame(maxWidth: .infinity)
+        .frame(height: Metrics.trackHeight)
         .onChange(of: cuePulseID) { _, _ in
             startNoteApproach()
         }
@@ -53,7 +57,7 @@ struct CalibrationRhythmTrackVisual: View {
         .accessibilityIdentifier("CalibrationRhythmTrack")
     }
 
-    private var laneGuides: some View {
+    private func laneGuides(trackWidth: CGFloat) -> some View {
         VStack(spacing: Metrics.laneSpacing) {
             ForEach(0..<2, id: \.self) { _ in
                 Rectangle()
@@ -61,10 +65,10 @@ struct CalibrationRhythmTrackVisual: View {
                     .frame(height: AppSize.border)
             }
         }
-        .frame(width: Metrics.guideWidth)
+        .frame(width: trackWidth - Metrics.horizontalInset * 2)
     }
 
-    private var targetZone: some View {
+    private func targetZone(trackWidth: CGFloat) -> some View {
         RoundedRectangle(cornerRadius: AppRadius.inner)
             .fill(Color.tintInteractive.opacity(targetFlash ? 0.22 : 0.08))
             .frame(width: Metrics.targetWidth, height: Metrics.targetHeight)
@@ -75,11 +79,11 @@ struct CalibrationRhythmTrackVisual: View {
                         lineWidth: targetFlash ? Metrics.targetActiveBorder : AppSize.border
                     )
             }
-            .offset(x: Metrics.targetOffset)
+            .offset(x: targetOffset(trackWidth: trackWidth))
             .scaleEffect(targetFlash && !reduceMotion ? 1.04 : 1)
     }
 
-    private var rhythmNote: some View {
+    private func rhythmNote(trackWidth: CGFloat) -> some View {
         RoundedRectangle(cornerRadius: AppRadius.inner)
             .fill(Color.tintInteractive)
             .frame(width: Metrics.noteWidth, height: Metrics.noteHeight)
@@ -88,14 +92,19 @@ struct CalibrationRhythmTrackVisual: View {
                 radius: Metrics.noteShadowRadius,
                 x: -Metrics.noteShadowX
             )
-            .offset(x: noteOffset)
+            .offset(x: noteOffset(trackWidth: trackWidth))
             .opacity(cueIndex == 0 ? 0 : 1)
     }
 
-    private var noteOffset: CGFloat {
-        guard !reduceMotion else { return Metrics.targetOffset }
-        return Metrics.noteStartOffset
-            + (Metrics.targetOffset - Metrics.noteStartOffset) * noteProgress
+    private func noteOffset(trackWidth: CGFloat) -> CGFloat {
+        let targetOffset = targetOffset(trackWidth: trackWidth)
+        guard !reduceMotion else { return targetOffset }
+        let startOffset = trackWidth / 2 + Metrics.noteWidth / 2
+        return startOffset + (targetOffset - startOffset) * noteProgress
+    }
+
+    private func targetOffset(trackWidth: CGFloat) -> CGFloat {
+        -trackWidth / 2 + Metrics.horizontalInset + Metrics.targetWidth / 2
     }
 
     private func startNoteApproach() {
@@ -121,19 +130,16 @@ struct CalibrationRhythmTrackVisual: View {
 }
 
 private enum Metrics {
-    static let trackWidth: CGFloat = 250
     static let trackHeight: CGFloat = 150
     static let trackRadius: CGFloat = 8
-    static let guideWidth: CGFloat = 210
+    static let horizontalInset: CGFloat = 18
     static let laneSpacing: CGFloat = 48
     static let targetWidth: CGFloat = 26
     static let targetHeight: CGFloat = 82
-    static let targetOffset: CGFloat = -88
     static let targetActiveBorder: CGFloat = 2
     static let noteWidth: CGFloat = 22
     static let noteHeight: CGFloat = 62
-    static let noteStartOffset: CGFloat = 92
     static let noteShadowRadius: CGFloat = 8
     static let noteShadowX: CGFloat = 3
-    static let approachDuration: TimeInterval = 0.4
+    static let approachDuration: TimeInterval = 1.2
 }
