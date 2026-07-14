@@ -436,6 +436,7 @@ struct ReportHubView: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: Metrics.weeklyCoachAvatar, height: Metrics.weeklyCoachAvatar)
+                .scaleEffect(AppArtwork.daramContentScale)
                 .background(Color.statusWarningMuted.opacity(0.72), in: Circle())
 
             VStack(alignment: .leading, spacing: AppSpacing.inner) {

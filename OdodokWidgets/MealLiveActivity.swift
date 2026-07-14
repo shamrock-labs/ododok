@@ -25,6 +25,7 @@ struct MealLiveActivity: Widget {
                             .resizable()
                             .scaledToFit()
                             .frame(width: 22, height: 22)
+                            .scaleEffect(1.35)
                             .clipShape(Circle())
                         Text("오도독")
                             .font(.caption.weight(.semibold))
@@ -186,6 +187,7 @@ struct MealLiveActivity: Widget {
             .resizable()
             .scaledToFit()
             .frame(width: 48, height: 48)
+            .scaleEffect(1.35)
     }
 }
 

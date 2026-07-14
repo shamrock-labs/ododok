@@ -220,7 +220,7 @@ private struct ChewDemo: View {
                 .resizable()
                 .scaledToFit()
                 .frame(height: Metrics.demoImageHeight)
-                .scaleEffect(chew ? 1.02 : 0.99)
+                .scaleEffect(AppArtwork.daramContentScale * (chew ? 1.02 : 0.99))
                 .animation(.easeInOut(duration: AppMotion.durationDemoChew).repeatForever(autoreverses: true), value: chew)
                 .onAppear { chew = true }
 

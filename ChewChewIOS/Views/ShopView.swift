@@ -51,6 +51,7 @@ private struct ShopPlaceholderView: View {
                     .resizable()
                     .scaledToFit()
                     .frame(height: Metrics.heroImageHeight)
+                    .scaleEffect(AppArtwork.daramContentScale)
             }
         }
     }

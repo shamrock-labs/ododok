@@ -18,6 +18,7 @@ struct OnboardingNameView: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: Metrics.heroImage, height: Metrics.heroImage)
+                .scaleEffect(AppArtwork.daramContentScale)
 
             VStack(spacing: 8) {
                 Text("처음 오셨네요!")
