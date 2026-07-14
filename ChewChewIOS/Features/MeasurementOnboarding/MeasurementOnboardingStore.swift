@@ -228,6 +228,7 @@ final class MeasurementOnboardingStore {
             cueIndex = cue
             cuePulseID += 1
             guard await wait(for: timing.cueInterval) else { return false }
+            cueHitID = cue
         }
         return true
     }

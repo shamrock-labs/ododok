@@ -102,7 +102,8 @@ struct MeasurementOnboardingView: View {
                 isPreparing: isPreparingAirPods
             )
         case .calibration:
-            CalibrationRhythmTrackVisual(
+            MeasurementRhythmFeedbackVisual(
+                mode: .calibration,
                 cueIndex: store.cueIndex,
                 cueCount: store.cueCount,
                 detectedCount: store.calibrationAmplitudes.count,
@@ -111,12 +112,13 @@ struct MeasurementOnboardingView: View {
                 reduceMotion: reduceMotion
             )
         case .validation:
-            SignalCaptureVisual(
+            MeasurementRhythmFeedbackVisual(
                 mode: .validation,
                 cueIndex: store.cueIndex,
                 cueCount: store.cueCount,
                 detectedCount: store.validationDetectedCount,
                 cuePulseID: store.cuePulseID,
+                cueHitID: store.cueHitID,
                 reduceMotion: reduceMotion
             )
         case .ready:
@@ -425,153 +427,6 @@ private struct IntroSignalVisual: View {
     }
 }
 
-private enum SignalCaptureMode {
-    case calibration
-    case validation
-
-    var tint: Color {
-        switch self {
-        case .calibration: .tintInteractive
-        case .validation: .dataTime
-        }
-    }
-
-    var label: String {
-        switch self {
-        case .calibration: "기준"
-        case .validation: "감지"
-        }
-    }
-}
-
-private struct SignalCaptureVisual: View {
-    let mode: SignalCaptureMode
-    let cueIndex: Int
-    let cueCount: Int
-    let detectedCount: Int
-    let cuePulseID: Int
-    let reduceMotion: Bool
-
-    @State private var isScanning = false
-    @State private var cueFlash = false
-
-    private let markCount = 24
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(mode.tint.opacity(cueFlash ? 0.15 : 0.055))
-                .frame(width: Metrics.signalHalo, height: Metrics.signalHalo)
-                .scaleEffect(isScanning && !reduceMotion ? 1.05 : 0.95)
-
-            Circle()
-                .stroke(mode.tint.opacity(0.10), lineWidth: AppSize.border)
-                .frame(width: Metrics.signalOrbit, height: Metrics.signalOrbit)
-
-            ForEach(0..<markCount, id: \.self) { index in
-                Capsule()
-                    .fill(mode.tint.opacity(markOpacity(at: index)))
-                    .frame(width: Metrics.signalMarkWidth, height: Metrics.signalMarkHeight)
-                    .offset(y: -Metrics.signalMarkRadius)
-                    .rotationEffect(.degrees(Double(index) * (360 / Double(markCount))))
-                    .scaleEffect(markScale(at: index))
-                    .animation(
-                        .easeOut(duration: AppMotion.durationStateChange),
-                        value: detectedCount
-                    )
-            }
-
-            Circle()
-                .trim(from: 0.04, to: 0.18)
-                .stroke(
-                    mode.tint.opacity(reduceMotion ? 0 : 0.55),
-                    style: StrokeStyle(lineWidth: Metrics.scanLineWidth, lineCap: .round)
-                )
-                .frame(width: Metrics.signalOrbit, height: Metrics.signalOrbit)
-                .rotationEffect(.degrees(isScanning ? 360 : 0))
-                .animation(
-                    reduceMotion
-                        ? nil
-                        : .linear(duration: AppMotion.durationWave).repeatForever(autoreverses: false),
-                    value: isScanning
-                )
-
-            Circle()
-                .fill(Color.bgSurface.opacity(0.84))
-                .frame(width: Metrics.signalCoreCompact, height: Metrics.signalCoreCompact)
-                .overlay {
-                    Circle()
-                        .stroke(Color.bgSurface.opacity(0.94), lineWidth: Metrics.coreBorderWidth)
-                }
-
-            VStack(spacing: AppSpacing.half) {
-                Image(systemName: mode == .calibration ? "waveform.path" : "waveform.path.ecg")
-                    .font(.appFont(.regular, size: Metrics.signalGlyph))
-                    .foregroundStyle(mode.tint.opacity(0.88))
-                    .scaleEffect(cueFlash && !reduceMotion ? 1.12 : 1)
-
-                Text("\(detectedCount)")
-                    .font(.appFont(.heavyTitleLarge))
-                    .foregroundStyle(Color.textDefault)
-                    .monospacedDigit()
-                    .contentTransition(.numericText())
-
-                Text(mode.label)
-                    .font(.appFont(.boldCaption))
-                    .foregroundStyle(Color.textMuted)
-            }
-
-            Text("\(cueIndex) / \(cueCount)")
-                .font(.appFont(.boldCaption))
-                .foregroundStyle(mode.tint)
-                .monospacedDigit()
-                .padding(.horizontal, AppSpacing.inner)
-                .padding(.vertical, AppSpacing.oneHalf)
-                .background(Color.bgSurface.opacity(0.92), in: Capsule())
-                .overlay {
-                    Capsule().stroke(mode.tint.opacity(0.12), lineWidth: AppSize.border)
-                }
-                .offset(y: Metrics.counterOffset)
-        }
-        .frame(width: Metrics.signalFrame, height: Metrics.signalFrame)
-        .animation(.easeOut(duration: AppMotion.durationStateChange), value: detectedCount)
-        .onAppear { isScanning = true }
-        .animation(
-            reduceMotion
-                ? nil
-                : .easeInOut(duration: AppMotion.durationWave).repeatForever(autoreverses: true),
-            value: isScanning
-        )
-        .onChange(of: cuePulseID) { _, _ in
-            cueFlash = true
-            Task {
-                try? await Task.sleep(for: .milliseconds(140))
-                withAnimation(.easeOut(duration: AppMotion.durationStateChange)) {
-                    cueFlash = false
-                }
-            }
-        }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(mode.label) 측정")
-        .accessibilityValue("안내 \(cueIndex)회 중 신호 \(detectedCount)회")
-    }
-
-    private func markOpacity(at index: Int) -> Double {
-        let completedMarks = Int((Double(markCount) * signalProgress).rounded(.down))
-        if index < completedMarks { return 0.82 }
-        return index.isMultiple(of: 3) ? 0.22 : 0.10
-    }
-
-    private func markScale(at index: Int) -> CGFloat {
-        let completedMarks = Int((Double(markCount) * signalProgress).rounded(.down))
-        return index < completedMarks ? 1 : 0.72
-    }
-
-    private var signalProgress: Double {
-        min(Double(detectedCount) / Double(cueCount), 1)
-    }
-}
-
 private struct ReadyVisual: View {
     @State private var appeared = false
 
@@ -628,17 +483,5 @@ private enum Metrics {
     static let signalRing: CGFloat = 150
     static let signalCore: CGFloat = 132
     static let heroIcon: CGFloat = 54
-    static let statusIcon: CGFloat = 34
-    static let signalFrame: CGFloat = 172
-    static let signalHalo: CGFloat = 164
-    static let signalOrbit: CGFloat = 148
-    static let signalCoreCompact: CGFloat = 104
-    static let signalMarkWidth: CGFloat = 4
-    static let signalMarkHeight: CGFloat = 11
-    static let signalMarkRadius: CGFloat = 74
-    static let signalGlyph: CGFloat = 24
-    static let scanLineWidth: CGFloat = 5
-    static let coreBorderWidth: CGFloat = 8
-    static let counterOffset: CGFloat = 100
     static let progressHeight: CGFloat = 5
 }

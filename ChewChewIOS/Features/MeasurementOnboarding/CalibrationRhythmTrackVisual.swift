@@ -1,6 +1,19 @@
 import SwiftUI
 
-struct CalibrationRhythmTrackVisual: View {
+enum MeasurementRhythmFeedbackMode {
+    case calibration
+    case validation
+
+    var accessibilityLabel: String {
+        switch self {
+        case .calibration: "씹기 리듬 보정"
+        case .validation: "씹기 감지 검증"
+        }
+    }
+}
+
+struct MeasurementRhythmFeedbackVisual: View {
+    let mode: MeasurementRhythmFeedbackMode
     let cueIndex: Int
     let cueCount: Int
     let detectedCount: Int
@@ -19,9 +32,9 @@ struct CalibrationRhythmTrackVisual: View {
         .frame(maxWidth: .infinity)
         .frame(height: Metrics.sceneHeight)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("씹기 리듬 보정")
+        .accessibilityLabel(mode.accessibilityLabel)
         .accessibilityValue("안내 \(cueIndex)회 중 기준 신호 \(detectedCount)회")
-        .accessibilityIdentifier("CalibrationRhythmTrack")
+        .accessibilityIdentifier("MeasurementRhythmFeedback")
     }
 
     private var measurementFeedback: some View {
