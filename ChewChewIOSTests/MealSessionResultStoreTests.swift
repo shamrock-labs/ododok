@@ -163,6 +163,7 @@ final class MealSessionResultStoreTests: XCTestCase {
     private func makeResult(session: ChewingSessionDTO) -> CreateSessionResultDTO {
         CreateSessionResultDTO(
             chewingSession: session,
+            mealReport: MealReportDTO(status: .unreportable, reason: .analysisMissing),
             chewingSessionAccepted: true,
             rewardEligible: true,
             ineligibleReason: nil,

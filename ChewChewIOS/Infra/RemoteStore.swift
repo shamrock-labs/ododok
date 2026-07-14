@@ -86,8 +86,12 @@ struct NoopRemoteStore: RemoteStore {
     func fetchUserStats() async throws -> UserStatsDTO? { nil }
     func deleteUserData() async throws {}
     func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO {
-        CreateSessionResultDTO(
-            chewingSession: session,
+        let report = MealReportDTO(status: .unreportable, reason: .analysisMissing)
+        var responseSession = session
+        responseSession.mealReport = report
+        return CreateSessionResultDTO(
+            chewingSession: responseSession,
+            mealReport: report,
             chewingSessionAccepted: true,
             rewardEligible: false,
             ineligibleReason: nil,
@@ -262,8 +266,12 @@ final class InsForgeRemoteStore: RemoteStore {
     func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO {
         try await insertSession(session)
         let stats = try? await fetchUserStats()
+        let report = MealReportDTO(status: .unreportable, reason: .analysisMissing)
+        var responseSession = session
+        responseSession.mealReport = report
         return CreateSessionResultDTO(
-            chewingSession: session,
+            chewingSession: responseSession,
+            mealReport: report,
             chewingSessionAccepted: true,
             rewardEligible: false,
             ineligibleReason: "LEGACY_BACKEND",

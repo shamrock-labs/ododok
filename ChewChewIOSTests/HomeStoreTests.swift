@@ -316,6 +316,33 @@ final class HomeStoreTests: XCTestCase {
         )
         return CreateSessionResultDTO(
             chewingSession: session,
+            mealReport: MealReportDTO(
+                status: .generated,
+                sessionId: session.id,
+                scorePolicyVersion: "legacy-ios-v1",
+                analysisModelVersion: session.modelVersion,
+                totalScore: 71,
+                axisScores: MealReportAxisScoresDTO(
+                    chewingRate: 0,
+                    chewingTimeRatio: 100,
+                    totalChewCount: 100,
+                    mealDuration: 85
+                ),
+                metrics: MealReportMetricsDTO(
+                    chewingRatePerMin: nil,
+                    legacyMealRatePerMin: 25,
+                    chewingTimeRatio: 0.5,
+                    totalChewCount: 50,
+                    mealDurationSec: 120
+                ),
+                grade: .soso,
+                recommendedBaseline: MealReportRecommendedBaselineDTO(
+                    chewingRatePerMin: MealReportTargetDTO(target: 28),
+                    chewingTimeRatio: 0.6,
+                    totalChewCount: 300,
+                    mealDurationSec: 720
+                )
+            ),
             chewingSessionAccepted: true,
             rewardEligible: rewardPoints > 0,
             ineligibleReason: nil,

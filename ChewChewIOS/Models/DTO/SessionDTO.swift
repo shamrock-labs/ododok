@@ -1,5 +1,61 @@
 import Foundation
 
+enum MealReportStatusDTO: String, Codable, Equatable {
+    case generated = "GENERATED"
+    case unreportable = "UNREPORTABLE"
+}
+
+enum MealReportReasonDTO: String, Codable, Equatable {
+    case sessionTooShort = "SESSION_TOO_SHORT"
+    case analysisMissing = "ANALYSIS_MISSING"
+    case invalidAnalysisInput = "INVALID_ANALYSIS_INPUT"
+}
+
+enum MealReportGradeDTO: String, Codable, Equatable {
+    case good
+    case soso
+    case bad
+}
+
+struct MealReportAxisScoresDTO: Codable, Equatable {
+    var chewingRate: Int
+    var chewingTimeRatio: Int
+    var totalChewCount: Int
+    var mealDuration: Int
+}
+
+struct MealReportMetricsDTO: Codable, Equatable {
+    var chewingRatePerMin: Double?
+    var legacyMealRatePerMin: Double
+    var chewingTimeRatio: Double
+    var totalChewCount: Int
+    var mealDurationSec: Double
+}
+
+struct MealReportTargetDTO: Codable, Equatable {
+    var target: Double
+}
+
+struct MealReportRecommendedBaselineDTO: Codable, Equatable {
+    var chewingRatePerMin: MealReportTargetDTO
+    var chewingTimeRatio: Double
+    var totalChewCount: Int
+    var mealDurationSec: Double
+}
+
+struct MealReportDTO: Codable, Equatable {
+    var status: MealReportStatusDTO
+    var reason: MealReportReasonDTO? = nil
+    var sessionId: UUID? = nil
+    var scorePolicyVersion: String? = nil
+    var analysisModelVersion: String? = nil
+    var totalScore: Int? = nil
+    var axisScores: MealReportAxisScoresDTO? = nil
+    var metrics: MealReportMetricsDTO? = nil
+    var grade: MealReportGradeDTO? = nil
+    var recommendedBaseline: MealReportRecommendedBaselineDTO? = nil
+}
+
 /// `chewing_session` row와 1:1 DTO. 클라이언트가 한 끼 식사 종료 시 INSERT.
 /// raw IMU는 별도로 imu-sessions 버킷에 gzip CSV로 올리고 `storagePath`에 경로만 보관.
 ///
@@ -24,6 +80,7 @@ struct ChewingSessionDTO: Codable, Equatable, Identifiable {
     var estimatedTotalChews: Int?
     var modelVersion: String?
     var chewingTimeline: String?
+    var mealReport: MealReportDTO?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -43,6 +100,7 @@ struct ChewingSessionDTO: Codable, Equatable, Identifiable {
         case estimatedTotalChews
         case modelVersion
         case chewingTimeline
+        case mealReport
     }
 
     init(
@@ -62,6 +120,7 @@ struct ChewingSessionDTO: Codable, Equatable, Identifiable {
         estimatedTotalChews: Int?,
         modelVersion: String?,
         chewingTimeline: String? = nil,
+        mealReport: MealReportDTO? = nil,
         userId: String? = nil
     ) {
         self.id = id
@@ -81,6 +140,7 @@ struct ChewingSessionDTO: Codable, Equatable, Identifiable {
         self.estimatedTotalChews = estimatedTotalChews
         self.modelVersion = modelVersion
         self.chewingTimeline = chewingTimeline
+        self.mealReport = mealReport
     }
 
     init(from decoder: Decoder) throws {
@@ -102,6 +162,7 @@ struct ChewingSessionDTO: Codable, Equatable, Identifiable {
         estimatedTotalChews = try container.decodeIfPresent(Int.self, forKey: .estimatedTotalChews)
         modelVersion = try container.decodeIfPresent(String.self, forKey: .modelVersion)
         chewingTimeline = try container.decodeIfPresent(String.self, forKey: .chewingTimeline)
+        mealReport = try container.decodeIfPresent(MealReportDTO.self, forKey: .mealReport)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -188,6 +249,7 @@ struct SessionTodayDTO: Codable, Equatable {
 /// 정책 세션 저장 응답(`POST /v1/me/chewing-sessions`). 저장된 세션 + 적립/스트릭/오늘/홈을 한 번에.
 struct CreateSessionResultDTO: Codable, Equatable {
     var chewingSession: ChewingSessionDTO
+    var mealReport: MealReportDTO?
     var chewingSessionAccepted: Bool
     var rewardEligible: Bool
     var ineligibleReason: String?

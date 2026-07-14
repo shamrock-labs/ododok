@@ -20,6 +20,7 @@ private final class StubHomeStore: RemoteStore {
     func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO {
         CreateSessionResultDTO(
             chewingSession: session,
+            mealReport: MealReportDTO(status: .unreportable, reason: .analysisMissing),
             chewingSessionAccepted: true,
             rewardEligible: false,
             ineligibleReason: nil,
