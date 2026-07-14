@@ -19,18 +19,19 @@ final class MealSessionRecordMapperTests: XCTestCase {
             chewingSeconds: nil,
             restSeconds: nil,
             chewingFraction: nil,
-            estimatedTotalChews: nil
+            estimatedTotalChews: nil,
+            mealReport: MealReportDTO(status: .unreportable, reason: .analysisMissing)
         )
 
         XCTAssertNil(MealSessionRecordMapper.map(dto))
         XCTAssertFalse(MealSessionReportability.isReportable(dto))
     }
 
-    func testShortDurationDTOReturnsNil() {
+    func testGeneratedReportDoesNotReapplyLocalShortDurationRule() {
         let dto = makeDTO(durationSec: 29.9)
 
-        XCTAssertNil(MealSessionRecordMapper.map(dto))
-        XCTAssertFalse(MealSessionReportability.isReportable(dto))
+        XCTAssertNotNil(MealSessionRecordMapper.map(dto))
+        XCTAssertTrue(MealSessionReportability.isReportable(dto))
     }
 
     func testThirtySecondBoundaryCreatesRecord() {
@@ -46,9 +47,36 @@ final class MealSessionRecordMapperTests: XCTestCase {
         chewingSeconds: Double? = 420,
         restSeconds: Double? = 180,
         chewingFraction: Double? = 0.7,
-        estimatedTotalChews: Int? = 300
+        estimatedTotalChews: Int? = 300,
+        mealReport: MealReportDTO? = nil
     ) -> ChewingSessionDTO {
-        ChewingSessionDTO(
+        let report = mealReport ?? MealReportDTO(
+            status: .generated,
+            scorePolicyVersion: "legacy-ios-v1",
+            analysisModelVersion: "test",
+            totalScore: 80,
+            axisScores: MealReportAxisScoresDTO(
+                chewingRate: 80,
+                chewingTimeRatio: 80,
+                totalChewCount: 80,
+                mealDuration: 80
+            ),
+            metrics: MealReportMetricsDTO(
+                chewingRatePerMin: nil,
+                legacyMealRatePerMin: 30,
+                chewingTimeRatio: 0.7,
+                totalChewCount: 300,
+                mealDurationSec: durationSec
+            ),
+            grade: .good,
+            recommendedBaseline: MealReportRecommendedBaselineDTO(
+                chewingRatePerMin: MealReportTargetDTO(target: 28),
+                chewingTimeRatio: 0.5,
+                totalChewCount: 200,
+                mealDurationSec: 720
+            )
+        )
+        return ChewingSessionDTO(
             id: UUID(),
             deviceId: "test-device",
             startedAt: startedAt,
@@ -63,7 +91,8 @@ final class MealSessionRecordMapperTests: XCTestCase {
             restSeconds: restSeconds,
             chewingFraction: chewingFraction,
             estimatedTotalChews: estimatedTotalChews,
-            modelVersion: "test"
+            modelVersion: "test",
+            mealReport: report
         )
     }
 }

@@ -7,6 +7,8 @@ final class ReportCardModelTests: XCTestCase {
         chews: Int? = 300,
         fraction: Double? = 0.7,
         durationSec: Double = 600,
+        chewingSeconds: Double? = 432,
+        restSeconds: Double? = 168,
         chewingTimeline: String? = nil,
         mealReport: MealReportDTO? = nil,
         includesDefaultReport: Bool = true
@@ -23,8 +25,8 @@ final class ReportCardModelTests: XCTestCase {
             sampleRateHz: 50,
             storagePath: nil,
             appVersion: nil,
-            chewingSeconds: 432,
-            restSeconds: 168,
+            chewingSeconds: chewingSeconds,
+            restSeconds: restSeconds,
             chewingFraction: fraction,
             estimatedTotalChews: chews,
             modelVersion: "test",
@@ -112,6 +114,46 @@ final class ReportCardModelTests: XCTestCase {
     func testFrom_generatedReport_withIncompletePayload_returnsNil() {
         XCTAssertNil(ReportCardModel.from(makeDTO(mealReport: makeGeneratedReport(totalScore: nil))))
         XCTAssertNil(ReportCardModel.from(makeDTO(mealReport: makeGeneratedReport(recommendedBaseline: nil))))
+    }
+
+    func testFrom_bothRawDurationsMissing_derivesMeaningfulDurationsFromReportMetrics() {
+        let model = ReportCardModel.from(makeDTO(chewingSeconds: nil, restSeconds: nil))
+
+        XCTAssertEqual(model?.chewingSeconds ?? -1, 811 * 0.97, accuracy: 0.001)
+        XCTAssertEqual(model?.restSeconds ?? -1, 811 * 0.03, accuracy: 0.001)
+        XCTAssertEqual((model?.chewingSeconds ?? 0) + (model?.restSeconds ?? 0), 811, accuracy: 0.001)
+    }
+
+    func testFrom_onlyRawChewingDurationPresent_preservesItAndDerivesRestFromReportMetrics() {
+        let model = ReportCardModel.from(makeDTO(chewingSeconds: 123, restSeconds: nil))
+
+        XCTAssertEqual(model?.chewingSeconds, 123)
+        XCTAssertEqual(model?.restSeconds ?? -1, 811 * 0.03, accuracy: 0.001)
+    }
+
+    func testFrom_onlyRawRestDurationPresent_preservesItAndDerivesChewingFromReportMetrics() {
+        let model = ReportCardModel.from(makeDTO(chewingSeconds: nil, restSeconds: 45))
+
+        XCTAssertEqual(model?.chewingSeconds ?? -1, 811 * 0.97, accuracy: 0.001)
+        XCTAssertEqual(model?.restSeconds, 45)
+    }
+
+    func testFrom_missingRawDurations_clampsReportRatioBeforeDerivingDurations() {
+        let metrics = MealReportMetricsDTO(
+            chewingRatePerMin: nil,
+            legacyMealRatePerMin: 43.6,
+            chewingTimeRatio: 1.4,
+            totalChewCount: 589,
+            mealDurationSec: 811
+        )
+        let model = ReportCardModel.from(makeDTO(
+            chewingSeconds: nil,
+            restSeconds: nil,
+            mealReport: makeGeneratedReport(metrics: metrics)
+        ))
+
+        XCTAssertEqual(model?.chewingSeconds, 811)
+        XCTAssertEqual(model?.restSeconds, 0)
     }
 
     func testFrom_chewingTimeline_mapsToCompressedSegments() {
@@ -213,6 +255,11 @@ final class ReportCardModelTests: XCTestCase {
     }
 
     // MARK: - scoreCountUpValue
+
+    func testRecommendedChewsPerMinuteFormatter_preservesFractionAndOmitsZeroDecimal() {
+        XCTAssertEqual(formatRecommendedChewsPerMinute(31.5), "31.5")
+        XCTAssertEqual(formatRecommendedChewsPerMinute(28), "28")
+    }
 
     func testScoreCountUp_progress0_returns0() {
         XCTAssertEqual(scoreCountUpValue(progress: 0, target: 85), 0)

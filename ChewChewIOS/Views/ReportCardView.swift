@@ -50,10 +50,10 @@ struct ReportCardModel: Equatable {
         lengthScore: Int,
         caption: String?,
         mood: Mood,
-        recommendedChewsPerMinute: Double = 28,
-        recommendedChewingFraction: Double = 0.5,
-        recommendedChewCount: Int = 200,
-        recommendedDurationSec: Double = 720,
+        recommendedChewsPerMinute: Double,
+        recommendedChewingFraction: Double,
+        recommendedChewCount: Int,
+        recommendedDurationSec: Double,
         endedAt: Date
     ) {
         self.score = score
@@ -190,6 +190,15 @@ struct ReportCardModel: Equatable {
 func scoreCountUpValue(progress: Double, target: Int) -> Int {
     let clamped = min(max(progress, 0), 1)
     return Int((clamped * Double(target)).rounded())
+}
+
+/// 서버 기준값의 소수 정밀도를 보존하되 정수에는 불필요한 `.0`을 붙이지 않는다.
+func formatRecommendedChewsPerMinute(_ value: Double) -> String {
+    guard value.isFinite else { return String(value) }
+    if value.rounded(.towardZero) == value {
+        return String(format: "%.0f", locale: Locale(identifier: "en_US_POSIX"), value)
+    }
+    return String(value)
 }
 
 /// 식사 후 분석 리포트 카드. 식사 종료 직후 sheet/overlay 표시와 캘린더에서 과거 세션
@@ -361,7 +370,7 @@ struct ReportCardView: View {
                 recommendedComparisonCell(
                     label: "식사 속도",
                     current: "약 \(Int(model.chewsPerMinute.rounded()))회/분",
-                    recommended: "권장 \(Int(model.recommendedChewsPerMinute))회/분",
+                    recommended: "권장 \(formatRecommendedChewsPerMinute(model.recommendedChewsPerMinute))회/분",
                     delta: signedDelta(Int((model.chewsPerMinute - model.recommendedChewsPerMinute).rounded()), suffix: "회/분"),
                     ratio: (model.chewsPerMinute - model.recommendedChewsPerMinute) / (model.recommendedChewsPerMinute * 0.5),
                     color: .blush500
@@ -785,6 +794,10 @@ struct DashedDivider: View {
             lengthScore: 87,
             caption: "오늘은 천천히 잘 씹었어요. 한 입에 30회 목표 달성!",
             mood: .champ,
+            recommendedChewsPerMinute: 28,
+            recommendedChewingFraction: 0.5,
+            recommendedChewCount: 200,
+            recommendedDurationSec: 720,
             endedAt: Date()
         ), onDeepReport: {})
         .padding(AppSpacing.page)
@@ -809,6 +822,10 @@ struct DashedDivider: View {
             lengthScore: 50,
             caption: nil,
             mood: .puffy,
+            recommendedChewsPerMinute: 28,
+            recommendedChewingFraction: 0.5,
+            recommendedChewCount: 200,
+            recommendedDurationSec: 720,
             endedAt: Date()
         ))
         .padding(AppSpacing.page)
@@ -833,6 +850,10 @@ struct DashedDivider: View {
             lengthScore: 10,
             caption: "조금 빨리 먹은 것 같아요. 다음 식사엔 한 입 30회를 의식해 봐요.",
             mood: .sleepy,
+            recommendedChewsPerMinute: 28,
+            recommendedChewingFraction: 0.5,
+            recommendedChewCount: 200,
+            recommendedDurationSec: 720,
             endedAt: Date()
         ), onDeepReport: {})
         .padding(AppSpacing.page)
@@ -857,8 +878,9 @@ extension ReportCardModel {
               let baseline = report.recommendedBaseline else { return nil }
         let mood = Mood(grade: grade, score: totalScore)
         let caption = CaptionPool.report(for: grade)
-        let chewingSeconds = dto.chewingSeconds ?? 0
-        let restSeconds = dto.restSeconds ?? 0
+        let chewingRatio = min(max(metrics.chewingTimeRatio, 0), 1)
+        let chewingSeconds = dto.chewingSeconds ?? metrics.mealDurationSec * chewingRatio
+        let restSeconds = dto.restSeconds ?? metrics.mealDurationSec * (1 - chewingRatio)
         return ReportCardModel(
             score: totalScore,
             grade: grade,
