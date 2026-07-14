@@ -1,20 +1,95 @@
 import Foundation
 
-enum MealReportStatusDTO: String, Codable, Equatable {
-    case generated = "GENERATED"
-    case unreportable = "UNREPORTABLE"
+protocol ForwardCompatibleStringDTO: Codable {
+    init(rawValue: String)
+    var rawValue: String { get }
 }
 
-enum MealReportReasonDTO: String, Codable, Equatable {
-    case sessionTooShort = "SESSION_TOO_SHORT"
-    case analysisMissing = "ANALYSIS_MISSING"
-    case invalidAnalysisInput = "INVALID_ANALYSIS_INPUT"
+extension ForwardCompatibleStringDTO {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self.init(rawValue: try container.decode(String.self))
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
 }
 
-enum MealReportGradeDTO: String, Codable, Equatable {
+enum MealReportStatusDTO: Equatable, ForwardCompatibleStringDTO {
+    case generated
+    case unreportable
+    case unknown(String)
+
+    init(rawValue: String) {
+        switch rawValue {
+        case "GENERATED": self = .generated
+        case "UNREPORTABLE": self = .unreportable
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    var rawValue: String {
+        switch self {
+        case .generated: "GENERATED"
+        case .unreportable: "UNREPORTABLE"
+        case .unknown(let value): value
+        }
+    }
+}
+
+enum MealReportReasonDTO: Equatable, ForwardCompatibleStringDTO {
+    case sessionTooShort
+    case analysisMissing
+    case invalidAnalysisInput
+    case unsupportedModelVersion
+    case unknown(String)
+
+    init(rawValue: String) {
+        switch rawValue {
+        case "SESSION_TOO_SHORT": self = .sessionTooShort
+        case "ANALYSIS_MISSING": self = .analysisMissing
+        case "INVALID_ANALYSIS_INPUT": self = .invalidAnalysisInput
+        case "UNSUPPORTED_MODEL_VERSION": self = .unsupportedModelVersion
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    var rawValue: String {
+        switch self {
+        case .sessionTooShort: "SESSION_TOO_SHORT"
+        case .analysisMissing: "ANALYSIS_MISSING"
+        case .invalidAnalysisInput: "INVALID_ANALYSIS_INPUT"
+        case .unsupportedModelVersion: "UNSUPPORTED_MODEL_VERSION"
+        case .unknown(let value): value
+        }
+    }
+}
+
+enum MealReportGradeDTO: Equatable, ForwardCompatibleStringDTO {
     case good
     case soso
     case bad
+    case unknown(String)
+
+    init(rawValue: String) {
+        switch rawValue {
+        case "good": self = .good
+        case "soso": self = .soso
+        case "bad": self = .bad
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    var rawValue: String {
+        switch self {
+        case .good: "good"
+        case .soso: "soso"
+        case .bad: "bad"
+        case .unknown(let value): value
+        }
+    }
 }
 
 struct MealReportAxisScoresDTO: Codable, Equatable {
@@ -257,4 +332,32 @@ struct CreateSessionResultDTO: Codable, Equatable {
     var streak: SessionStreakDTO
     var today: SessionTodayDTO
     var userStats: HomeStateDTO
+
+    /// 서버 생성 응답은 같은 리포트를 최상위와 세션 안에 함께 싣는다.
+    /// 테스트·프리뷰 fixture도 이 불변식을 어기지 않도록 한쪽 값으로 두 위치를 동기화한다.
+    init(
+        chewingSession: ChewingSessionDTO,
+        mealReport: MealReportDTO?,
+        chewingSessionAccepted: Bool,
+        rewardEligible: Bool,
+        ineligibleReason: String?,
+        reward: SessionRewardDTO,
+        streak: SessionStreakDTO,
+        today: SessionTodayDTO,
+        userStats: HomeStateDTO
+    ) {
+        let resolvedReport = mealReport ?? chewingSession.mealReport
+        var responseSession = chewingSession
+        responseSession.mealReport = resolvedReport
+
+        self.chewingSession = responseSession
+        self.mealReport = resolvedReport
+        self.chewingSessionAccepted = chewingSessionAccepted
+        self.rewardEligible = rewardEligible
+        self.ineligibleReason = ineligibleReason
+        self.reward = reward
+        self.streak = streak
+        self.today = today
+        self.userStats = userStats
+    }
 }

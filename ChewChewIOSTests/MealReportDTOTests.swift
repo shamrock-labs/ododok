@@ -27,6 +27,12 @@ final class MealReportDTOTests: XCTestCase {
         XCTAssertEqual(report.recommendedBaseline?.chewingTimeRatio, 0.6)
         XCTAssertEqual(report.recommendedBaseline?.totalChewCount, 300)
         XCTAssertEqual(report.recommendedBaseline?.mealDurationSec, 720)
+
+        let encoded = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(report)) as? [String: Any]
+        )
+        XCTAssertEqual(encoded["status"] as? String, "GENERATED")
+        XCTAssertEqual(encoded["grade"] as? String, "soso")
     }
 
     func testAllUnreportableReasonsDecodeFromServerTags() throws {
@@ -34,6 +40,7 @@ final class MealReportDTOTests: XCTestCase {
             ("SESSION_TOO_SHORT", .sessionTooShort),
             ("ANALYSIS_MISSING", .analysisMissing),
             ("INVALID_ANALYSIS_INPUT", .invalidAnalysisInput),
+            ("UNSUPPORTED_MODEL_VERSION", .unsupportedModelVersion),
         ]
 
         for (rawReason, expectedReason) in cases {
@@ -44,6 +51,41 @@ final class MealReportDTOTests: XCTestCase {
             XCTAssertEqual(report.reason, expectedReason)
             XCTAssertNil(report.totalScore)
         }
+    }
+
+    func testUnknownMealReportTagsDoNotFailSessionDecodeAndRetainRawValues() throws {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+        let json = sessionJSON
+            .replacingOccurrences(of: #""status": "GENERATED""#, with: #""status": "QUEUED""#)
+            .replacingOccurrences(
+                of: #""scorePolicyVersion": "legacy-ios-v1""#,
+                with: #""reason": "FUTURE_REASON", "scorePolicyVersion": "legacy-ios-v1""#
+            )
+            .replacingOccurrences(of: #""grade": "soso""#, with: #""grade": "excellent""#)
+
+        let session = try decoder.decode(ChewingSessionDTO.self, from: Data(json.utf8))
+
+        XCTAssertEqual(session.mealReport?.status, .unknown("QUEUED"))
+        XCTAssertEqual(session.mealReport?.reason, .unknown("FUTURE_REASON"))
+        XCTAssertEqual(session.mealReport?.grade, .unknown("excellent"))
+        XCTAssertEqual(session.mealReport?.status.rawValue, "QUEUED")
+        XCTAssertEqual(session.mealReport?.reason?.rawValue, "FUTURE_REASON")
+        XCTAssertEqual(session.mealReport?.grade?.rawValue, "excellent")
+
+        let encodedReport = try XCTUnwrap(
+            JSONSerialization.jsonObject(
+                with: JSONEncoder().encode(try XCTUnwrap(session.mealReport))
+            ) as? [String: Any]
+        )
+        XCTAssertEqual(encodedReport["status"] as? String, "QUEUED")
+        XCTAssertEqual(encodedReport["reason"] as? String, "FUTURE_REASON")
+        XCTAssertEqual(encodedReport["grade"] as? String, "excellent")
+
+        let encodedSession = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(session)) as? [String: Any]
+        )
+        XCTAssertNil(encodedSession["mealReport"], "response report must remain excluded from upload encoding")
     }
 
     func testSessionResponseDecodesEmbeddedMealReport() throws {
@@ -119,6 +161,41 @@ final class MealReportDTOTests: XCTestCase {
 
         XCTAssertEqual(result.mealReport, report)
         XCTAssertEqual(result.chewingSession.mealReport, report)
+    }
+
+    func testCreateResultInitializerSynchronizesTopLevelReportIntoSessionFixture() throws {
+        let report = try JSONDecoder().decode(MealReportDTO.self, from: Data(generatedReportJSON.utf8))
+        let sessionWithoutReport = ChewingSessionDTO(
+            id: sessionId,
+            deviceId: "ios-device",
+            startedAt: .distantPast,
+            endedAt: .distantFuture,
+            durationSec: 811,
+            sensorLocation: "headphoneLeft",
+            sampleCount: 40_550,
+            sampleRateHz: 50,
+            storagePath: nil,
+            appVersion: nil,
+            chewingSeconds: 787,
+            restSeconds: 24,
+            chewingFraction: 0.97,
+            estimatedTotalChews: 589,
+            modelVersion: "dsp-chewcounter-1"
+        )
+
+        let result = CreateSessionResultDTO(
+            chewingSession: sessionWithoutReport,
+            mealReport: report,
+            chewingSessionAccepted: true,
+            rewardEligible: true,
+            ineligibleReason: nil,
+            reward: SessionRewardDTO(grantedPoints: 10, capped: false, idempotentReplay: false),
+            streak: SessionStreakDTO(current: 1, event: "FIRST_DAY", freezeInventory: 0),
+            today: SessionTodayDTO(completed: true),
+            userStats: .empty(deviceId: "ios-device")
+        )
+
+        XCTAssertEqual(result.mealReport, result.chewingSession.mealReport)
     }
 
     private var generatedReportJSON: String {
