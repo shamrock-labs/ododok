@@ -12,6 +12,40 @@ struct CalibrationRhythmTrackVisual: View {
     @State private var targetFlash = false
 
     var body: some View {
+        VStack(spacing: Metrics.sceneSpacing) {
+            measurementFeedback
+            rhythmTrack
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: Metrics.sceneHeight)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("씹기 리듬 보정")
+        .accessibilityValue("안내 \(cueIndex)회 중 기준 신호 \(detectedCount)회")
+        .accessibilityIdentifier("CalibrationRhythmTrack")
+    }
+
+    private var measurementFeedback: some View {
+        ZStack {
+            SquirrelView(
+                mood: .happy,
+                hat: nil,
+                glasses: nil,
+                acc: nil,
+                animKey: detectedCount,
+                isEating: true
+            )
+            .scaleEffect(Metrics.squirrelScale)
+
+            ChewFeedbackPulseOverlay(
+                triggerKey: detectedCount,
+                isActive: cueIndex > 0
+            )
+            .scaleEffect(Metrics.pulseScale)
+        }
+        .frame(height: Metrics.feedbackHeight)
+    }
+
+    private var rhythmTrack: some View {
         GeometryReader { proxy in
             ZStack {
                 RoundedRectangle(cornerRadius: Metrics.trackRadius)
@@ -25,21 +59,6 @@ struct CalibrationRhythmTrackVisual: View {
                 targetZone(trackWidth: proxy.size.width)
                 rhythmNote(trackWidth: proxy.size.width)
 
-                VStack {
-                    HStack {
-                        Text("\(max(cueIndex, 0)) / \(cueCount)")
-                            .font(.appFont(.boldCaption))
-                            .foregroundStyle(Color.textMuted)
-                            .monospacedDigit()
-                        Spacer()
-                        Label("\(detectedCount)", systemImage: "waveform.path")
-                            .font(.appFont(.boldCaption))
-                            .foregroundStyle(Color.tintInteractive)
-                            .monospacedDigit()
-                    }
-                    Spacer()
-                }
-                .padding(AppSpacing.inner)
             }
             .clipShape(RoundedRectangle(cornerRadius: Metrics.trackRadius))
         }
@@ -51,10 +70,6 @@ struct CalibrationRhythmTrackVisual: View {
         .onChange(of: cueHitID) { _, _ in
             flashTarget()
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("씹기 리듬 보정")
-        .accessibilityValue("안내 \(cueIndex)회 중 기준 신호 \(detectedCount)회")
-        .accessibilityIdentifier("CalibrationRhythmTrack")
     }
 
     private func laneGuides(trackWidth: CGFloat) -> some View {
@@ -130,15 +145,20 @@ struct CalibrationRhythmTrackVisual: View {
 }
 
 private enum Metrics {
-    static let trackHeight: CGFloat = 150
+    static let sceneHeight: CGFloat = 180
+    static let feedbackHeight: CGFloat = 116
+    static let sceneSpacing: CGFloat = 6
+    static let squirrelScale: CGFloat = 0.76
+    static let pulseScale: CGFloat = 0.84
+    static let trackHeight: CGFloat = 54
     static let trackRadius: CGFloat = 8
     static let horizontalInset: CGFloat = 18
-    static let laneSpacing: CGFloat = 48
-    static let targetWidth: CGFloat = 26
-    static let targetHeight: CGFloat = 82
+    static let laneSpacing: CGFloat = 20
+    static let targetWidth: CGFloat = 18
+    static let targetHeight: CGFloat = 36
     static let targetActiveBorder: CGFloat = 2
-    static let noteWidth: CGFloat = 22
-    static let noteHeight: CGFloat = 62
+    static let noteWidth: CGFloat = 16
+    static let noteHeight: CGFloat = 28
     static let noteShadowRadius: CGFloat = 8
     static let noteShadowX: CGFloat = 3
     static let approachDuration: TimeInterval = 1.2

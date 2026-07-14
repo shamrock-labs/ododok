@@ -159,25 +159,39 @@ final class SimulatedMeasurementCalibrationSampler: MeasurementCalibrationSampli
     ) {
         eventTask?.cancel()
         let amplitudes = [0.031, 0.028, 0.034, 0.041, 0.029, 0.036, 0.033, 0.039, 0.030, 0.037]
-        let initialDelay: Duration
-        let minPeakAmplitude: Double
         switch mode {
         case .collectPersonalSignal:
-            initialDelay = .milliseconds(1_300)
-            minPeakAmplitude = 0
-        case let .validate(threshold):
-            initialDelay = .milliseconds(300)
-            minPeakAmplitude = threshold
-        }
-        eventTask = Task {
-            for (index, amplitude) in amplitudes.enumerated() {
-                do {
-                    try await Task.sleep(for: index == 0 ? initialDelay : .milliseconds(1_200))
-                } catch {
-                    return
+            eventTask = Task {
+                for index in 0..<120 {
+                    do {
+                        try await Task.sleep(for: .milliseconds(100))
+                    } catch {
+                        return
+                    }
+                    guard !Task.isCancelled else { return }
+                    let amplitude = amplitudes[index % amplitudes.count]
+                    onEvent(ChewDetectionEvent(
+                        count: index + 1,
+                        timestamp: Double(index) / 10,
+                        amplitude: amplitude
+                    ))
                 }
-                guard !Task.isCancelled, amplitude > minPeakAmplitude else { continue }
-                onEvent(ChewDetectionEvent(count: index + 1, timestamp: Double(index), amplitude: amplitude))
+            }
+        case let .validate(threshold):
+            eventTask = Task {
+                for (index, amplitude) in amplitudes.enumerated() {
+                    do {
+                        try await Task.sleep(for: index == 0 ? .milliseconds(300) : .milliseconds(1_100))
+                    } catch {
+                        return
+                    }
+                    guard !Task.isCancelled, amplitude > threshold else { continue }
+                    onEvent(ChewDetectionEvent(
+                        count: index + 1,
+                        timestamp: Double(index),
+                        amplitude: amplitude
+                    ))
+                }
             }
         }
     }
