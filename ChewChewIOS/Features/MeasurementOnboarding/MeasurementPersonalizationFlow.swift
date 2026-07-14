@@ -5,20 +5,27 @@ struct MeasurementPersonalizationFlow: View {
 
     @State private var store: MeasurementOnboardingStore
     @State private var connectionMonitor: AirPodsConnectionMonitor
+    @State private var isPreparingAirPods = false
+    @State private var readinessTask: Task<Void, Never>?
 
     private let personalizationStore: any ChewDetectionPersonalizationStoring
+    private let readinessService: any AirPodsAudioReadinessServicing
     private let onSaved: (PersonalizedChewDetectionSettings) -> Void
 
     init(
         personalizationStore: any ChewDetectionPersonalizationStoring = UserDefaultsChewProfileStore(),
+        readinessService: (any AirPodsAudioReadinessServicing)? = nil,
         onSaved: @escaping (PersonalizedChewDetectionSettings) -> Void
     ) {
         let connectionMonitor = AirPodsConnectionMonitor()
         #if DEBUG && targetEnvironment(simulator)
         let sampler: any MeasurementCalibrationSampling = SimulatedMeasurementCalibrationSampler()
+        let defaultReadinessService: any AirPodsAudioReadinessServicing =
+            SimulatedAirPodsAudioReadinessService()
         let isConnected = true
         #else
         let sampler: any MeasurementCalibrationSampling = LocalMeasurementCalibrationSampler()
+        let defaultReadinessService: any AirPodsAudioReadinessServicing = AirPodsAudioReadinessService()
         let isConnected = connectionMonitor.isConnected
         #endif
 
@@ -28,6 +35,7 @@ struct MeasurementPersonalizationFlow: View {
             sampler: sampler
         ))
         self.personalizationStore = personalizationStore
+        self.readinessService = readinessService ?? defaultReadinessService
         self.onSaved = onSaved
     }
 
@@ -36,8 +44,9 @@ struct MeasurementPersonalizationFlow: View {
             store: store,
             onComplete: saveAndDismiss,
             onSkip: { dismiss() },
-            onRetryConnection: refreshConnection,
-            skipTitle: "닫기"
+            onRetryConnection: requestAirPodsReadiness,
+            skipTitle: "닫기",
+            isPreparingAirPods: isPreparingAirPods
         )
         .onAppear {
             refreshConnection()
@@ -46,7 +55,14 @@ struct MeasurementPersonalizationFlow: View {
             }
         }
         .onDisappear {
+            readinessTask?.cancel()
+            readinessService.stop()
             connectionMonitor.stop()
+        }
+        .onChange(of: store.stage) { _, stage in
+            if stage == .connection {
+                requestAirPodsReadiness()
+            }
         }
     }
 
@@ -56,6 +72,19 @@ struct MeasurementPersonalizationFlow: View {
         #else
         store.setAirPodsConnected(connectionMonitor.isConnected)
         #endif
+    }
+
+    private func requestAirPodsReadiness() {
+        guard store.stage == .connection, !isPreparingAirPods else { return }
+        readinessTask?.cancel()
+        readinessTask = Task { @MainActor in
+            isPreparingAirPods = true
+            store.setAirPodsConnected(false)
+            let isReady = await readinessService.prepareAirPods()
+            guard !Task.isCancelled else { return }
+            store.setAirPodsConnected(isReady)
+            isPreparingAirPods = false
+        }
     }
 
     private func saveAndDismiss() {

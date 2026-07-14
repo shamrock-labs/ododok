@@ -6,6 +6,7 @@ struct MeasurementOnboardingView: View {
     let onSkip: () -> Void
     let onRetryConnection: () -> Void
     var skipTitle = "나중에"
+    var isPreparingAirPods = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -96,7 +97,10 @@ struct MeasurementOnboardingView: View {
         case .intro:
             IntroSignalVisual(reduceMotion: reduceMotion)
         case .connection:
-            ConnectionVisual(isConnected: store.isAirPodsConnected)
+            AirPodsConnectionReadinessVisual(
+                isConnected: store.isAirPodsConnected,
+                isPreparing: isPreparingAirPods
+            )
         case .calibration:
             SignalCaptureVisual(
                 mode: .calibration,
@@ -147,15 +151,21 @@ struct MeasurementOnboardingView: View {
 
     private var connectionStatus: some View {
         HStack(spacing: AppSpacing.gap) {
-            Image(systemName: store.isAirPodsConnected ? "checkmark.circle.fill" : "circle.dashed")
-                .font(.appFont(.regular, size: AppSize.iconXXLarge))
-                .foregroundStyle(store.isAirPodsConnected ? Color.statusSuccess : Color.textSubtle)
+            if isPreparingAirPods {
+                ProgressView()
+                    .controlSize(.regular)
+                    .frame(width: AppSize.iconXXLarge, height: AppSize.iconXXLarge)
+            } else {
+                Image(systemName: store.isAirPodsConnected ? "checkmark.circle.fill" : "exclamationmark.circle")
+                    .font(.appFont(.regular, size: AppSize.iconXXLarge))
+                    .foregroundStyle(store.isAirPodsConnected ? Color.statusSuccess : Color.statusWarning)
+            }
 
             VStack(alignment: .leading, spacing: AppSpacing.microGap) {
-                Text(store.isAirPodsConnected ? "AirPods가 연결됐어요" : "AirPods 연결을 기다리고 있어요")
+                Text(connectionTitle)
                     .font(.appFont(.boldBody))
                     .foregroundStyle(Color.textDefault)
-                Text(store.isAirPodsConnected ? "양쪽을 착용했다면 다음으로 가요." : "연결하고 양쪽을 착용해 주세요.")
+                Text(connectionMessage)
                     .font(.appFont(.regularCallout))
                     .foregroundStyle(Color.textMuted)
             }
@@ -163,6 +173,18 @@ struct MeasurementOnboardingView: View {
         }
         .padding(AppSpacing.four)
         .background(Color.bgSurface, in: RoundedRectangle(cornerRadius: AppRadius.container))
+    }
+
+    private var connectionTitle: String {
+        if isPreparingAirPods { return "AirPods를 준비하고 있어요" }
+        return store.isAirPodsConnected ? "AirPods가 준비됐어요" : "AirPods에서 소리가 들리지 않았어요"
+    }
+
+    private var connectionMessage: String {
+        if isPreparingAirPods { return "잠시 후 준비음이 들리는지 확인해 주세요." }
+        return store.isAirPodsConnected
+            ? "준비음이 들렸다면 다음으로 가요."
+            : "AirPods를 착용한 뒤 다시 시도해 주세요."
     }
 
     private var measurementStatus: some View {
@@ -229,8 +251,8 @@ struct MeasurementOnboardingView: View {
             .allowsHitTesting(!primaryDisabled)
             .accessibilityIdentifier("MeasurementOnboardingPrimary")
 
-            if store.stage == .connection && !store.isAirPodsConnected {
-                Button("연결 상태 다시 확인") {
+            if store.stage == .connection && !store.isAirPodsConnected && !isPreparingAirPods {
+                Button("다시 시도") {
                     onRetryConnection()
                 }
                 .buttonStyle(.plain)
@@ -309,12 +331,14 @@ struct MeasurementOnboardingView: View {
     }
 
     private var primaryDisabled: Bool {
-        store.isMeasuring || (store.stage == .connection && !store.isAirPodsConnected)
+        store.isMeasuring
+            || (store.stage == .connection && (!store.isAirPodsConnected || isPreparingAirPods))
     }
 
     private func handlePrimaryAction() {
         switch store.stage {
-        case .calibration, .validation where !store.measurementCompleted:
+        case .calibration where !store.measurementCompleted,
+             .validation where !store.measurementCompleted:
             store.startMeasurement()
         case .ready:
             onComplete()
@@ -398,28 +422,6 @@ private struct IntroSignalVisual: View {
                 .foregroundStyle(Color.textActionStrong)
         }
         .onAppear { animate = true }
-    }
-}
-
-private struct ConnectionVisual: View {
-    let isConnected: Bool
-
-    var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            Circle()
-                .fill(Color.bgSurface)
-                .frame(width: Metrics.signalCore, height: Metrics.signalCore)
-                .overlay {
-                    Image(systemName: "airpodspro")
-                        .font(.appFont(.regular, size: Metrics.heroIcon))
-                        .foregroundStyle(Color.textActionStrong)
-                }
-
-            Image(systemName: isConnected ? "checkmark.circle.fill" : "ellipsis.circle.fill")
-                .font(.appFont(.regular, size: Metrics.statusIcon))
-                .foregroundStyle(isConnected ? Color.statusSuccess : Color.statusWarning)
-                .background(Color.bgPage, in: Circle())
-        }
     }
 }
 

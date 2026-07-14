@@ -42,10 +42,17 @@ final class SettingsDeleteDataUITests: XCTestCase {
             "씹기 감지 맞추기 진입점이 측정 설정에 있어야 한다"
         )
         personalizationButton.tap()
+        let primaryButton = app.buttons["MeasurementOnboardingPrimary"]
         XCTAssertTrue(
-            app.buttons["MeasurementOnboardingPrimary"].waitForExistence(timeout: 5),
+            primaryButton.waitForExistence(timeout: 5),
             "씹기 감지 맞추기 화면이 열려야 한다"
         )
+        primaryButton.tap()
+        XCTAssertTrue(
+            app.staticTexts["AirPods가 준비됐어요"].waitForExistence(timeout: 5),
+            "준비음을 확인한 뒤 AirPods 준비 완료 상태가 보여야 한다"
+        )
+        XCTAssertTrue(primaryButton.isEnabled, "AirPods 준비 완료 후 다음 단계로 이동할 수 있어야 한다")
     }
 
     func testDeleteMyData_showsConfirmationDialog() {
