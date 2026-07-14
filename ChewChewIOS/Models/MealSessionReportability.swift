@@ -1,15 +1,12 @@
 import Foundation
 
-/// 세션이 리포트/점수를 낼 수 있는지 판단하는 단일 정본.
-///
-/// 리스트·상세(`ReportCardModel.from`)와 records 매핑의 oldest 조회가
-/// 같은 규칙을 쓰도록 판정 로직과 임계값을 한 곳에 둔다.
-/// (버그 F 재발 방지 — "리포트 가능한가"를 여러 곳에 복붙하지 않는다.)
+/// 서버가 저장한 식사 리포트의 생성 여부를 판단하는 단일 정본.
 enum MealSessionReportability {
-    /// 리포트 대상으로 인정하는 최소 식사 길이.
+    /// 측정 진행 중 안내에만 쓰는 서버 정책과 공유된 최소 식사 길이.
+    /// 저장된 세션의 리포트 가능 여부는 이 값으로 재판정하지 않는다.
     static let minDurationSec: Double = 30
 
     static func isReportable(_ dto: ChewingSessionDTO) -> Bool {
-        dto.durationSec >= minDurationSec && SessionScore.compute(dto) != nil
+        dto.mealReport?.status == .generated
     }
 }

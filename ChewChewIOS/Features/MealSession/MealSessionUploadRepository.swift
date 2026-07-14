@@ -47,8 +47,11 @@ struct RemoteStoreMealSessionUploadRepository: MealSessionUploadRepository {
             storagePath: storagePath,
             appVersion: appVersion
         )
-        let result = try await remoteStore.createChewingSession(session)
-        return MealSessionUploadResult(session: session, result: result)
+        var result = try await remoteStore.createChewingSession(session)
+        let mealReport = result.mealReport ?? result.chewingSession.mealReport
+        result.mealReport = mealReport
+        result.chewingSession.mealReport = mealReport
+        return MealSessionUploadResult(session: result.chewingSession, result: result)
     }
 
     func fetchTodaySessions(startOfDay: Date) async throws -> [ChewingSessionDTO] {
