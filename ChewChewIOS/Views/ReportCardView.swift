@@ -880,8 +880,8 @@ extension ReportCardModel {
         let mood = Mood(grade: grade, score: totalScore)
         let caption = CaptionPool.report(for: grade)
         let chewingRatio = min(max(metrics.chewingTimeRatio, 0), 1)
-        let chewingSeconds = dto.chewingSeconds ?? metrics.mealDurationSec * chewingRatio
-        let restSeconds = dto.restSeconds ?? metrics.mealDurationSec * (1 - chewingRatio)
+        let chewingSeconds = metrics.mealDurationSec * chewingRatio
+        let restSeconds = metrics.mealDurationSec * (1 - chewingRatio)
         return ReportCardModel(
             score: totalScore,
             grade: grade,
@@ -891,7 +891,7 @@ extension ReportCardModel {
             chewingFraction: metrics.chewingTimeRatio,
             chewingSeconds: chewingSeconds,
             restSeconds: restSeconds,
-            chewRestSegments: ChewRestSegment.fromTimeline(dto.chewingTimeline),
+            chewRestSegments: [],
             speedScore: axes.chewingRate,
             rhythmScore: axes.chewingTimeRatio,
             continuityScore: axes.totalChewCount,
