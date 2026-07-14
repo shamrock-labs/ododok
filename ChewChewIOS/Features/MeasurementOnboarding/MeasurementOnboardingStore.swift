@@ -136,12 +136,17 @@ final class MeasurementOnboardingStore {
         resetCurrentRun()
         isMeasuring = true
 
-        let threshold = stage == .calibration
-            ? ChewDetectionConfiguration.calibrationProbe.minPeakAmplitude
-            : candidateMinPeakAmplitude ?? ChewDetectionConfiguration.standard.minPeakAmplitude
+        let samplingMode: MeasurementCalibrationSamplingMode = if stage == .calibration {
+            .collectPersonalSignal
+        } else {
+            .validate(
+                minPeakAmplitude: candidateMinPeakAmplitude
+                    ?? ChewDetectionConfiguration.standard.minPeakAmplitude
+            )
+        }
 
         sampler.start(
-            minPeakAmplitude: threshold,
+            mode: samplingMode,
             onEvent: { [weak self] event in self?.handle(event) },
             onError: { [weak self] message in self?.showIssue(.sensor(message)) }
         )

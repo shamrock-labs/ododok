@@ -16,7 +16,7 @@ enum PeakAmplitudeCalibration {
         let sorted = amplitudes.sorted()
         let lowerBoundIndex = Int(floor(Double(sorted.count - 1) * 0.2))
         let conservativePeak = sorted[lowerBoundIndex]
-        return min(max(conservativePeak * 0.6, 0.003), 0.03)
+        return min(max(conservativePeak * 0.6, 0.001), 0.03)
     }
 
     static func validationPassed(detectedCount: Int) -> Bool {
@@ -25,11 +25,17 @@ enum PeakAmplitudeCalibration {
 }
 
 @MainActor
+enum MeasurementCalibrationSamplingMode: Equatable {
+    case collectPersonalSignal
+    case validate(minPeakAmplitude: Double)
+}
+
+@MainActor
 protocol MeasurementCalibrationSampling: AnyObject {
     var isDeviceMotionAvailable: Bool { get }
 
     func start(
-        minPeakAmplitude: Double,
+        mode: MeasurementCalibrationSamplingMode,
         onEvent: @escaping @MainActor (ChewDetectionEvent) -> Void,
         onError: @escaping @MainActor (String) -> Void
     )
@@ -38,10 +44,30 @@ protocol MeasurementCalibrationSampling: AnyObject {
 
 @MainActor
 final class LocalMeasurementCalibrationSampler: MeasurementCalibrationSampling {
+    private enum Processor {
+        case amplitudeProbe(ChewPeakAmplitudeProbe)
+        case detectionEngine(ChewDetectionEngine)
+
+        func feed(_ sample: ChewDetectionSample) async -> ChewDetectionEvent? {
+            switch self {
+            case let .amplitudeProbe(probe):
+                return await probe.feed(sample)
+            case let .detectionEngine(engine):
+                return await engine.feed(sample)
+            }
+        }
+
+        func finish() async {
+            guard case let .detectionEngine(engine) = self else { return }
+            _ = await engine.finishSession()
+        }
+    }
+
     private let motionService: any MealMotionServicing
-    private var detectionEngine: ChewDetectionEngine?
+    private var processor: Processor?
     private var sampleProcessingTailTask: Task<Void, Never>?
     private var onEvent: (@MainActor (ChewDetectionEvent) -> Void)?
+    private var processingGeneration = UUID()
 
     init(motionService: any MealMotionServicing = HeadphoneMotionService()) {
         self.motionService = motionService
@@ -52,21 +78,29 @@ final class LocalMeasurementCalibrationSampler: MeasurementCalibrationSampling {
     }
 
     func start(
-        minPeakAmplitude: Double,
+        mode: MeasurementCalibrationSamplingMode,
         onEvent: @escaping @MainActor (ChewDetectionEvent) -> Void,
         onError: @escaping @MainActor (String) -> Void
     ) {
         motionService.stop()
         sampleProcessingTailTask?.cancel()
+        processingGeneration = UUID()
 
-        let engine = ChewDetectionEngine(
-            configuration: ChewDetectionConfiguration(minPeakAmplitude: minPeakAmplitude)
-        )
-        detectionEngine = engine
+        let processor: Processor
+        switch mode {
+        case .collectPersonalSignal:
+            processor = .amplitudeProbe(ChewPeakAmplitudeProbe())
+        case let .validate(minPeakAmplitude):
+            processor = .detectionEngine(ChewDetectionEngine(
+                configuration: ChewDetectionConfiguration(minPeakAmplitude: minPeakAmplitude)
+            ))
+        }
+        self.processor = processor
         self.onEvent = onEvent
+        let generation = processingGeneration
 
         motionService.start { [weak self] sample in
-            self?.enqueue(sample, engine: engine)
+            self?.enqueue(sample, processor: processor, generation: generation)
         } onError: { message in
             Task { @MainActor in onError(message) }
         }
@@ -77,18 +111,23 @@ final class LocalMeasurementCalibrationSampler: MeasurementCalibrationSampling {
         let pendingTask = sampleProcessingTailTask
         sampleProcessingTailTask = nil
         await pendingTask?.value
-        _ = await detectionEngine?.finishSession()
-        detectionEngine = nil
+        await processor?.finish()
+        processor = nil
         onEvent = nil
+        processingGeneration = UUID()
     }
 
-    private func enqueue(_ sample: HeadphoneMotionSample, engine: ChewDetectionEngine) {
+    private func enqueue(
+        _ sample: HeadphoneMotionSample,
+        processor: Processor,
+        generation: UUID
+    ) {
         let previousTask = sampleProcessingTailTask
         sampleProcessingTailTask = Task { [weak self] in
             await previousTask?.value
             guard !Task.isCancelled else { return }
 
-            let event = await engine.feed(ChewDetectionSample(
+            let event = await processor.feed(ChewDetectionSample(
                 timestamp: sample.timestamp,
                 rotX: sample.rotationX,
                 rotY: sample.rotationY,
@@ -99,7 +138,7 @@ final class LocalMeasurementCalibrationSampler: MeasurementCalibrationSampling {
             ))
             guard let event else { return }
             await MainActor.run { [weak self] in
-                guard self?.detectionEngine === engine else { return }
+                guard self?.processingGeneration == generation else { return }
                 self?.onEvent?(event)
             }
         }
@@ -114,15 +153,22 @@ final class SimulatedMeasurementCalibrationSampler: MeasurementCalibrationSampli
     var isDeviceMotionAvailable: Bool { true }
 
     func start(
-        minPeakAmplitude: Double,
+        mode: MeasurementCalibrationSamplingMode,
         onEvent: @escaping @MainActor (ChewDetectionEvent) -> Void,
         onError _: @escaping @MainActor (String) -> Void
     ) {
         eventTask?.cancel()
         let amplitudes = [0.031, 0.028, 0.034, 0.041, 0.029, 0.036, 0.033, 0.039, 0.030, 0.037]
-        let initialDelay: Duration = minPeakAmplitude == ChewDetectionConfiguration.calibrationProbe.minPeakAmplitude
-            ? .milliseconds(1_300)
-            : .milliseconds(300)
+        let initialDelay: Duration
+        let minPeakAmplitude: Double
+        switch mode {
+        case .collectPersonalSignal:
+            initialDelay = .milliseconds(1_300)
+            minPeakAmplitude = 0
+        case let .validate(threshold):
+            initialDelay = .milliseconds(300)
+            minPeakAmplitude = threshold
+        }
         eventTask = Task {
             for (index, amplitude) in amplitudes.enumerated() {
                 do {

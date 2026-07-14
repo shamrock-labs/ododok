@@ -2,6 +2,31 @@ import XCTest
 @testable import ChewChewIOS
 
 final class ChewDetectionEngineTests: XCTestCase {
+    func testCalibrationProbeFindsWeakPeakWithoutActivityGate() async {
+        let probe = ChewPeakAmplitudeProbe()
+        var events: [ChewDetectionEvent] = []
+
+        for index in 0..<100 {
+            let timestamp = Double(index) / 50
+            let rotationY = 0.005 * sin(2 * Double.pi * timestamp)
+            let event = await probe.feed(ChewDetectionSample(
+                timestamp: timestamp,
+                rotX: 0,
+                rotY: rotationY,
+                rotZ: 0,
+                accelX: 0,
+                accelY: 0,
+                accelZ: 0
+            ))
+            if let event {
+                events.append(event)
+            }
+        }
+
+        XCTAssertFalse(events.isEmpty)
+        XCTAssertTrue(events.allSatisfy { $0.amplitude < 0.006 })
+    }
+
     func testFeedReturnsDetectionEventWhenPeakIsCounted() async {
         let engine = ChewDetectionEngine()
         var events: [ChewDetectionEvent] = []

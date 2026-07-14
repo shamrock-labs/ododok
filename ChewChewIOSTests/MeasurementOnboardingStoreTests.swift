@@ -36,6 +36,14 @@ final class MeasurementOnboardingStoreTests: XCTestCase {
         XCTAssertEqual(threshold, 0.0174, accuracy: 0.000_001)
     }
 
+    func testCalibrationAllowsAWeakPersonalThreshold() throws {
+        let threshold = try XCTUnwrap(PeakAmplitudeCalibration.personalizedThreshold(
+            from: [0.0015, 0.0016, 0.0017, 0.0018, 0.0019, 0.0020, 0.0021]
+        ))
+
+        XCTAssertEqual(threshold, 0.001, accuracy: 0.000_001)
+    }
+
     func testValidationAcceptsSmallCountingTolerance() {
         XCTAssertFalse(PeakAmplitudeCalibration.validationPassed(detectedCount: 7))
         XCTAssertTrue(PeakAmplitudeCalibration.validationPassed(detectedCount: 8))
@@ -149,7 +157,7 @@ private final class ManualCalibrationSampler: MeasurementCalibrationSampling {
     private var eventCount = 0
 
     func start(
-        minPeakAmplitude _: Double,
+        mode _: MeasurementCalibrationSamplingMode,
         onEvent: @escaping @MainActor (ChewDetectionEvent) -> Void,
         onError _: @escaping @MainActor (String) -> Void
     ) {

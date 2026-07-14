@@ -34,7 +34,66 @@ struct ChewDetectionConfiguration: Sendable, Equatable {
     let minPeakAmplitude: Double
 
     static let standard = ChewDetectionConfiguration(minPeakAmplitude: 0.006)
-    static let calibrationProbe = ChewDetectionConfiguration(minPeakAmplitude: 0.001)
+}
+
+/// Guided calibration reads the same filtered rotation-Y peaks as the counter,
+/// but deliberately skips the activity gate and count confirmation rules.
+actor ChewPeakAmplitudeProbe {
+    private let hpAlpha = 0.9391
+    private let lpBeta = 0.7585
+    private let headingMotionThreshold = 0.12
+
+    private var hpPrevious = 0.0
+    private var hpPreviousInput = 0.0
+    private var lowPassState = 0.0
+    private var previousFiltered = 0.0
+    private var currentFiltered = 0.0
+    private var currentTimestamp: TimeInterval?
+    private var firstTimestamp: TimeInterval?
+    private var lastInputTimestamp: TimeInterval?
+    private var peakCount = 0
+
+    func feed(_ input: ChewDetectionSample) -> ChewDetectionEvent? {
+        guard lastInputTimestamp.map({ input.timestamp > $0 }) ?? true else { return nil }
+        lastInputTimestamp = input.timestamp
+        firstTimestamp = firstTimestamp ?? input.timestamp
+
+        let rotationMagnitude = (
+            input.rotX * input.rotX +
+                input.rotY * input.rotY +
+                input.rotZ * input.rotZ
+        ).squareRoot()
+        guard rotationMagnitude <= headingMotionThreshold else {
+            previousFiltered = 0
+            currentFiltered = 0
+            currentTimestamp = nil
+            return nil
+        }
+
+        let highPass = hpAlpha * (hpPrevious + input.rotY - hpPreviousInput)
+        hpPreviousInput = input.rotY
+        hpPrevious = highPass
+        lowPassState = lpBeta * lowPassState + (1 - lpBeta) * highPass
+        let nextFiltered = lowPassState
+
+        defer {
+            previousFiltered = currentFiltered
+            currentFiltered = nextFiltered
+            currentTimestamp = input.timestamp
+        }
+
+        guard currentFiltered > previousFiltered,
+              currentFiltered > nextFiltered,
+              currentFiltered > 0,
+              let peakTimestamp = currentTimestamp else { return nil }
+
+        peakCount += 1
+        return ChewDetectionEvent(
+            count: peakCount,
+            timestamp: peakTimestamp - (firstTimestamp ?? peakTimestamp),
+            amplitude: currentFiltered
+        )
+    }
 }
 
 private struct PeakWindowCandidate {
