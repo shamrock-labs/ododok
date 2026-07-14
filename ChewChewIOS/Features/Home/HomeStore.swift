@@ -22,7 +22,7 @@ final class HomeStore {
     private(set) var rewardHistoryLoadState: RewardHistoryLoadState = .idle
 
     private let repository: HomeRepository
-    private let localTodayRealChewCount: @MainActor () -> Int
+    private let serverReportTodayChewCount: @MainActor () -> Int
     private let onHomeApplied: @MainActor (HomeStateDTO) -> Void
     private let onRemoteError: @MainActor (Error) -> Void
     private let onRewardEarned: @MainActor (Int, String) -> Void
@@ -36,7 +36,7 @@ final class HomeStore {
         initialPoints: Int = 0,
         initialStreak: Int = 0,
         initialFreezeInventory: Int = 0,
-        localTodayRealChewCount: @escaping @MainActor () -> Int = { 0 },
+        serverReportTodayChewCount: @escaping @MainActor () -> Int = { 0 },
         onHomeApplied: @escaping @MainActor (HomeStateDTO) -> Void = { _ in },
         onRemoteError: @escaping @MainActor (Error) -> Void = { _ in },
         onRewardEarned: @escaping @MainActor (Int, String) -> Void = { _, _ in },
@@ -47,7 +47,7 @@ final class HomeStore {
         self.points = initialHome?.points ?? initialPoints
         self.streak = initialHome?.streak ?? initialStreak
         self.freezeInventory = initialHome?.freezeInventory ?? initialFreezeInventory
-        self.localTodayRealChewCount = localTodayRealChewCount
+        self.serverReportTodayChewCount = serverReportTodayChewCount
         self.onHomeApplied = onHomeApplied
         self.onRemoteError = onRemoteError
         self.onRewardEarned = onRewardEarned
@@ -60,7 +60,7 @@ final class HomeStore {
 
     var todayRealChewCount: Int {
         if let serverHome, serverHome.dailyGoal > 0 { return serverHome.todayRealChewCount }
-        return localTodayRealChewCount()
+        return serverReportTodayChewCount()
     }
 
     var todayProgress: Double {

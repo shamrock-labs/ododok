@@ -14,10 +14,33 @@ final class DailyReportServerMealReportTests: XCTestCase {
             baselineDuration: 777
         )
 
+        let report = try XCTUnwrap(session.mealReport)
         let model = try XCTUnwrap(DailyReportModel.from(
             date: session.startedAt,
-            sessions: [session],
-            previousSessions: []
+            report: DailyReportDTO(
+                date: "2024-08-29",
+                timezone: "Asia/Seoul",
+                mealCount: 1,
+                totalEatingSeconds: report.metrics?.mealDurationSec ?? 0,
+                totalChews: report.metrics?.totalChewCount ?? 0,
+                avgChewRatePerMin: report.metrics?.legacyMealRatePerMin,
+                avgChewingFraction: report.metrics?.chewingTimeRatio,
+                avgTotalScore: report.totalScore.map(Double.init),
+                meals: [DailyReportMealDTO(
+                    sessionId: session.id,
+                    slot: "LUNCH",
+                    startedAt: session.startedAt,
+                    endedAt: session.endedAt,
+                    durationSec: report.metrics?.mealDurationSec ?? 0,
+                    totalChews: report.metrics?.totalChewCount,
+                    chewRatePerMin: report.metrics?.legacyMealRatePerMin,
+                    chewingFraction: report.metrics?.chewingTimeRatio,
+                    paceBadge: "RECOMMENDED",
+                    mealReport: report
+                )],
+                vsYesterday: nil
+            ),
+            previousReport: nil
         ))
 
         XCTAssertEqual(model.totalChews, 589)
@@ -55,14 +78,16 @@ final class DailyReportServerMealReportTests: XCTestCase {
         baselineDuration: Double
     ) -> ChewingSessionDTO {
         let startedAt = Date(timeIntervalSince1970: 1_725_000_000)
+        let sessionId = UUID()
         return ChewingSessionDTO(
-            id: UUID(), deviceId: "test", startedAt: startedAt,
+            id: sessionId, deviceId: "test", startedAt: startedAt,
             endedAt: startedAt.addingTimeInterval(rawDuration), durationSec: rawDuration,
             sensorLocation: "default", sampleCount: 1, sampleRateHz: 50,
             storagePath: nil, appVersion: nil, chewingSeconds: 1, restSeconds: 29,
             chewingFraction: 0.01, estimatedTotalChews: rawChews, modelVersion: "raw",
             mealReport: MealReportDTO(
-                status: .generated, scorePolicyVersion: "legacy-ios-v1", analysisModelVersion: "server",
+                status: .generated, sessionId: sessionId,
+                scorePolicyVersion: "legacy-ios-v1", analysisModelVersion: "server",
                 totalScore: 71,
                 axisScores: .init(chewingRate: 0, chewingTimeRatio: 100, totalChewCount: 100, mealDuration: 85),
                 metrics: .init(chewingRatePerMin: nil, legacyMealRatePerMin: 43.6,

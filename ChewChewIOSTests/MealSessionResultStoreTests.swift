@@ -128,6 +128,27 @@ final class MealSessionResultStoreTests: XCTestCase {
         XCTAssertEqual(refreshCount, 1)
     }
 
+    func testHomeFallbackChewCountUsesOnlyCompleteStoredReportMetrics() async {
+        let repository = FakeMealSessionUploadRepository()
+        let generatedId = UUID()
+        var generated = makeSession(
+            id: generatedId,
+            mealReport: makeGeneratedReport(sessionId: generatedId, totalChewCount: 432)
+        )
+        generated.estimatedTotalChews = 9_999
+        var unreportable = makeSession(
+            id: UUID(),
+            mealReport: MealReportDTO(status: .unreportable, reason: .analysisMissing)
+        )
+        unreportable.estimatedTotalChews = 8_888
+        repository.todaySessions = [generated, unreportable]
+        let store = makeStore(repository: repository)
+
+        await store.fetchTodaySessions()
+
+        XCTAssertEqual(store.serverReportTodayChewCount, 432)
+    }
+
     func testDeleteSessionUsesRepositoryThenRefreshesHome() async {
         let repository = FakeMealSessionUploadRepository()
         let session = makeSession(id: UUID())
@@ -224,8 +245,29 @@ final class MealSessionResultStoreTests: XCTestCase {
         )
     }
 
-    private func makeGeneratedReport(sessionId: UUID) -> MealReportDTO {
-        MealReportDTO(status: .generated, sessionId: sessionId)
+    private func makeGeneratedReport(sessionId: UUID, totalChewCount: Int = 180) -> MealReportDTO {
+        MealReportDTO(
+            status: .generated,
+            sessionId: sessionId,
+            scorePolicyVersion: "legacy-ios-v1",
+            analysisModelVersion: "server",
+            totalScore: 71,
+            axisScores: .init(chewingRate: 0, chewingTimeRatio: 100, totalChewCount: 100, mealDuration: 85),
+            metrics: .init(
+                chewingRatePerMin: nil,
+                legacyMealRatePerMin: 28,
+                chewingTimeRatio: 0.5,
+                totalChewCount: totalChewCount,
+                mealDurationSec: 180
+            ),
+            grade: .soso,
+            recommendedBaseline: .init(
+                chewingRatePerMin: .init(target: 28),
+                chewingTimeRatio: 0.5,
+                totalChewCount: 200,
+                mealDurationSec: 720
+            )
+        )
     }
 
     private func makeResult(session: ChewingSessionDTO) -> CreateSessionResultDTO {

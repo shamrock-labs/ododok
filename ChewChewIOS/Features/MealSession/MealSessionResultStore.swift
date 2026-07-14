@@ -47,8 +47,16 @@ final class MealSessionResultStore {
         self.refreshHome = refreshHome
     }
 
-    var localTodayRealChewCount: Int {
-        todaySessions.reduce(0) { $0 + ($1.estimatedTotalChews ?? 0) }
+    /// 홈 API를 아직 받지 못한 짧은 구간에만 쓰는 저장 리포트 기반 fallback.
+    /// raw 분석값이나 rewardEligible을 홈 진행도와 결합하지 않는다.
+    var serverReportTodayChewCount: Int {
+        todaySessions.reduce(0) { partial, session in
+            guard let report = MealSessionReportability.completeGeneratedReport(
+                session.mealReport,
+                sessionId: session.id
+            ) else { return partial }
+            return partial + (report.metrics?.totalChewCount ?? 0)
+        }
     }
 
     func uploadSession(_ output: IMUSessionRecorder.Output, stats: SessionStats?) async {

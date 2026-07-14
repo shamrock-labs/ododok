@@ -31,6 +31,8 @@ protocol RemoteStore {
     /// "오늘의 식사 기록"은 since=오늘 0시 / until=nil, 월간 캘린더는 since=월 첫날 /
     /// until=다음 달 첫날로 호출.
     func fetchChewingSessions(deviceId: String, since: Date, until: Date?) async throws -> [ChewingSessionDTO]
+    /// 저장된 리포트 기준 일간 집계. 세션 배열을 클라이언트에서 다시 집계하지 않는다.
+    func fetchDailyReport(date: String) async throws -> DailyReportDTO
     /// 단일 세션 삭제 (swipe 삭제). device_id 매칭을 추가로 걸어 안전장치.
     func deleteChewingSession(id: UUID, deviceId: String) async throws
     /// 이 기기의 모든 chewing_session 일괄 삭제. profiles/user_stats는 보존 — 게임
@@ -69,6 +71,20 @@ extension RemoteStore {
     func upsertMealNotifications(_ settings: MealReminderSettings, timeZone: String) async throws {}
     func fetchMealNotifications() async throws -> MealReminderSettings? { nil }
     func fetchRewardHistory() async throws -> [RewardHistoryDTO] { [] }
+    func fetchDailyReport(date: String) async throws -> DailyReportDTO {
+        DailyReportDTO(
+            date: date,
+            timezone: "Asia/Seoul",
+            mealCount: 0,
+            totalEatingSeconds: 0,
+            totalChews: 0,
+            avgChewRatePerMin: nil,
+            avgChewingFraction: nil,
+            avgTotalScore: nil,
+            meals: [],
+            vsYesterday: nil
+        )
+    }
     func fetchFriendInviteCode() async throws -> FriendInviteCodeDTO { .init(code: "") }
     func acceptFriendInvite(code: String) async throws -> FriendAcceptResultDTO { .init(accepted: false, bonusGranted: false) }
     func fetchFriendRanking() async throws -> [FriendRankingDTO] { [] }

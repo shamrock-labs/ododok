@@ -196,8 +196,9 @@ final class RecordsStoreTests: XCTestCase {
     }
 
     private func makeRecord(startedAt: Date) -> MealSessionRecord {
+        let sessionId = UUID()
         let dto = ChewingSessionDTO(
-            id: UUID(),
+            id: sessionId,
             deviceId: "test-device",
             startedAt: startedAt,
             endedAt: startedAt.addingTimeInterval(600),
@@ -214,6 +215,7 @@ final class RecordsStoreTests: XCTestCase {
             modelVersion: "test",
             mealReport: MealReportDTO(
                 status: .generated,
+                sessionId: sessionId,
                 scorePolicyVersion: "legacy-ios-v1",
                 analysisModelVersion: "test",
                 totalScore: 80,

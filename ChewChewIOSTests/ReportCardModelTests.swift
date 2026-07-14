@@ -13,9 +13,13 @@ final class ReportCardModelTests: XCTestCase {
         mealReport: MealReportDTO? = nil,
         includesDefaultReport: Bool = true
     ) -> ChewingSessionDTO {
-        let report = mealReport ?? (includesDefaultReport ? makeGeneratedReport() : nil)
+        let id = UUID()
+        var report = mealReport ?? (includesDefaultReport ? makeGeneratedReport() : nil)
+        if report?.status == .generated, report?.sessionId == nil {
+            report?.sessionId = id
+        }
         return ChewingSessionDTO(
-            id: UUID(),
+            id: id,
             deviceId: "test",
             startedAt: Date(),
             endedAt: Date(),
@@ -148,7 +152,7 @@ final class ReportCardModelTests: XCTestCase {
         XCTAssertEqual(model?.restSeconds ?? -1, 811 * 0.03, accuracy: 0.001)
     }
 
-    func testFrom_missingRawDurations_clampsReportRatioBeforeDerivingDurations() {
+    func testFrom_rejectsServerReportWithOutOfRangeRatio() {
         let metrics = MealReportMetricsDTO(
             chewingRatePerMin: nil,
             legacyMealRatePerMin: 43.6,
@@ -162,8 +166,7 @@ final class ReportCardModelTests: XCTestCase {
             mealReport: makeGeneratedReport(metrics: metrics)
         ))
 
-        XCTAssertEqual(model?.chewingSeconds, 811)
-        XCTAssertEqual(model?.restSeconds, 0)
+        XCTAssertNil(model)
     }
 
     func testFrom_rawChewingTimeline_omitsSegmentsUntilServerSnapshotsTimeline() {

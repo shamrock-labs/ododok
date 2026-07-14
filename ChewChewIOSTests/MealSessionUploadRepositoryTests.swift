@@ -76,8 +76,76 @@ final class MealSessionUploadRepositoryTests: XCTestCase {
         await assertMalformed(response)
     }
 
+    func testUploadRejectsResponseSessionIdMismatch() async throws {
+        let uploadedId = UUID()
+        let responseId = UUID()
+        let report = makeReport(status: .generated, sessionId: responseId)
+        let response = try makeNetworkResponse(
+            sessionId: responseId,
+            topLevelReport: report,
+            embeddedReport: report
+        )
+
+        await assertMalformed(response, uploadedSessionId: uploadedId)
+    }
+
+    func testUploadRejectsGeneratedReportSessionIdMismatch() async throws {
+        let sessionId = UUID()
+        let report = makeReport(status: .generated, sessionId: UUID())
+        let response = try makeNetworkResponse(
+            sessionId: sessionId,
+            topLevelReport: report,
+            embeddedReport: report
+        )
+
+        await assertMalformed(response)
+    }
+
+    func testUploadRejectsIncompleteGeneratedReport() async throws {
+        let sessionId = UUID()
+        let report = MealReportDTO(
+            status: .generated,
+            sessionId: sessionId,
+            totalScore: 71,
+            grade: .soso
+        )
+        let response = try makeNetworkResponse(
+            sessionId: sessionId,
+            topLevelReport: report,
+            embeddedReport: report
+        )
+
+        await assertMalformed(response)
+    }
+
+    func testUploadRejectsGeneratedReportWithUnknownGrade() async throws {
+        let sessionId = UUID()
+        var report = makeReport(status: .generated, sessionId: sessionId)
+        report.grade = .unknown("EXCELLENT")
+        let response = try makeNetworkResponse(
+            sessionId: sessionId,
+            topLevelReport: report,
+            embeddedReport: report
+        )
+
+        await assertMalformed(response)
+    }
+
+    func testUploadRejectsUnreportableReportWithoutReason() async throws {
+        let sessionId = UUID()
+        let report = makeReport(status: .unreportable, sessionId: sessionId)
+        let response = try makeNetworkResponse(
+            sessionId: sessionId,
+            topLevelReport: report,
+            embeddedReport: report
+        )
+
+        await assertMalformed(response)
+    }
+
     private func assertMalformed(
         _ response: CreateSessionResultDTO,
+        uploadedSessionId: UUID? = nil,
         file: StaticString = #filePath,
         line: UInt = #line
     ) async {
@@ -88,13 +156,13 @@ final class MealSessionUploadRepositoryTests: XCTestCase {
 
         do {
             _ = try await repository.uploadSession(
-                output: makeOutput(sessionId: response.chewingSession.id),
+                output: makeOutput(sessionId: uploadedSessionId ?? response.chewingSession.id),
                 stats: nil,
                 appVersion: nil
             )
             XCTFail("Expected malformed meal-report response", file: file, line: line)
         } catch RemoteStoreError.malformed(let message) {
-            XCTAssertTrue(message.contains("mealReport"), file: file, line: line)
+            XCTAssertFalse(message.isEmpty, file: file, line: line)
         } catch {
             XCTFail("Expected malformed, got \(error)", file: file, line: line)
         }
@@ -156,7 +224,37 @@ final class MealSessionUploadRepositoryTests: XCTestCase {
         sessionId: UUID,
         reason: MealReportReasonDTO? = nil
     ) -> MealReportDTO {
-        MealReportDTO(status: status, reason: reason, sessionId: sessionId)
+        if status == .generated {
+            return MealReportDTO(
+                status: status,
+                reason: reason,
+                sessionId: sessionId,
+                scorePolicyVersion: "legacy-ios-v1",
+                analysisModelVersion: "server",
+                totalScore: 71,
+                axisScores: .init(
+                    chewingRate: 0,
+                    chewingTimeRatio: 100,
+                    totalChewCount: 100,
+                    mealDuration: 85
+                ),
+                metrics: .init(
+                    chewingRatePerMin: nil,
+                    legacyMealRatePerMin: 28,
+                    chewingTimeRatio: 0.5,
+                    totalChewCount: 180,
+                    mealDurationSec: 180
+                ),
+                grade: .soso,
+                recommendedBaseline: .init(
+                    chewingRatePerMin: .init(target: 28),
+                    chewingTimeRatio: 0.5,
+                    totalChewCount: 200,
+                    mealDurationSec: 720
+                )
+            )
+        }
+        return MealReportDTO(status: status, reason: reason, sessionId: sessionId)
     }
 
     private func makeSession(id: UUID, mealReport: MealReportDTO?) -> ChewingSessionDTO {

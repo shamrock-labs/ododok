@@ -460,6 +460,16 @@ enum DayMealSlot: CaseIterable, Hashable {
         default:      self = .lateNight
         }
     }
+
+    init?(serverSlot: String) {
+        switch serverSlot {
+        case "BREAKFAST": self = .morning
+        case "LUNCH": self = .lunch
+        case "DINNER": self = .dinner
+        case "OTHER", "LATE_NIGHT": self = .lateNight
+        default: return nil
+        }
+    }
 }
 
 private enum Metrics {

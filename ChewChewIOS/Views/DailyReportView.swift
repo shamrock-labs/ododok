@@ -97,23 +97,34 @@ struct DailyReportModel {
 // MARK: - 집계
 
 extension DailyReportModel {
-    /// 하루치 세션을 종합 모델로. 리포트 가능 세션(분석 5필드 충족)이 0개면 nil.
-    /// `previousSessions`는 어제(혹은 직전 날) 세션 — 어제 대비 비교에만 쓴다.
+    /// Decision 4 C: 일간 점수·끼니 수·합계는 서버 daily 응답이 정본이다.
     static func from(
         date: Date,
-        sessions: [ChewingSessionDTO],
-        previousSessions: [ChewingSessionDTO]
+        report: DailyReportDTO,
+        previousReport: DailyReportDTO?
     ) -> DailyReportModel? {
-        let entries = sessions.compactMap(DailyEntry.init).sorted { $0.startedAt < $1.startedAt }
+        build(
+            date: date,
+            entries: report.meals.compactMap(DailyEntry.init),
+            report: report,
+            previousReport: previousReport
+        )
+    }
+
+    private static func build(
+        date: Date,
+        entries unsortedEntries: [DailyEntry],
+        report: DailyReportDTO,
+        previousReport: DailyReportDTO?
+    ) -> DailyReportModel? {
+        let entries = unsortedEntries.sorted { $0.startedAt < $1.startedAt }
         guard !entries.isEmpty else { return nil }
 
         let count = entries.count
-        let totalChews = entries.reduce(0) { $0 + $1.model.chewCount }
-        let totalDuration = entries.reduce(0.0) { $0 + $1.model.totalDurationSec }
-        let avgCpm = totalDuration > 0 ? Double(totalChews) / (totalDuration / 60) : 0
-        let avgFraction = totalDuration > 0
-            ? entries.reduce(0.0) { $0 + $1.model.chewingFraction * $1.model.totalDurationSec } / totalDuration
-            : entries.map(\.model.chewingFraction).reduce(0, +) / Double(count)
+        let totalChews = report.totalChews
+        let totalDuration = report.totalEatingSeconds
+        let avgCpm = report.avgChewRatePerMin ?? 0
+        let avgFraction = report.avgChewingFraction ?? 0
         let recommendedRate = entries.map(\.model.recommendedChewsPerMinute).reduce(0, +) / Double(count)
         let recommendedRatio = entries.map(\.model.recommendedChewingFraction).reduce(0, +) / Double(count)
         let recommendedChews = Int(
@@ -121,7 +132,8 @@ extension DailyReportModel {
         )
         let recommendedDuration = entries.map(\.model.recommendedDurationSec).reduce(0, +) / Double(count)
 
-        let dayScore = roundedMean(entries.map(\.model.score))
+        guard let serverAverageScore = report.avgTotalScore else { return nil }
+        let dayScore = Int(serverAverageScore.rounded())
         let grade: ReportCardModel.Grade = dayScore >= 80 ? .good : (dayScore >= 60 ? .soso : .bad)
         let accent: Color = {
             switch grade {
@@ -164,7 +176,7 @@ extension DailyReportModel {
         let recordedSlots = Set(entries.map(\.slot))
         let mainStates = mainSlots.map { (slot: $0, recorded: recordedSlots.contains($0)) }
         let recordedMain = mainStates.filter(\.recorded).count
-        let mealCount = recordedSlots.count
+        let mealCount = report.mealCount
 
         // 4축 평균 → 최약축 → 원인/목표
         let speed = roundedMean(entries.map(\.model.speedScore))
@@ -176,11 +188,13 @@ extension DailyReportModel {
         ].min { $0.1 < $1.1 }!.0
 
         // 어제 대비
-        let yesterday = makeYesterdayDelta(
-            todayPerMeal: count == 0 ? 0 : totalChews / count,
-            todayScore: dayScore,
-            previousSessions: previousSessions
-        )
+        let yesterday = previousReport.map {
+            makeYesterdayDelta(
+                todayPerMeal: mealCount == 0 ? 0 : totalChews / mealCount,
+                todayScore: dayScore,
+                previousReport: $0
+            )
+        } ?? .init(state: .noData, chewDelta: 0, scoreDelta: 0, text: "어제는 기록이 없어 비교할 수 없어요.")
 
         // 데이터 신뢰
         let hasModel = entries.allSatisfy { $0.dto.modelVersion != nil }
@@ -283,11 +297,13 @@ private struct DailyEntry {
     let slot: DayMealSlot
     var startedAt: Date { dto.startedAt }
 
-    init?(_ dto: ChewingSessionDTO) {
+    init?(_ meal: DailyReportMealDTO) {
+        let dto = meal.session
         guard let model = ReportCardModel.from(dto) else { return nil }
         self.dto = dto
         self.model = model
-        self.slot = DayMealSlot(hour: mealCalendarCalendar.component(.hour, from: dto.startedAt))
+        self.slot = DayMealSlot(serverSlot: meal.slot)
+            ?? DayMealSlot(hour: mealCalendarCalendar.component(.hour, from: dto.startedAt))
     }
 }
 
@@ -320,17 +336,14 @@ private func makeCoachMessage(grade: ReportCardModel.Grade) -> String {
 private func makeYesterdayDelta(
     todayPerMeal: Int,
     todayScore: Int,
-    previousSessions: [ChewingSessionDTO]
+    previousReport: DailyReportDTO
 ) -> DailyReportModel.YesterdayDelta {
-    let prev = previousSessions.compactMap { ReportCardModel.from($0) }
-    guard !prev.isEmpty else {
+    guard previousReport.mealCount > 0, let previousScore = previousReport.avgTotalScore else {
         return .init(state: .noData, chewDelta: 0, scoreDelta: 0, text: "어제는 기록이 없어 비교할 수 없어요.")
     }
-    let prevPerMeal = prev.reduce(0) { $0 + $1.chewCount } / prev.count
-    let prevScore = roundedMean(prev.map(\.score))
-    let chewDelta = todayPerMeal - prevPerMeal
-    let scoreDelta = todayScore - prevScore
-
+    let previousPerMeal = previousReport.totalChews / previousReport.mealCount
+    let chewDelta = todayPerMeal - previousPerMeal
+    let scoreDelta = todayScore - Int(previousScore.rounded())
     let chewPhrase: String
     if abs(chewDelta) < 20 {
         chewPhrase = "어제와 비슷한 양을 씹었어요"
@@ -339,12 +352,9 @@ private func makeYesterdayDelta(
     } else {
         chewPhrase = "어제보다 한 끼에 약 \(abs(chewDelta).koLocale)회 덜 씹었어요"
     }
-    let scorePhrase: String
-    if scoreDelta == 0 {
-        scorePhrase = "점수는 그대로예요"
-    } else {
-        scorePhrase = scoreDelta > 0 ? "점수도 \(scoreDelta)점 올랐어요" : "점수는 \(abs(scoreDelta))점 내렸어요"
-    }
+    let scorePhrase = scoreDelta == 0
+        ? "점수는 그대로예요"
+        : (scoreDelta > 0 ? "점수도 \(scoreDelta)점 올랐어요" : "점수는 \(abs(scoreDelta))점 내렸어요")
     return .init(state: .compared, chewDelta: chewDelta, scoreDelta: scoreDelta, text: "\(chewPhrase). \(scorePhrase).")
 }
 
@@ -356,16 +366,18 @@ private func makeYesterdayDelta(
 /// 단건 세션 상세(`SessionReportDetailView`)로 push 한다.
 struct DailyReportView: View {
     let date: Date
-    let sessions: [ChewingSessionDTO]
-    let previousSessions: [ChewingSessionDTO]
+    let report: DailyReportDTO
+    let previousReport: DailyReportDTO?
     var unavailableSessions: [ChewingSessionDTO] = []
 
     @Environment(AppState.self) private var state
     @Environment(\.dismiss) private var dismiss
 
     private var model: DailyReportModel? {
-        DailyReportModel.from(date: date, sessions: sessions, previousSessions: previousSessions)
+        DailyReportModel.from(date: date, report: report, previousReport: previousReport)
     }
+
+    private var sessions: [ChewingSessionDTO] { report.meals.map(\.session) }
 
     var body: some View {
         NavigationStack {
@@ -838,7 +850,7 @@ struct DailyReportView: View {
             selectedDate: analyticsDateString(date),
             daysFromToday: daysFromToday(date),
             mealCount: model?.mealCount ?? 0,
-            sessionCount: model?.sessionCount ?? sessions.count,
+            sessionCount: model?.sessionCount ?? report.meals.count,
             dayScore: model?.dayScore,
             grade: model?.grade.analyticsValue
         ))

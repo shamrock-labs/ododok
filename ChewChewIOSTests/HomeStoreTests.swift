@@ -70,22 +70,22 @@ final class HomeStoreTests: XCTestCase {
         XCTAssertEqual(store.freezeInventory, 1)
     }
 
-    func testFallbackUsesLocalTodayRealChewCountWhenServerHomeIsMissing() {
+    func testFallbackUsesStoredServerReportChewCountWhenServerHomeIsMissing() {
         let store = HomeStore(
             repository: FakeHomeRepository(result: .success(makeHome())),
-            localTodayRealChewCount: { 30 }
+            serverReportTodayChewCount: { 30 }
         )
 
         XCTAssertEqual(store.todayRealChewCount, 30)
         XCTAssertEqual(store.todayProgress, Double(30) / Double(Constants.dailyGoal), accuracy: 0.0001)
     }
 
-    func testFallbackUsesLocalTodayRealChewCountWhenServerGoalIsZero() {
+    func testFallbackUsesStoredServerReportChewCountWhenServerGoalIsZero() {
         let legacyHome = makeHome(points: 1, streak: 1, freeze: 0, chew: 0, goal: 0, progress: 0)
         let store = HomeStore(
             repository: FakeHomeRepository(result: .success(makeHome())),
             initialHome: legacyHome,
-            localTodayRealChewCount: { 45 }
+            serverReportTodayChewCount: { 45 }
         )
 
         XCTAssertEqual(store.todayRealChewCount, 45)

@@ -74,9 +74,13 @@ final class MealSessionRecordMapperTests: XCTestCase {
         estimatedTotalChews: Int? = 300,
         mealReport: MealReportDTO?? = nil
     ) -> ChewingSessionDTO {
-        let report = mealReport ?? makeGeneratedReport(durationSec: durationSec)
+        let id = UUID()
+        var report = mealReport ?? makeGeneratedReport(durationSec: durationSec)
+        if report?.status == .generated, report?.sessionId == nil {
+            report?.sessionId = id
+        }
         return ChewingSessionDTO(
-            id: UUID(),
+            id: id,
             deviceId: "test-device",
             startedAt: startedAt,
             endedAt: startedAt.addingTimeInterval(durationSec),

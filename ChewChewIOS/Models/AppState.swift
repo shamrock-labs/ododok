@@ -128,8 +128,8 @@ final class AppState {
         initialPoints: points,
         initialStreak: streak,
         initialFreezeInventory: freezeInventory,
-        localTodayRealChewCount: { [weak self] in
-            self?.localTodayRealChewCount ?? 0
+        serverReportTodayChewCount: { [weak self] in
+            self?.serverReportTodayChewCount ?? 0
         },
         onHomeApplied: { [weak self] home in
             self?.applyHomeFromStore(home)
@@ -519,8 +519,8 @@ final class AppState {
 
     // MARK: - Derived
 
-    @MainActor private var localTodayRealChewCount: Int {
-        mealResults.localTodayRealChewCount
+    @MainActor private var serverReportTodayChewCount: Int {
+        mealResults.serverReportTodayChewCount
     }
 
     // MARK: - Local persistence (UserDefaults snapshot)

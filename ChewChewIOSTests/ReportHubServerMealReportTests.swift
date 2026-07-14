@@ -32,6 +32,28 @@ final class ReportHubServerMealReportTests: XCTestCase {
         )
     }
 
+    func testDaySnapshotUsesDailyEndpointCountAndAverageScore() {
+        let report = DailyReportDTO(
+            date: "2026-07-15",
+            timezone: "Asia/Seoul",
+            mealCount: 5,
+            totalEatingSeconds: 1_200,
+            totalChews: 900,
+            avgChewRatePerMin: 45,
+            avgChewingFraction: 0.6,
+            avgTotalScore: 77.6,
+            meals: [],
+            vsYesterday: nil
+        )
+
+        let snapshot = ReportHubDaySnapshot(date: Date(), report: report)
+
+        XCTAssertEqual(snapshot.mealCount, 5)
+        XCTAssertEqual(snapshot.avgTotalScore, 78)
+        XCTAssertEqual(snapshot.avgChewCount, 180)
+        XCTAssertEqual(snapshot.minutes, 4)
+    }
+
     private func generatedReport(totalChews: Int, duration: Double) -> MealReportDTO {
         MealReportDTO(
             status: .generated, scorePolicyVersion: "legacy-ios-v1", analysisModelVersion: "server",
@@ -51,8 +73,13 @@ final class ReportHubServerMealReportTests: XCTestCase {
         report: MealReportDTO?
     ) -> ChewingSessionDTO {
         let startedAt = Date(timeIntervalSince1970: 1_725_000_000)
+        let sessionId = UUID()
+        var report = report
+        if report?.status == .generated, report?.sessionId == nil {
+            report?.sessionId = sessionId
+        }
         return ChewingSessionDTO(
-            id: UUID(), deviceId: "test", startedAt: startedAt,
+            id: sessionId, deviceId: "test", startedAt: startedAt,
             endedAt: startedAt.addingTimeInterval(rawDuration), durationSec: rawDuration,
             sensorLocation: "default", sampleCount: 10, sampleRateHz: 50,
             storagePath: nil, appVersion: nil, chewingSeconds: 1, restSeconds: 29,

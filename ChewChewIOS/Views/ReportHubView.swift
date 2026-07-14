@@ -11,6 +11,8 @@ struct ReportHubView: View {
     @State private var showCalendar = false
     @State private var calendarMonth: Date = mealCalendarCalendar.startOfDay(for: Date())
     @State private var hasTrackedReportTabView = false
+    @State private var selectedDailyReport: DailyReportDTO?
+    @State private var previousDailyReport: DailyReportDTO?
 
     private let dayWidth: CGFloat = 52
     /// 타임라인 가로 스트립이 한 번에 보여주는 이동 윈도우 길이.
@@ -38,12 +40,14 @@ struct ReportHubView: View {
             }
         }
         .sheet(isPresented: $showDailyReport) {
-            DailyReportView(
-                date: selectedDate,
-                sessions: selectedSessions,
-                previousSessions: previousDaySessions,
-                unavailableSessions: selectedUnavailableSessions
-            )
+            if let selectedDailyReport {
+                DailyReportView(
+                    date: selectedDate,
+                    report: selectedDailyReport,
+                    previousReport: previousDailyReport,
+                    unavailableSessions: selectedUnavailableSessions
+                )
+            }
         }
         .sheet(isPresented: $showCalendar) {
             ReportCalendarDialog(
@@ -94,12 +98,12 @@ struct ReportHubView: View {
     }
 
     private var selectedDay: ReportDay {
-        let daySessions = sessions(on: selectedDate)
-        return daySessions.isEmpty ? ReportDay.empty(date: selectedDate) : ReportDay(date: selectedDate, sessions: daySessions)
+        guard let selectedDailyReport else { return ReportDay.empty(date: selectedDate) }
+        return ReportDay(date: selectedDate, report: selectedDailyReport)
     }
 
     private var selectedSessions: [ChewingSessionDTO] {
-        sessions(on: selectedDate).sorted { $0.startedAt < $1.startedAt }
+        (selectedDailyReport?.meals.map(\.session) ?? []).sorted { $0.startedAt < $1.startedAt }
     }
 
     private var selectedUnavailableSessions: [ChewingSessionDTO] {
@@ -289,7 +293,9 @@ struct ReportHubView: View {
                     .font(.appFont(.heavyBody))
                     .foregroundStyle(Color.textPrimary)
                 Spacer(minLength: 0)
-                Text(selectedDay.mealCount == 0 ? "기록 전" : "\(selectedDay.mealCount)/3끼")
+                Text(selectedDay.mealCount == 0
+                    ? "기록 전"
+                    : "\(selectedDay.avgTotalScore ?? 0)점 · \(selectedDay.mealCount)끼")
                     .font(.appFont(.heavyMicro))
                     .foregroundStyle(selectedDay.mealCount == 0 ? Color.textTertiary : Color.acorn700)
                     .monospacedDigit()
@@ -361,17 +367,12 @@ struct ReportHubView: View {
         }
     }
 
-    /// 어제(선택일 직전 날) 세션 — 일간 리포트의 "어제 대비" 비교 입력.
-    private var previousDaySessions: [ChewingSessionDTO] {
-        guard let previousDate = mealCalendarCalendar.date(byAdding: .day, value: -1, to: selectedDate) else {
-            return []
-        }
-        return sessions(on: previousDate)
-    }
-
     private var dailyReportRow: some View {
         Button {
-            showDailyReport = true
+            Task {
+                await loadSelectedDailyReports()
+                showDailyReport = selectedDailyReport != nil
+            }
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -674,13 +675,14 @@ struct ReportHubView: View {
         guard let previousDate = mealCalendarCalendar.date(byAdding: .day, value: -1, to: selectedDate) else {
             return nil
         }
-        let daySessions = sessions(on: previousDate)
-        return daySessions.isEmpty ? ReportDay.empty(date: previousDate) : ReportDay(date: previousDate, sessions: daySessions)
+        guard let previousDailyReport else { return nil }
+        return ReportDay(date: previousDate, report: previousDailyReport)
     }
 
     @MainActor
     private func reloadRecentSessions() async {
         await state.mealResults.fetchTodaySessions()
+        await loadSelectedDailyReports()
         // 주간 카드(21일) + 현재 타임라인 윈도우를 모두 덮는 초기 범위.
         let weeklyStart = mealCalendarCalendar.date(byAdding: .day, value: -(weeklyWindowDays - 1), to: today) ?? today
         let start = min(weeklyStart, windowStart)
@@ -777,12 +779,33 @@ struct ReportHubView: View {
     private func selectDate(_ date: Date, source: String) {
         let normalizedDate = mealCalendarCalendar.startOfDay(for: date)
         selectedDate = normalizedDate
+        selectedDailyReport = nil
+        previousDailyReport = nil
+        Task { await loadSelectedDailyReports() }
         state.analytics.track(.reportDateSelected(
             source: source,
             selectedDate: analyticsDateString(normalizedDate),
             daysFromToday: daysFromToday(normalizedDate),
             mealCount: mealCount(for: normalizedDate)
         ))
+    }
+
+    @MainActor
+    private func loadSelectedDailyReports() async {
+        let selected = selectedDate
+        guard let previous = mealCalendarCalendar.date(byAdding: .day, value: -1, to: selected) else { return }
+        async let currentResult = state.remoteStore.fetchDailyReport(date: analyticsDateString(selected))
+        async let previousResult = state.remoteStore.fetchDailyReport(date: analyticsDateString(previous))
+        do {
+            let current = try await currentResult
+            guard mealCalendarCalendar.isDate(selectedDate, inSameDayAs: selected) else { return }
+            selectedDailyReport = current
+            previousDailyReport = try await previousResult
+        } catch {
+            if case RemoteStoreError.authExpired = error {
+                return
+            }
+        }
     }
 
     private func trackReportTabViewIfNeeded() {
@@ -848,6 +871,7 @@ struct ReportHubDaySnapshot: Identifiable {
     /// 하루 저작 횟수의 "세션당 평균"(회). "한 끼에 보통 몇 번 씹었나".
     let avgChewCount: Int
     let mealCount: Int
+    let avgTotalScore: Int?
 
     var id: Date { date }
 
@@ -863,6 +887,20 @@ struct ReportHubDaySnapshot: Identifiable {
         minutes = count == 0 ? 0 : max(1, Int((totalSec / Double(count) / 60).rounded()))
         let slots = Set(reportable.map { DayMealSlot(hour: mealCalendarCalendar.component(.hour, from: $0.startedAt)) })
         mealCount = min(3, slots.count)
+        avgTotalScore = nil
+    }
+
+    init(date: Date, report: DailyReportDTO) {
+        self.date = date
+        mealCount = report.mealCount
+        chewCount = report.totalChews
+        avgChewCount = report.mealCount == 0
+            ? 0
+            : Int((Double(report.totalChews) / Double(report.mealCount)).rounded())
+        minutes = report.mealCount == 0
+            ? 0
+            : max(1, Int((report.totalEatingSeconds / Double(report.mealCount) / 60).rounded()))
+        avgTotalScore = report.avgTotalScore.map { Int($0.rounded()) }
     }
 
     static func generatedSessions(from sessions: [ChewingSessionDTO]) -> [ChewingSessionDTO] {
@@ -875,6 +913,7 @@ struct ReportHubDaySnapshot: Identifiable {
         self.minutes = minutes
         self.avgChewCount = avgChewCount
         self.mealCount = mealCount
+        self.avgTotalScore = nil
     }
 
     static func empty(date: Date) -> ReportHubDaySnapshot {

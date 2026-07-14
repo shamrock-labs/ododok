@@ -869,8 +869,7 @@ struct DashedDivider: View {
 extension ReportCardModel {
     /// `ChewingSessionDTO` → 카드 모델. GENERATED 서버 리포트가 완전할 때만 모델을 만든다.
     static func from(_ dto: ChewingSessionDTO) -> ReportCardModel? {
-        guard let report = dto.mealReport,
-              report.status == .generated,
+        guard let report = MealSessionReportability.completeGeneratedReport(dto.mealReport, sessionId: dto.id),
               let totalScore = report.totalScore,
               let axes = report.axisScores,
               let metrics = report.metrics,

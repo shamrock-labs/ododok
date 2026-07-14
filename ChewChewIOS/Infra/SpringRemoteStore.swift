@@ -192,6 +192,26 @@ final class SpringRemoteStore: RemoteStore {
         return try decodeOptionalResult([ChewingSessionDTO].self, from: data) ?? []
     }
 
+    func fetchDailyReport(date: String) async throws -> DailyReportDTO {
+        var components = URLComponents()
+        components.queryItems = [URLQueryItem(name: "date", value: date)]
+        guard let query = components.percentEncodedQuery else {
+            throw RemoteStoreError.malformed("failed to encode daily report date")
+        }
+        let req = jsonRequest(method: "GET", path: "/v1/me/reports/daily?\(query)")
+        let data = try await sendExpectingSuccess(req)
+        let report = try decodeResult(DailyReportDTO.self, from: data)
+        guard report.meals.allSatisfy({
+            MealSessionReportability.completeGeneratedReport(
+                $0.mealReport,
+                sessionId: $0.sessionId
+            ) != nil
+        }) else {
+            throw RemoteStoreError.malformed("daily mealReport contract violation")
+        }
+        return report
+    }
+
     func deleteChewingSession(id: UUID, deviceId: String) async throws {
         let req = jsonRequest(method: "DELETE", path: "/v1/me/sessions/\(id.uuidString.lowercased())")
         // device 불일치도 성공(204→200) 반환 — 멱등 설계.
