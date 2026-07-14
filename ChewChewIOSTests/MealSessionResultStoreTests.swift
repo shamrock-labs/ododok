@@ -94,6 +94,21 @@ final class MealSessionResultStoreTests: XCTestCase {
         XCTAssertEqual(store.todaySessions, [session])
     }
 
+    func testMalformedMealReportResponseDoesNotPublishSuccess() async {
+        let repository = FakeMealSessionUploadRepository()
+        let output = makeOutput()
+        repository.uploadResults = [
+            .failure(RemoteStoreError.malformed("mealReport contract violation"))
+        ]
+        let store = makeStore(repository: repository)
+
+        await store.uploadSession(output, stats: makeStats())
+
+        XCTAssertEqual(store.sessionUploadStatus, .failure)
+        XCTAssertNil(store.lastCompletedSession)
+        XCTAssertTrue(store.todaySessions.isEmpty)
+    }
+
     func testFetchTodaySessionsFiltersUnreportableRowsAndRefreshesHome() async {
         let repository = FakeMealSessionUploadRepository()
         let reportableId = UUID()

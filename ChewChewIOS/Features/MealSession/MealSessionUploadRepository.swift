@@ -47,10 +47,16 @@ struct RemoteStoreMealSessionUploadRepository: MealSessionUploadRepository {
             storagePath: storagePath,
             appVersion: appVersion
         )
-        var result = try await remoteStore.createChewingSession(session)
-        let mealReport = result.mealReport ?? result.chewingSession.mealReport
-        result.mealReport = mealReport
-        result.chewingSession.mealReport = mealReport
+        let result = try await remoteStore.createChewingSession(session)
+        guard let topLevelReport = result.mealReport else {
+            throw RemoteStoreError.malformed("missing top-level mealReport")
+        }
+        guard let embeddedReport = result.chewingSession.mealReport else {
+            throw RemoteStoreError.malformed("missing chewingSession.mealReport")
+        }
+        guard topLevelReport == embeddedReport else {
+            throw RemoteStoreError.malformed("mealReport does not match chewingSession.mealReport")
+        }
         return MealSessionUploadResult(session: result.chewingSession, result: result)
     }
 
