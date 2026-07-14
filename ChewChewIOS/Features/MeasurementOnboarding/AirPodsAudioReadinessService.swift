@@ -2,7 +2,12 @@ import AVFoundation
 import Foundation
 
 @MainActor
-protocol AirPodsAudioReadinessServicing: AnyObject {
+protocol MeasurementCuePlaying: AnyObject {
+    func playCalibrationCue()
+}
+
+@MainActor
+protocol AirPodsAudioReadinessServicing: MeasurementCuePlaying {
     func prepareAirPods() async -> Bool
     func stop()
 }
@@ -62,6 +67,16 @@ final class AirPodsAudioReadinessService: AirPodsAudioReadinessServicing {
         stopEngine(deactivateSession: true)
     }
 
+    func playCalibrationCue() {
+        guard engine.isRunning,
+              let format,
+              let cue = makeCalibrationCue(format: format) else { return }
+        player.scheduleBuffer(cue, at: nil, options: .interrupts)
+        if !player.isPlaying {
+            player.play()
+        }
+    }
+
     private func configureGraphIfNeeded(format: AVAudioFormat) {
         guard !graphConfigured else { return }
         engine.attach(player)
@@ -94,6 +109,12 @@ final class AirPodsAudioReadinessService: AirPodsAudioReadinessServicing {
             .tone(frequency: 523.25, duration: 0.14, amplitude: 0.22),
             .silence(duration: 0.04),
             .tone(frequency: 659.25, duration: 0.16, amplitude: 0.22),
+        ])
+    }
+
+    private func makeCalibrationCue(format: AVAudioFormat) -> AVAudioPCMBuffer? {
+        makeCue(format: format, segments: [
+            .tone(frequency: 784, duration: 0.08, amplitude: 0.16),
         ])
     }
 
@@ -162,6 +183,8 @@ final class SimulatedAirPodsAudioReadinessService: AirPodsAudioReadinessServicin
         try? await Task.sleep(for: .milliseconds(350))
         return !Task.isCancelled
     }
+
+    func playCalibrationCue() {}
 
     func stop() {}
 }

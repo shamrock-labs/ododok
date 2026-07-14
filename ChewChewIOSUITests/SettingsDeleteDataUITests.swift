@@ -53,6 +53,11 @@ final class SettingsDeleteDataUITests: XCTestCase {
             "준비음을 확인한 뒤 AirPods 준비 완료 상태가 보여야 한다"
         )
         XCTAssertTrue(primaryButton.isEnabled, "AirPods 준비 완료 후 다음 단계로 이동할 수 있어야 한다")
+        primaryButton.tap()
+        XCTAssertTrue(
+            app.otherElements["CalibrationRhythmTrack"].waitForExistence(timeout: 5),
+            "AirPods 준비 후 오른쪽에서 왼쪽으로 진행하는 리듬 보정 화면이 보여야 한다"
+        )
     }
 
     func testDeleteMyData_showsConfirmationDialog() {

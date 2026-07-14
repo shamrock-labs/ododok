@@ -28,14 +28,16 @@ struct MeasurementPersonalizationFlow: View {
         let defaultReadinessService: any AirPodsAudioReadinessServicing = AirPodsAudioReadinessService()
         let isConnected = connectionMonitor.isConnected
         #endif
+        let audioReadinessService = readinessService ?? defaultReadinessService
 
         _connectionMonitor = State(initialValue: connectionMonitor)
         _store = State(initialValue: MeasurementOnboardingStore(
             isAirPodsConnected: isConnected,
-            sampler: sampler
+            sampler: sampler,
+            cuePlayer: audioReadinessService
         ))
         self.personalizationStore = personalizationStore
-        self.readinessService = readinessService ?? defaultReadinessService
+        self.readinessService = audioReadinessService
         self.onSaved = onSaved
     }
 

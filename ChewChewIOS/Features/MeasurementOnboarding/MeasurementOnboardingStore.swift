@@ -46,13 +46,29 @@ final class MeasurementOnboardingStore {
     struct Timing {
         let cueCount: Int
         let cueInterval: Duration
+        let cueApproachDuration: Duration
 
-        static let live = Timing(cueCount: 10, cueInterval: .seconds(1))
+        init(
+            cueCount: Int,
+            cueInterval: Duration,
+            cueApproachDuration: Duration = .zero
+        ) {
+            self.cueCount = cueCount
+            self.cueInterval = cueInterval
+            self.cueApproachDuration = cueApproachDuration
+        }
+
+        static let live = Timing(
+            cueCount: 10,
+            cueInterval: .seconds(1),
+            cueApproachDuration: .milliseconds(400)
+        )
     }
 
     private(set) var stage: Stage
     private(set) var cueIndex = 0
     private(set) var cuePulseID = 0
+    private(set) var cueHitID = 0
     private(set) var isMeasuring = false
     private(set) var measurementCompleted = false
     private(set) var isAirPodsConnected: Bool
@@ -64,19 +80,23 @@ final class MeasurementOnboardingStore {
 
     private let timing: Timing
     private let sampler: any MeasurementCalibrationSampling
+    private let cuePlayer: (any MeasurementCuePlaying)?
     private var measurementTask: Task<Void, Never>?
     private var strongestPeakInCurrentCue: Double?
+    private var isAcceptingCalibrationSignal = false
 
     init(
         stage: Stage = .intro,
         isAirPodsConnected: Bool = false,
         timing: Timing = .live,
-        sampler: (any MeasurementCalibrationSampling)? = nil
+        sampler: (any MeasurementCalibrationSampling)? = nil,
+        cuePlayer: (any MeasurementCuePlaying)? = nil
     ) {
         self.stage = stage
         self.isAirPodsConnected = isAirPodsConnected
         self.timing = timing
         self.sampler = sampler ?? LocalMeasurementCalibrationSampler()
+        self.cuePlayer = cuePlayer
     }
 
     var cueCount: Int { timing.cueCount }
@@ -145,12 +165,18 @@ final class MeasurementOnboardingStore {
             guard !Task.isCancelled else { return }
             cueIndex = cue
             cuePulseID += 1
-            strongestPeakInCurrentCue = nil
 
-            do {
-                try await Task.sleep(for: timing.cueInterval)
-            } catch {
-                return
+            if stage == .calibration {
+                isAcceptingCalibrationSignal = false
+                strongestPeakInCurrentCue = nil
+                guard await wait(for: timing.cueApproachDuration) else { return }
+                cuePlayer?.playCalibrationCue()
+                cueHitID += 1
+                isAcceptingCalibrationSignal = true
+                guard await wait(for: timing.cueInterval - timing.cueApproachDuration) else { return }
+                isAcceptingCalibrationSignal = false
+            } else {
+                guard await wait(for: timing.cueInterval) else { return }
             }
 
             if stage == .calibration, let strongestPeakInCurrentCue {
@@ -172,10 +198,20 @@ final class MeasurementOnboardingStore {
         }
     }
 
+    private func wait(for duration: Duration) async -> Bool {
+        do {
+            try await Task.sleep(for: duration)
+            return true
+        } catch {
+            return false
+        }
+    }
+
     private func handle(_ event: ChewDetectionEvent) {
         guard isMeasuring else { return }
         switch stage {
         case .calibration:
+            guard isAcceptingCalibrationSignal else { return }
             strongestPeakInCurrentCue = max(strongestPeakInCurrentCue ?? 0, event.amplitude)
         case .validation:
             validationDetectedCount += 1
@@ -210,9 +246,11 @@ final class MeasurementOnboardingStore {
 
     private func resetCurrentRun() {
         cueIndex = 0
+        cueHitID = 0
         measurementCompleted = false
         issue = nil
         strongestPeakInCurrentCue = nil
+        isAcceptingCalibrationSignal = false
         if stage == .calibration {
             calibrationAmplitudes = []
             candidateMinPeakAmplitude = nil

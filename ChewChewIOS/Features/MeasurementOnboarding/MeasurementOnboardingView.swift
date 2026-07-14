@@ -102,12 +102,12 @@ struct MeasurementOnboardingView: View {
                 isPreparing: isPreparingAirPods
             )
         case .calibration:
-            SignalCaptureVisual(
-                mode: .calibration,
+            CalibrationRhythmTrackVisual(
                 cueIndex: store.cueIndex,
                 cueCount: store.cueCount,
                 detectedCount: store.calibrationAmplitudes.count,
                 cuePulseID: store.cuePulseID,
+                cueHitID: store.cueHitID,
                 reduceMotion: reduceMotion
             )
         case .validation:
@@ -279,7 +279,7 @@ struct MeasurementOnboardingView: View {
         switch store.stage {
         case .intro: "사람마다 움직임과 씹는 속도가 달라요.\n식사 전에 짧게 나만의 기준을 맞춰요."
         case .connection: "연결된 AirPods의 움직임 센서를 확인해요."
-        case .calibration: "화면의 박자가 움직일 때 한 번씩 씹어주세요.\n10회의 신호로 내 기준을 계산해요."
+        case .calibration: "오른쪽 신호가 왼쪽 선에 닿을 때 한 번씩 씹어주세요.\n10회의 신호로 내 기준을 계산해요."
         case .validation: "방금 만든 기준으로 실제 감지 횟수를 확인해요."
         case .ready: "다음 식사부터 이 기준으로 씹기를 감지해요."
         case .signalIssue: "괜찮아요. 착용 상태와 씹는 리듬을 확인해요."

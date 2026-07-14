@@ -45,11 +45,13 @@ final class MeasurementOnboardingStoreTests: XCTestCase {
 
     func testTenCalibrationChewsThenTenValidationChewsBuildLocalProfile() async {
         let sampler = ManualCalibrationSampler()
+        let cuePlayer = RecordingMeasurementCuePlayer()
         let store = MeasurementOnboardingStore(
             stage: .calibration,
             isAirPodsConnected: true,
             timing: .init(cueCount: 10, cueInterval: .milliseconds(20)),
-            sampler: sampler
+            sampler: sampler,
+            cuePlayer: cuePlayer
         )
 
         store.startMeasurement()
@@ -58,6 +60,7 @@ final class MeasurementOnboardingStoreTests: XCTestCase {
 
         XCTAssertEqual(store.calibrationAmplitudes.count, 10)
         XCTAssertNotNil(store.candidateMinPeakAmplitude)
+        XCTAssertEqual(cuePlayer.playCount, 10)
 
         store.moveForward()
         XCTAssertEqual(store.stage, .validation)
@@ -82,7 +85,11 @@ final class MeasurementOnboardingStoreTests: XCTestCase {
         sampler: ManualCalibrationSampler
     ) async {
         for cue in 1...10 {
-            await waitUntil { store.cueIndex == cue }
+            if store.stage == .calibration {
+                await waitUntil { store.cueHitID == cue }
+            } else {
+                await waitUntil { store.cueIndex == cue }
+            }
             sampler.emit(amplitude: 0.03 + Double(cue) * 0.001)
         }
     }
@@ -97,6 +104,15 @@ final class MeasurementOnboardingStoreTests: XCTestCase {
             try? await Task.sleep(for: .milliseconds(1))
         }
         XCTAssertTrue(condition())
+    }
+}
+
+@MainActor
+private final class RecordingMeasurementCuePlayer: MeasurementCuePlaying {
+    private(set) var playCount = 0
+
+    func playCalibrationCue() {
+        playCount += 1
     }
 }
 
