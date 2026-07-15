@@ -23,18 +23,35 @@ final class DailyReportSelectionLoader {
         previousDate: String,
         fetch: @escaping (String) async throws -> DailyReportDTO
     ) async {
-        async let currentResult = fetch(currentDate)
-        async let previousResult = fetch(previousDate)
-        do {
-            let reports = try await (currentResult, previousResult)
+        async let currentOutcome = outcome(for: currentDate, fetch: fetch)
+        async let previousOutcome = outcome(for: previousDate, fetch: fetch)
+
+        switch await currentOutcome {
+        case .success(let report):
             guard selectionID == activeSelectionID else { return }
-            currentReport = reports.0
-            previousReport = reports.1
-        } catch {
+            currentReport = report
+        case .failure(let error):
             guard selectionID == activeSelectionID else { return }
             if case RemoteStoreError.authExpired = error { return }
             errorMessage = (error as? RemoteStoreError)?.userMessage
                 ?? "잠시 후 다시 시도해 주세요."
+            return
+        }
+
+        guard selectionID == activeSelectionID else { return }
+        if case .success(let report) = await previousOutcome {
+            previousReport = report
+        }
+    }
+
+    private func outcome(
+        for date: String,
+        fetch: @escaping (String) async throws -> DailyReportDTO
+    ) async -> Result<DailyReportDTO, Error> {
+        do {
+            return .success(try await fetch(date))
+        } catch {
+            return .failure(error)
         }
     }
 }

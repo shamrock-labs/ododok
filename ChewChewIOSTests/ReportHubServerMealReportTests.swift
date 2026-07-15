@@ -54,6 +54,26 @@ final class ReportHubServerMealReportTests: XCTestCase {
         XCTAssertEqual(loader.errorMessage, RemoteStoreError.offline.userMessage)
     }
 
+    @MainActor
+    func testDailyReportSelectionKeepsCurrentReportWhenPreviousReportFails() async {
+        let loader = DailyReportSelectionLoader()
+        let selection = loader.beginSelection()
+        let current = report(date: "2026-07-15", score: 15)
+
+        await loader.load(
+            selectionID: selection,
+            currentDate: "2026-07-15",
+            previousDate: "2026-07-14"
+        ) { date in
+            if date == "2026-07-14" { throw RemoteStoreError.offline }
+            return current
+        }
+
+        XCTAssertEqual(loader.currentReport?.date, "2026-07-15")
+        XCTAssertNil(loader.previousReport)
+        XCTAssertNil(loader.errorMessage)
+    }
+
     func testDaySnapshotUsesOnlyGeneratedServerReports() {
         let generated = makeSession(
             rawChews: 2,
