@@ -5,6 +5,7 @@ import SwiftUI
 struct AppDialog: View {
     let title: String
     let message: String?
+    let supportingText: String?
     let primary: Action
     let secondary: Action?
     let onDismiss: () -> Void
@@ -19,6 +20,22 @@ struct AppDialog: View {
             self.role = role
             self.perform = perform
         }
+    }
+
+    init(
+        title: String,
+        message: String?,
+        supportingText: String? = nil,
+        primary: Action,
+        secondary: Action?,
+        onDismiss: @escaping () -> Void
+    ) {
+        self.title = title
+        self.message = message
+        self.supportingText = supportingText
+        self.primary = primary
+        self.secondary = secondary
+        self.onDismiss = onDismiss
     }
 
     var body: some View {
@@ -45,6 +62,14 @@ struct AppDialog: View {
                     .foregroundStyle(Color.textMuted)
                     .multilineTextAlignment(.center)
                     .lineSpacing(3)
+            }
+            if let supportingText {
+                Text(supportingText)
+                    .font(.appFont(.regularCaption))
+                    .foregroundStyle(Color.textTertiary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+                    .padding(.top, AppSpacing.one)
             }
         }
         .padding(.horizontal, AppSpacing.dialogH)
@@ -101,6 +126,7 @@ private struct AppDialogOverlay: ViewModifier {
     @Binding var isPresented: Bool
     let title: String
     let message: String?
+    let supportingText: String?
     let primary: AppDialog.Action
     let secondary: AppDialog.Action?
 
@@ -119,6 +145,7 @@ private struct AppDialogOverlay: ViewModifier {
                 AppDialog(
                     title: title,
                     message: message,
+                    supportingText: supportingText,
                     primary: primary,
                     secondary: secondary,
                     onDismiss: { isPresented = false }
@@ -136,6 +163,7 @@ extension View {
         isPresented: Binding<Bool>,
         title: String,
         message: String? = nil,
+        supportingText: String? = nil,
         primary: AppDialog.Action,
         secondary: AppDialog.Action? = nil
     ) -> some View {
@@ -143,6 +171,7 @@ extension View {
             isPresented: isPresented,
             title: title,
             message: message,
+            supportingText: supportingText,
             primary: primary,
             secondary: secondary
         ))
