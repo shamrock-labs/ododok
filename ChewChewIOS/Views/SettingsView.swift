@@ -11,8 +11,10 @@ struct SettingsView: View {
     @AppStorage(AirPodsModel.storageKey) private var airPodsRawValue: String = AirPodsModel.default.rawValue
 
     @State private var showDeleteConfirmation = false
+    @State private var showPersonalizationResetConfirmation = false
     @State private var showAirPodsPicker = false
     @State private var showFeedback = false
+    @State private var personalizationSettings = UserDefaultsChewProfileStore().load()
 
     private static let feedbackFormURL = URL(string: "https://forms.gle/6AsoDPHhywVpV9Qb6")!
 
@@ -100,6 +102,16 @@ struct SettingsView: View {
             },
             secondary: .init("취소", role: .cancel) {}
         )
+        .appDialog(
+            isPresented: $showPersonalizationResetConfirmation,
+            title: "기본 감지 기준으로 돌아갈까요?",
+            message: "저장된 맞춤 기준을 지우고 다음 식사부터 기본 기준으로 감지해요.",
+            primary: .init("기본값 사용", role: .destructive) {
+                UserDefaultsChewProfileStore().clear()
+                personalizationSettings = nil
+            },
+            secondary: .init("취소", role: .cancel) {}
+        )
         .airPodsPickerDialog(
             isPresented: $showAirPodsPicker,
             selected: Binding(
@@ -168,7 +180,10 @@ struct SettingsView: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("AirPodsModelPicker")
 
-                ChewPersonalizationSettingsControls()
+            ChewPersonalizationSettingsControls(
+                settings: $personalizationSettings,
+                onResetRequested: { showPersonalizationResetConfirmation = true }
+            )
         }
     }
 

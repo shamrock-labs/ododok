@@ -49,7 +49,7 @@ enum MeasurementCalibrationArtifactFactory {
         let measurementCapture: MeasurementCalibrationCapture?
         let validationCapture: MeasurementCalibrationCapture?
         let calibrationEvents: [ChewDetectionEvent]
-        let validationRun: MeasurementValidationRun
+        let adjustmentRun: MeasurementAdjustmentRun
         let threshold: Double?
         let gateThresholds: ChewingGateThresholds?
         let naturalChewInterval: TimeInterval?
@@ -65,14 +65,16 @@ enum MeasurementCalibrationArtifactFactory {
             outcome: input.outcome,
             minPeakAmplitude: input.threshold,
             gateThresholds: input.gateThresholds,
-            initialValidationGateThresholds: input.validationRun.initialThresholds,
-            adjustedValidationGateThresholds: input.validationRun.adjustedThresholds,
+            initialValidationGateThresholds: input.adjustmentRun.initialThresholds,
+            adjustedValidationGateThresholds: input.adjustmentRun.adjustedThresholds,
             naturalChewInterval: input.naturalChewInterval,
             representativeAmplitudes: input.representativeAmplitudes,
-            validationDetectedCount: input.validationRun.finalCount,
-            validationDetectedCountBeforeAdjustment: input.validationRun.initialCount,
-            validationDetectedCountAfterAdjustment: input.validationRun.adjustedCount,
-            validationAdjustmentApplied: input.validationRun.adjustmentApplied,
+            validationDetectedCount: input.adjustmentRun.finalCount,
+            validationDetectedCountBeforeAdjustment: input.adjustmentRun.initialCount,
+            validationDetectedCountAfterAdjustment: input.adjustmentRun.adjustedCount,
+            validationAdjustmentApplied: input.adjustmentRun.adjustmentApplied,
+            validationAdjustmentStrategy: input.adjustmentRun.adjustmentStrategy,
+            validationReplayCount: input.adjustmentRun.replayCount,
             guidedExpectedCount: input.guidedExpectedCount,
             measurementSampleCount: input.measurementCapture?.samples.count ?? 0,
             validationSampleCount: input.validationCapture?.samples.count ?? 0,
@@ -87,8 +89,8 @@ enum MeasurementCalibrationArtifactFactory {
                 .init(kind: .validationRaw, data: input.validationCapture?.csvData ?? emptyRawCSV),
                 .init(kind: .events, data: eventsCSV(
                     calibrationEvents: input.calibrationEvents,
-                    validationEvents: input.validationRun.initialEvents,
-                    adjustedValidationEvents: input.validationRun.adjustedEvents
+                    validationEvents: input.adjustmentRun.initialEvents,
+                    adjustedValidationEvents: input.adjustmentRun.adjustedEvents
                 )),
                 .init(kind: .summary, data: encode(summary)),
             ]
@@ -109,6 +111,8 @@ enum MeasurementCalibrationArtifactFactory {
         let validationDetectedCountBeforeAdjustment: Int
         let validationDetectedCountAfterAdjustment: Int?
         let validationAdjustmentApplied: Bool
+        let validationAdjustmentStrategy: GateAdjustmentResult.Strategy?
+        let validationReplayCount: Int
         let guidedExpectedCount: Int
         let measurementSampleCount: Int
         let validationSampleCount: Int

@@ -14,6 +14,7 @@ final class MeasurementOnboardingStore {
     private(set) var cueHitID = 0
     private(set) var isMeasuring = false
     private(set) var isFinishingMeasurement = false
+    private(set) var isRestartingMeasurement = false
     private(set) var measurementCompleted = false
     private(set) var isAirPodsConnected: Bool
     private(set) var calibrationAmplitudes: [Double] = []
@@ -27,16 +28,18 @@ final class MeasurementOnboardingStore {
     private let timing: Timing
     private let sampler: any MeasurementCalibrationSampling
     private let gateCalibrator: any ChewingGateCalibrating
-    private let validationGateAutoAdjuster: any ValidationGateAutoAdjusting
+    private let gateAdjustmentSearcher: any GateAdjustmentSearching
     private let artifactUploader: any MeasurementCalibrationArtifactUploading
     private var measurementTask: Task<Void, Never>?
     private var samplerStopTask: Task<MeasurementCalibrationCapture?, Never>?
     private var calibrationId = UUID()
     private var calibrationEvents: [ChewDetectionEvent] = []
-    private var validationRun = MeasurementValidationRun()
+    private var adjustmentRun = MeasurementAdjustmentRun()
     private var baselineCapture: MeasurementCalibrationCapture?
     private var measurementCapture: MeasurementCalibrationCapture?
-    private var isAcceptingValidationSignal = false
+    private var isAcceptingAdjustmentSignal = false
+    private var activeRunID: UUID?
+    private var activeRestartID: UUID?
 
     init(
         stage: Stage = .intro,
@@ -44,7 +47,7 @@ final class MeasurementOnboardingStore {
         timing: Timing = .live,
         sampler: (any MeasurementCalibrationSampling)? = nil,
         gateCalibrator: (any ChewingGateCalibrating)? = nil,
-        validationGateAutoAdjuster: (any ValidationGateAutoAdjusting)? = nil,
+        gateAdjustmentSearcher: (any GateAdjustmentSearching)? = nil,
         artifactUploader: (any MeasurementCalibrationArtifactUploading)? = nil,
         cuePlayer _: (any MeasurementCuePlaying)? = nil
     ) {
@@ -53,23 +56,23 @@ final class MeasurementOnboardingStore {
         self.timing = timing
         self.sampler = sampler ?? LocalMeasurementCalibrationSampler()
         self.gateCalibrator = gateCalibrator ?? CaptureBasedChewingGateCalibrator()
-        self.validationGateAutoAdjuster = validationGateAutoAdjuster
-            ?? CaptureBasedValidationGateAutoAdjuster()
+        self.gateAdjustmentSearcher = gateAdjustmentSearcher
+            ?? CaptureBasedGateAdjustmentSearcher()
         self.artifactUploader = artifactUploader ?? NoopCalibrationArtifactUploader()
     }
 
     var cueCount: Int { timing.cueCount }
-    var validationDetectedCount: Int { validationRun.finalCount }
-    var validationDetectedCountBeforeAdjustment: Int? {
-        validationRun.adjustment == nil ? nil : validationRun.initialCount
+    var adjustmentDetectedCount: Int { adjustmentRun.finalCount }
+    var detectedCountBeforeAdjustment: Int? {
+        adjustmentRun.adjustment == nil ? nil : adjustmentRun.initialCount
     }
-    var validationAdjustmentApplied: Bool { validationRun.adjustmentApplied }
+    var gateAdjustmentApplied: Bool { adjustmentRun.adjustmentApplied }
 
-    var validationCueInterval: TimeInterval {
+    var adjustmentCueInterval: TimeInterval {
         let measured = naturalChewInterval ?? 0.75
         return min(
-            max(measured, PeakAmplitudeCalibration.validationIntervalRange.lowerBound),
-            PeakAmplitudeCalibration.validationIntervalRange.upperBound
+            max(measured, PeakAmplitudeCalibration.adjustmentIntervalRange.lowerBound),
+            PeakAmplitudeCalibration.adjustmentIntervalRange.upperBound
         )
     }
 
@@ -86,27 +89,55 @@ final class MeasurementOnboardingStore {
         case .connection where isAirPodsConnected:
             setStage(.baseline)
         case .calibration where measurementCompleted:
-            setStage(.validation)
+            setStage(.adjustment)
         default:
             break
         }
     }
 
     func startMeasurement() {
-        guard stage == .baseline || stage == .calibration || stage == .validation,
+        guard stage == .baseline || stage == .calibration || stage == .adjustment,
               !isMeasuring,
-              !isFinishingMeasurement else { return }
+              !isFinishingMeasurement,
+              !isRestartingMeasurement else { return }
         guard sampler.isDeviceMotionAvailable else {
             showIssue(.motionUnavailable)
             return
         }
-        guard stage != .validation || (
+        guard stage != .adjustment || (
             candidateMinPeakAmplitude != nil && candidateGateThresholds != nil
         ) else { return }
+
+        guard samplerStopTask == nil else {
+            queueMeasurementAfterSamplerStops(for: stage)
+            return
+        }
+
+        beginMeasurement()
+    }
+
+    private func queueMeasurementAfterSamplerStops(for requestedStage: Stage) {
+        measurementTask?.cancel()
+        measurementTask = Task { [weak self] in
+            guard let self else { return }
+            _ = await self.stopSampler()
+            guard !Task.isCancelled, self.stage == requestedStage else { return }
+            self.measurementTask = nil
+            self.beginMeasurement()
+        }
+    }
+
+    private func beginMeasurement() {
+        guard stage == .baseline || stage == .calibration || stage == .adjustment,
+              !isMeasuring,
+              !isFinishingMeasurement,
+              samplerStopTask == nil else { return }
 
         measurementTask?.cancel()
         resetCurrentRun()
         isMeasuring = true
+        let runID = UUID()
+        activeRunID = runID
 
         let samplingMode: MeasurementCalibrationSamplingMode = switch stage {
         case .baseline:
@@ -114,7 +145,7 @@ final class MeasurementOnboardingStore {
         case .calibration:
             .collectPersonalSignal
         default:
-            .validate(
+            .adjust(
                 minPeakAmplitude: candidateMinPeakAmplitude
                     ?? ChewDetectionConfiguration.standard.minPeakAmplitude,
                 gateThresholds: candidateGateThresholds ?? .standard
@@ -123,25 +154,30 @@ final class MeasurementOnboardingStore {
 
         sampler.start(
             mode: samplingMode,
-            onEvent: { [weak self] event in self?.handle(event) },
-            onError: { [weak self] message in self?.showIssue(.sensor(message)) }
+            onEvent: { [weak self] event in self?.handle(event, runID: runID) },
+            onError: { [weak self] message in self?.handleSensorError(message, runID: runID) }
         )
 
         if stage == .baseline {
             measurementTask = Task { [weak self] in
-                await self?.runBaseline()
+                await self?.runBaseline(runID: runID)
             }
-        } else if stage == .validation {
+        } else if stage == .adjustment {
             measurementTask = Task { [weak self] in
-                await self?.runValidation()
+                await self?.runAdjustment(runID: runID)
             }
         }
     }
 
     func finishNaturalMeasurement() async {
-        guard stage == .calibration, isMeasuring, !isFinishingMeasurement else { return }
+        guard stage == .calibration,
+              isMeasuring,
+              !isFinishingMeasurement,
+              let runID = activeRunID else { return }
         isFinishingMeasurement = true
-        measurementCapture = await stopSampler()
+        let capture = await stopSampler()
+        guard isCurrentRun(runID, stage: .calibration), !Task.isCancelled else { return }
+        measurementCapture = capture
         isMeasuring = false
 
         guard let measurement = PeakAmplitudeCalibration.naturalMeasurement(from: calibrationEvents),
@@ -169,45 +205,56 @@ final class MeasurementOnboardingStore {
         naturalChewInterval = measurement.naturalChewInterval
         measurementCompleted = true
         isFinishingMeasurement = false
+        activeRunID = nil
     }
 
     func retryMeasurement() async {
+        guard let restartID = beginRestart() else { return }
+        defer { finishRestart(restartID) }
         prepareToStopMeasurement()
         _ = await stopSampler()
+        guard activeRestartID == restartID, !Task.isCancelled else { return }
         resetExperiment()
         setStage(.baseline)
+        finishRestart(restartID)
         startMeasurement()
     }
 
-    func retryValidation() async {
-        guard stage == .signalIssue, issue == .validationOutOfRange else { return }
+    func retryAdjustment() async {
+        guard stage == .signalIssue,
+              issue == .adjustmentNeeded,
+              let restartID = beginRestart() else { return }
+        defer { finishRestart(restartID) }
         prepareToStopMeasurement()
         _ = await stopSampler()
-        // 실패한 검증도 별도 S3 묶음으로 보존하므로 다음 시도는 새 식별자를 사용한다.
+        guard activeRestartID == restartID, !Task.isCancelled else { return }
+        // 완료하지 못한 조정도 별도 S3 묶음으로 보존하므로 다음 시도는 새 식별자를 사용한다.
         calibrationId = UUID()
-        setStage(.validation)
+        setStage(.adjustment)
+        finishRestart(restartID)
         startMeasurement()
     }
 
     func cancelMeasurement() {
+        invalidateRestart()
         prepareToStopMeasurement()
         beginStoppingSampler()
     }
 
-    private func runValidation() async {
-        guard await runValidationGuides() else { return }
+    private func runAdjustment(runID: UUID) async {
+        guard await runAdjustmentGuides(runID: runID) else { return }
 
-        let validationCapture = await stopSampler()
-        isAcceptingValidationSignal = false
-        guard !Task.isCancelled else { return }
+        let adjustmentCapture = await stopSampler()
+        guard isCurrentRun(runID, stage: .adjustment), !Task.isCancelled else { return }
+        isAcceptingAdjustmentSignal = false
         isMeasuring = false
-        await finishValidation(validationCapture: validationCapture)
+        await finishAdjustment(capture: adjustmentCapture, runID: runID)
     }
 
-    private func runBaseline() async {
+    private func runBaseline(runID: UUID) async {
         guard await wait(for: timing.baselineDuration) else { return }
         let capture = await stopSampler()
-        guard !Task.isCancelled else { return }
+        guard isCurrentRun(runID, stage: .baseline), !Task.isCancelled else { return }
         isMeasuring = false
         guard let capture, !capture.samples.isEmpty else {
             showIssue(.insufficientSeparation)
@@ -217,22 +264,22 @@ final class MeasurementOnboardingStore {
         setStage(.calibration)
     }
 
-    private func runValidationGuides() async -> Bool {
-        validationRun = MeasurementValidationRun()
-        isAcceptingValidationSignal = true
+    private func runAdjustmentGuides(runID: UUID) async -> Bool {
+        adjustmentRun = MeasurementAdjustmentRun()
+        isAcceptingAdjustmentSignal = true
 
         for index in 1...timing.cueCount {
-            guard !Task.isCancelled else { return false }
+            guard isCurrentRun(runID, stage: .adjustment), !Task.isCancelled else { return false }
             cueIndex = index
             cuePulseID += 1
-            guard await wait(for: activeValidationCueInterval) else { return false }
+            guard await wait(for: activeAdjustmentCueInterval) else { return false }
             cueHitID += 1
         }
         return true
     }
 
-    private var activeValidationCueInterval: Duration {
-        timing.validationCueIntervalOverride ?? .seconds(validationCueInterval)
+    private var activeAdjustmentCueInterval: Duration {
+        timing.adjustmentCueIntervalOverride ?? .seconds(adjustmentCueInterval)
     }
 
     private func wait(for duration: Duration) async -> Bool {
@@ -244,47 +291,59 @@ final class MeasurementOnboardingStore {
         }
     }
 
-    private func handle(_ event: ChewDetectionEvent) {
-        guard isMeasuring else { return }
+    private func handle(_ event: ChewDetectionEvent, runID: UUID) {
+        guard activeRunID == runID, isMeasuring else { return }
         switch stage {
         case .baseline:
             break
         case .calibration:
             calibrationEvents.append(event)
-        case .validation where isAcceptingValidationSignal:
-            validationRun.appendInitial(event)
+        case .adjustment where isAcceptingAdjustmentSignal:
+            adjustmentRun.appendInitial(event)
         default:
             break
         }
     }
 
-    private func finishValidation(validationCapture: MeasurementCalibrationCapture?) async {
+    private func handleSensorError(_ message: String, runID: UUID) {
+        guard activeRunID == runID else { return }
+        showIssue(.sensor(message))
+    }
+
+    private func finishAdjustment(
+        capture: MeasurementCalibrationCapture?,
+        runID: UUID
+    ) async {
+        guard isCurrentRun(runID, stage: .adjustment), !Task.isCancelled else { return }
         guard let candidateMinPeakAmplitude,
               let candidateGateThresholds,
               let naturalChewInterval else {
-            enqueueArtifacts(outcome: .validationOutOfRange, validationCapture: validationCapture)
-            showIssue(.validationOutOfRange)
+            enqueueArtifacts(outcome: .validationOutOfRange, validationCapture: capture)
+            showIssue(.adjustmentNeeded)
             return
         }
 
-        validationRun.begin(with: candidateGateThresholds)
+        adjustmentRun.begin(with: candidateGateThresholds)
 
-        if validationRun.initialCount < PeakAmplitudeCalibration.acceptableValidationCount.lowerBound,
-           let validationCapture,
-           let adjustment = await validationGateAutoAdjuster.adjustment(
-               for: validationCapture,
+        if !PeakAmplitudeCalibration.adjustmentSucceeded(detectedCount: adjustmentRun.initialCount),
+           let capture,
+           let adjustment = await gateAdjustmentSearcher.adjustment(
+               for: capture,
                minPeakAmplitude: candidateMinPeakAmplitude,
-               initialThresholds: candidateGateThresholds
+               initialThresholds: candidateGateThresholds,
+               initialCount: adjustmentRun.initialCount
            ) {
-            validationRun.record(adjustment)
-            if validationRun.adjustmentApplied {
+            guard isCurrentRun(runID, stage: .adjustment), !Task.isCancelled else { return }
+            adjustmentRun.record(adjustment)
+            if adjustmentRun.adjustmentApplied {
                 self.candidateGateThresholds = adjustment.adjustedThresholds
             }
         }
 
-        guard PeakAmplitudeCalibration.validationPassed(detectedCount: validationRun.finalCount) else {
-            enqueueArtifacts(outcome: .validationOutOfRange, validationCapture: validationCapture)
-            showIssue(.validationOutOfRange)
+        guard PeakAmplitudeCalibration.adjustmentSucceeded(detectedCount: adjustmentRun.finalCount)
+            || adjustmentRun.adjustmentApplied else {
+            enqueueArtifacts(outcome: .validationOutOfRange, validationCapture: capture)
+            showIssue(.adjustmentNeeded)
             return
         }
 
@@ -293,23 +352,48 @@ final class MeasurementOnboardingStore {
             gateThresholds: self.candidateGateThresholds ?? candidateGateThresholds,
             calibrationAmplitudes: calibrationAmplitudes,
             naturalChewInterval: naturalChewInterval,
-            validationDetectedCount: validationRun.finalCount
+            validationDetectedCount: adjustmentRun.finalCount
         )
         enqueueArtifacts(
-            outcome: validationRun.adjustmentApplied ? .passedAfterAdjustment : .passed,
-            validationCapture: validationCapture
+            outcome: adjustmentRun.adjustmentApplied ? .passedAfterAdjustment : .passed,
+            validationCapture: capture
         )
         setStage(.ready)
     }
 
-    private func resetCurrentRun() {
+    private func isCurrentRun(_ runID: UUID, stage expectedStage: Stage) -> Bool {
+        activeRunID == runID && stage == expectedStage
+    }
+
+    private func beginRestart() -> UUID? {
+        guard !isRestartingMeasurement else { return nil }
+        let restartID = UUID()
+        activeRestartID = restartID
+        isRestartingMeasurement = true
+        return restartID
+    }
+
+    private func finishRestart(_ restartID: UUID) {
+        guard activeRestartID == restartID else { return }
+        activeRestartID = nil
+        isRestartingMeasurement = false
+    }
+
+    private func invalidateRestart() {
+        activeRestartID = nil
+        isRestartingMeasurement = false
+    }
+}
+
+private extension MeasurementOnboardingStore {
+    func resetCurrentRun() {
         cueIndex = 0
         cuePulseID = 0
         cueHitID = 0
         measurementCompleted = false
         issue = nil
         diagnosticArtifactURLs = []
-        isAcceptingValidationSignal = false
+        isAcceptingAdjustmentSignal = false
         if stage == .baseline {
             baselineCapture = nil
         } else if stage == .calibration {
@@ -320,14 +404,14 @@ final class MeasurementOnboardingStore {
             naturalChewInterval = nil
             profile = nil
         } else {
-            validationRun = MeasurementValidationRun()
+            adjustmentRun = MeasurementAdjustmentRun()
         }
     }
 
-    private func resetExperiment() {
+    func resetExperiment() {
         calibrationId = UUID()
         calibrationEvents = []
-        validationRun = MeasurementValidationRun()
+        adjustmentRun = MeasurementAdjustmentRun()
         measurementCapture = nil
         baselineCapture = nil
         calibrationAmplitudes = []
@@ -339,27 +423,30 @@ final class MeasurementOnboardingStore {
         diagnosticArtifactURLs = []
     }
 
-    private func showIssue(_ issue: Issue) {
+    func showIssue(_ issue: Issue) {
         measurementTask?.cancel()
         measurementTask = nil
         isMeasuring = false
         isFinishingMeasurement = false
-        isAcceptingValidationSignal = false
+        invalidateRestart()
+        isAcceptingAdjustmentSignal = false
+        activeRunID = nil
         measurementCompleted = false
         self.issue = issue
         stage = .signalIssue
         beginStoppingSampler()
     }
 
-    private func prepareToStopMeasurement() {
+    func prepareToStopMeasurement() {
         measurementTask?.cancel()
         measurementTask = nil
         isMeasuring = false
         isFinishingMeasurement = false
-        isAcceptingValidationSignal = false
+        isAcceptingAdjustmentSignal = false
+        activeRunID = nil
     }
 
-    private func beginStoppingSampler() {
+    func beginStoppingSampler() {
         guard samplerStopTask == nil else { return }
         samplerStopTask = Task { [weak self] in
             guard let self else { return nil }
@@ -369,13 +456,13 @@ final class MeasurementOnboardingStore {
         }
     }
 
-    private func stopSampler() async -> MeasurementCalibrationCapture? {
+    func stopSampler() async -> MeasurementCalibrationCapture? {
         beginStoppingSampler()
         let stopTask = samplerStopTask
         return await stopTask?.value
     }
 
-    private func enqueueArtifacts(
+    func enqueueArtifacts(
         outcome: MeasurementCalibrationOutcome,
         validationCapture: MeasurementCalibrationCapture?
     ) {
@@ -384,7 +471,7 @@ final class MeasurementOnboardingStore {
             measurementCapture: measurementCapture,
             validationCapture: validationCapture,
             calibrationEvents: calibrationEvents,
-            validationRun: validationRun,
+            adjustmentRun: adjustmentRun,
             threshold: candidateMinPeakAmplitude,
             gateThresholds: candidateGateThresholds,
             naturalChewInterval: naturalChewInterval,
@@ -399,8 +486,9 @@ final class MeasurementOnboardingStore {
         Task { await artifactUploader.enqueue(bundle) }
     }
 
-    private func setStage(_ newStage: Stage) {
+    func setStage(_ newStage: Stage) {
         measurementTask?.cancel()
+        activeRunID = nil
         stage = newStage
         cueIndex = 0
         measurementCompleted = newStage == .ready
@@ -420,7 +508,7 @@ extension MeasurementOnboardingStore {
             isAirPodsConnected: true,
             sampler: sampler
         )
-        guard stage == .validation || stage == .ready else { return store }
+        guard stage == .adjustment || stage == .ready else { return store }
 
         let amplitudes = [0.031, 0.028, 0.034, 0.041, 0.029, 0.036, 0.033, 0.039, 0.030, 0.037]
         store.calibrationAmplitudes = amplitudes
@@ -428,7 +516,7 @@ extension MeasurementOnboardingStore {
         store.candidateGateThresholds = .standard
         store.naturalChewInterval = 0.75
         if stage == .ready, let threshold = store.candidateMinPeakAmplitude {
-            store.validationRun = MeasurementValidationRun(initialEvents: (0..<10).map { index in
+            store.adjustmentRun = MeasurementAdjustmentRun(initialEvents: (0..<10).map { index in
                 ChewDetectionEvent(count: index + 1, timestamp: Double(index), amplitude: 0.03)
             })
             store.profile = MeasurementCalibrationProfile(

@@ -51,8 +51,8 @@ final class OnboardingUITests: XCTestCase {
         XCTAssertTrue(skip.waitForExistence(timeout: 10), "Name entry should advance to the tutorial step")
     }
 
-    func testTutorialSkip_offersCalibrationBeforeDismissingOnboarding() {
-        app.launchArguments = freshMemberLaunchArguments
+    func testTutorialSkip_offersCalibrationOnHomeBeforeReward() {
+        app.launchArguments = freshMemberLaunchArguments + ["-grantAttendanceReward"]
         app.launch()
 
         XCTAssert(app.staticTexts["처음 오셨네요!"].waitForExistence(timeout: 10))
@@ -63,17 +63,26 @@ final class OnboardingUITests: XCTestCase {
         nameField.typeText("테스터")
         app.buttons["OnboardingSubmit"].tap()
 
-        // Skip the tutorial → calibration remains optional before onboarding closes.
+        // Skip the tutorial → onboarding closes, then calibration is offered over Home.
         let skip = app.buttons["OnboardingSkip"]
         XCTAssertTrue(skip.waitForExistence(timeout: 10))
         skip.tap()
 
+        XCTAssertTrue(skip.waitForNonExistence(timeout: 10))
+        XCTAssertTrue(app.tabBars.buttons["홈"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["내 씹기 신호에 맞춰볼까요?"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts["설정 > 맞춤 감지 기준에서 언제든지 할 수 있어요."].exists)
+        XCTAssertFalse(app.staticTexts["출석 보상"].exists, "캘리브레이션 선택 전에는 보상을 가려야 한다")
         app.buttons["다음에 할게요"].tap()
 
-        let dismissed = app.buttons["OnboardingSkip"].waitForNonExistence(timeout: 10)
-        XCTAssertTrue(dismissed, "Onboarding should be dismissed after skipping the tutorial")
+        XCTAssertTrue(
+            app.staticTexts["내 씹기 신호에 맞춰볼까요?"].waitForNonExistence(timeout: 5),
+            "다음에 하기를 선택하면 홈을 계속 사용할 수 있어야 한다"
+        )
+        XCTAssertTrue(
+            app.staticTexts["출석 보상"].waitForExistence(timeout: 2),
+            "캘리브레이션 선택이 끝난 뒤 대기 중인 보상을 보여줘야 한다"
+        )
     }
 
     func testCalibrationPrompt_startsExistingPersonalizationFlow() {
@@ -90,6 +99,7 @@ final class OnboardingUITests: XCTestCase {
         let skip = app.buttons["OnboardingSkip"]
         XCTAssertTrue(skip.waitForExistence(timeout: 10))
         skip.tap()
+        XCTAssertTrue(skip.waitForNonExistence(timeout: 10))
         app.buttons["지금 바로 하기"].tap()
 
         XCTAssertTrue(

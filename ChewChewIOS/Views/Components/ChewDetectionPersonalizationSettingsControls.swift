@@ -7,11 +7,13 @@ struct ChewPersonalizationSettingsControls: View {
     }
 
     @Environment(AppState.self) private var state
+    @Binding var settings: PersonalizedChewDetectionSettings?
+
+    let onResetRequested: () -> Void
+
     @State private var isPersonalizationPresented = false
     @State private var isDiagnosticsPresented = false
-    @State private var isResetConfirmationPresented = false
     @State private var pendingDiagnosticsAction: PendingDiagnosticsAction?
-    @State private var settings = UserDefaultsChewProfileStore().load()
 
     private let store = UserDefaultsChewProfileStore()
 
@@ -46,16 +48,6 @@ struct ChewPersonalizationSettingsControls: View {
                 )
             }
         }
-        .appDialog(
-            isPresented: $isResetConfirmationPresented,
-            title: "기본 감지 기준으로 돌아갈까요?",
-            message: "저장된 맞춤 기준을 지우고 다음 식사부터 기본 기준으로 감지해요.",
-            primary: .init("기본값 사용", role: .destructive) {
-                store.clear()
-                settings = nil
-            },
-            secondary: .init("취소", role: .cancel) {}
-        )
     }
 
     private var setupButton: some View {
@@ -88,7 +80,7 @@ struct ChewPersonalizationSettingsControls: View {
         case .remeasure:
             isPersonalizationPresented = true
         case .reset:
-            isResetConfirmationPresented = true
+            onResetRequested()
         case nil:
             break
         }

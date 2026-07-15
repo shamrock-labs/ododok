@@ -64,7 +64,7 @@ struct ChewPersonalizationDiagnosticsView: View {
             Divider()
             valueRow(title: "대표 신호", value: "\(settings.calibrationPeakCount)개")
             Divider()
-            valueRow(title: "검증 감지", value: "\(settings.validationDetectedCount)회")
+            valueRow(title: "리듬 감지", value: "\(settings.validationDetectedCount)회")
         }
     }
 

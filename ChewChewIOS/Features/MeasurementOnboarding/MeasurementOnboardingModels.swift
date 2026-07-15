@@ -5,7 +5,7 @@ enum MeasurementOnboardingStage: String, CaseIterable {
     case connection
     case baseline
     case calibration
-    case validation
+    case adjustment
     case ready
     case signalIssue
 
@@ -13,7 +13,7 @@ enum MeasurementOnboardingStage: String, CaseIterable {
         switch self {
         case .intro, .connection: 0
         case .baseline, .calibration: 1
-        case .validation: 2
+        case .adjustment: 2
         case .ready: 3
         case .signalIssue: 2
         }
@@ -24,7 +24,7 @@ enum MeasurementOnboardingIssue: Equatable {
     case motionUnavailable
     case insufficientCalibration
     case insufficientSeparation
-    case validationOutOfRange
+    case adjustmentNeeded
     case sensor(String)
 
     var message: String {
@@ -35,7 +35,7 @@ enum MeasurementOnboardingIssue: Equatable {
             return "씹기 신호를 충분히 찾지 못했어요."
         case .insufficientSeparation:
             return "정지 상태와 씹기 신호를 충분히 구분하지 못했어요."
-        case .validationOutOfRange:
+        case .adjustmentNeeded:
             return "신호가 일정하게 이어지지 않았어요."
         case let .sensor(message):
             return message
@@ -46,7 +46,7 @@ enum MeasurementOnboardingIssue: Equatable {
 struct MeasurementOnboardingTiming {
     let cueCount: Int
     let baselineDuration: Duration
-    let validationCueIntervalOverride: Duration?
+    let adjustmentCueIntervalOverride: Duration?
 
     init(
         cueCount: Int,
@@ -55,7 +55,7 @@ struct MeasurementOnboardingTiming {
     ) {
         self.cueCount = cueCount
         self.baselineDuration = baselineDuration
-        self.validationCueIntervalOverride = cueInterval
+        self.adjustmentCueIntervalOverride = cueInterval
     }
 
     static let live = MeasurementOnboardingTiming(cueCount: 10)

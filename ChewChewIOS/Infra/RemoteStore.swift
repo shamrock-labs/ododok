@@ -121,7 +121,13 @@ struct NoopRemoteStore: RemoteStore {
     }
     func fetchHome(deviceId: String) async throws -> HomeStateDTO { .empty(deviceId: deviceId) }
     func earnAttendance(deviceId: String, idempotencyKey: String) async throws -> AttendanceResultDTO {
-        AttendanceResultDTO(grantedPoints: 0, capped: false, idempotentReplay: false, userStats: .empty(deviceId: deviceId))
+        let grantedPoints = ProcessInfo.processInfo.arguments.contains("-grantAttendanceReward") ? 2 : 0
+        return AttendanceResultDTO(
+            grantedPoints: grantedPoints,
+            capped: false,
+            idempotentReplay: false,
+            userStats: .empty(deviceId: deviceId)
+        )
     }
     func fetchRewardHistory() async throws -> [RewardHistoryDTO] { [] }
     func fetchChewingSessions(deviceId: String, since: Date, until: Date?) async throws -> [ChewingSessionDTO] { [] }

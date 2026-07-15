@@ -7,9 +7,7 @@ struct MeasurementRhythmFeedbackVisual: View {
     let approachDuration: TimeInterval
     let reduceMotion: Bool
 
-    @State private var noteProgress: CGFloat = 0
-    @State private var targetFlash = false
-    @State private var noteApproachTask: Task<Void, Never>?
+    @State private var noteApproachStartedAt: Date?
 
     var body: some View {
         VStack(spacing: Metrics.sceneSpacing) {
@@ -19,7 +17,7 @@ struct MeasurementRhythmFeedbackVisual: View {
         .frame(maxWidth: .infinity)
         .frame(height: Metrics.sceneHeight)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("씹기 감지 검증")
+        .accessibilityLabel("씹기 리듬 안내")
         .accessibilityValue("개인 리듬 안내 중")
         .accessibilityIdentifier("MeasurementRhythmFeedback")
     }
@@ -52,7 +50,12 @@ struct MeasurementRhythmFeedbackVisual: View {
 
                 laneGuides(trackWidth: proxy.size.width)
                 targetZone(trackWidth: proxy.size.width)
-                rhythmNote(trackWidth: proxy.size.width)
+                TimelineView(.animation(
+                    minimumInterval: Metrics.animationFrameInterval,
+                    paused: cueIndex == 0
+                )) { timeline in
+                    rhythmNote(trackWidth: proxy.size.width, now: timeline.date)
+                }
 
             }
             .clipShape(RoundedRectangle(cornerRadius: Metrics.trackRadius))
@@ -62,16 +65,13 @@ struct MeasurementRhythmFeedbackVisual: View {
         .onChange(of: cuePulseID) { _, _ in
             startNoteApproach()
         }
-        .onChange(of: cueHitID) { _, _ in
-            flashTarget()
-        }
         .onAppear {
             if cuePulseID > 0 {
                 startNoteApproach()
             }
         }
         .onDisappear {
-            noteApproachTask?.cancel()
+            noteApproachStartedAt = nil
         }
     }
 
@@ -88,37 +88,38 @@ struct MeasurementRhythmFeedbackVisual: View {
 
     private func targetZone(trackWidth: CGFloat) -> some View {
         RoundedRectangle(cornerRadius: AppRadius.inner)
-            .fill(Color.tintInteractive.opacity(targetFlash ? 0.22 : 0.08))
+            .fill(Color.tintInteractive.opacity(0.08))
             .frame(width: Metrics.targetWidth, height: Metrics.targetHeight)
             .overlay {
                 RoundedRectangle(cornerRadius: AppRadius.inner)
-                    .stroke(
-                        Color.tintInteractive.opacity(targetFlash ? 0.9 : 0.34),
-                        lineWidth: targetFlash ? Metrics.targetActiveBorder : AppSize.border
-                    )
+                    .stroke(Color.tintInteractive.opacity(0.34), lineWidth: AppSize.border)
             }
             .offset(x: targetOffset(trackWidth: trackWidth))
-            .scaleEffect(targetFlash && !reduceMotion ? 1.04 : 1)
     }
 
-    private func rhythmNote(trackWidth: CGFloat) -> some View {
+    private func rhythmNote(trackWidth: CGFloat, now: Date) -> some View {
         RoundedRectangle(cornerRadius: AppRadius.inner)
             .fill(Color.tintInteractive)
             .frame(width: Metrics.noteWidth, height: Metrics.noteHeight)
             .shadow(
-                color: Color.tintInteractive.opacity(0.18),
+                color: Color.tintInteractive.opacity(reduceMotion ? 0 : 0.18),
                 radius: Metrics.noteShadowRadius,
                 x: -Metrics.noteShadowX
             )
-            .offset(x: noteOffset(trackWidth: trackWidth))
+            .offset(x: noteOffset(trackWidth: trackWidth, now: now))
             .opacity(cueIndex == 0 ? 0 : 1)
     }
 
-    private func noteOffset(trackWidth: CGFloat) -> CGFloat {
+    private func noteOffset(trackWidth: CGFloat, now: Date) -> CGFloat {
         let targetOffset = targetOffset(trackWidth: trackWidth)
-        guard !reduceMotion else { return targetOffset }
         let startOffset = trackWidth / 2 - Metrics.horizontalInset - Metrics.noteWidth / 2
-        return startOffset + (targetOffset - startOffset) * noteProgress
+        let progress = noteProgress(at: now)
+        return startOffset + (targetOffset - startOffset) * progress
+    }
+
+    private func noteProgress(at now: Date) -> CGFloat {
+        guard let noteApproachStartedAt, approachDuration > 0 else { return 0 }
+        return min(max(now.timeIntervalSince(noteApproachStartedAt) / approachDuration, 0), 1)
     }
 
     private func targetOffset(trackWidth: CGFloat) -> CGFloat {
@@ -126,35 +127,7 @@ struct MeasurementRhythmFeedbackVisual: View {
     }
 
     private func startNoteApproach() {
-        noteApproachTask?.cancel()
-        guard !reduceMotion else {
-            noteProgress = 1
-            return
-        }
-
-        var resetTransaction = Transaction()
-        resetTransaction.disablesAnimations = true
-        withTransaction(resetTransaction) {
-            noteProgress = 0
-        }
-
-        noteApproachTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(Metrics.animationStartDelayMilliseconds))
-            guard !Task.isCancelled else { return }
-            withAnimation(.linear(duration: approachDuration)) {
-                noteProgress = 1
-            }
-        }
-    }
-
-    private func flashTarget() {
-        targetFlash = true
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(150))
-            withAnimation(.easeOut(duration: AppMotion.durationStateChange)) {
-                targetFlash = false
-            }
-        }
+        noteApproachStartedAt = Date()
     }
 }
 
@@ -169,10 +142,9 @@ private enum Metrics {
     static let laneSpacing: CGFloat = 20
     static let targetWidth: CGFloat = 18
     static let targetHeight: CGFloat = 36
-    static let targetActiveBorder: CGFloat = 2
     static let noteWidth: CGFloat = 16
     static let noteHeight: CGFloat = 28
     static let noteShadowRadius: CGFloat = 8
     static let noteShadowX: CGFloat = 3
-    static let animationStartDelayMilliseconds = 17
+    static let animationFrameInterval: TimeInterval = 1 / 60
 }

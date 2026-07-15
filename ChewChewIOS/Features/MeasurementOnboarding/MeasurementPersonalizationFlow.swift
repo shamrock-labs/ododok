@@ -65,6 +65,7 @@ struct MeasurementPersonalizationFlow: View {
             await artifactUploader.retryPending()
         }
         .onDisappear {
+            store.cancelMeasurement()
             readinessTask?.cancel()
             readinessService.stop()
             connectionMonitor.stop()
@@ -91,7 +92,10 @@ struct MeasurementPersonalizationFlow: View {
             isPreparingAirPods = true
             store.setAirPodsConnected(false)
             let isReady = await readinessService.prepareAirPods()
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled else {
+                isPreparingAirPods = false
+                return
+            }
             store.setAirPodsConnected(isReady)
             isPreparingAirPods = false
         }

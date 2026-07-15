@@ -87,11 +87,11 @@ final class MeasurementOnboardingStoreTests: XCTestCase {
         XCTAssertEqual(peaks.map(\.timestamp), (2..<12).map { Double($0) * 0.7 })
     }
 
-    func testValidationUsesProductTolerance() {
-        XCTAssertFalse(PeakAmplitudeCalibration.validationPassed(detectedCount: 4))
-        XCTAssertTrue(PeakAmplitudeCalibration.validationPassed(detectedCount: 5))
-        XCTAssertTrue(PeakAmplitudeCalibration.validationPassed(detectedCount: 15))
-        XCTAssertFalse(PeakAmplitudeCalibration.validationPassed(detectedCount: 16))
+    func testAdjustmentTargetsEightToTenDetectedChews() {
+        XCTAssertFalse(PeakAmplitudeCalibration.adjustmentSucceeded(detectedCount: 7))
+        XCTAssertTrue(PeakAmplitudeCalibration.adjustmentSucceeded(detectedCount: 8))
+        XCTAssertTrue(PeakAmplitudeCalibration.adjustmentSucceeded(detectedCount: 10))
+        XCTAssertFalse(PeakAmplitudeCalibration.adjustmentSucceeded(detectedCount: 11))
     }
 
     func testFailedCalibrationExportsFourDiagnosticFiles() {
@@ -141,7 +141,7 @@ final class MeasurementOnboardingStoreTests: XCTestCase {
         XCTAssertTrue(store.measurementCompleted)
 
         store.moveForward()
-        XCTAssertEqual(store.stage, .validation)
+        XCTAssertEqual(store.stage, .adjustment)
 
         store.startMeasurement()
         await waitUntil { store.cuePulseID >= 1 }
@@ -197,12 +197,12 @@ final class MeasurementOnboardingStoreTests: XCTestCase {
         store.startMeasurement()
         await waitUntil { store.stage == .signalIssue }
 
-        XCTAssertEqual(store.issue, .validationOutOfRange)
+        XCTAssertEqual(store.issue, .adjustmentNeeded)
         XCTAssertEqual(store.candidateMinPeakAmplitude, threshold)
         XCTAssertEqual(store.calibrationAmplitudes.count, 10)
 
-        await store.retryValidation()
-        XCTAssertEqual(store.stage, .validation)
+        await store.retryAdjustment()
+        XCTAssertEqual(store.stage, .adjustment)
         await waitUntil { store.cuePulseID >= 1 }
         for index in 0..<10 {
             sampler.emit(timestamp: 10 + Double(index) * 0.75, amplitude: 0.03)
@@ -221,13 +221,14 @@ final class MeasurementOnboardingStoreTests: XCTestCase {
             minimumRotationYDominance: 0.032,
             minimumRotationYJitterBandDominance: 0.040
         )
-        let autoAdjuster = StubValidationGateAutoAdjuster(
-            result: ValidationGateAdjustment(
+        let adjustmentSearcher = StubGateAdjustmentSearcher(
+            result: GateAdjustmentResult(
                 initialThresholds: .standard,
                 adjustedThresholds: adjustedThresholds,
                 adjustedEvents: (0..<10).map { index in
                     event(count: index + 1, timestamp: Double(index) * 0.75, amplitude: 0.02)
-                }
+                },
+                replayCount: 3
             )
         )
         let store = MeasurementOnboardingStore(
@@ -236,7 +237,7 @@ final class MeasurementOnboardingStoreTests: XCTestCase {
             timing: .init(cueCount: 10, cueInterval: .milliseconds(2)),
             sampler: sampler,
             gateCalibrator: StubGateCalibrator(),
-            validationGateAutoAdjuster: autoAdjuster
+            gateAdjustmentSearcher: adjustmentSearcher
         )
         store.startMeasurement()
         emitNaturalChews(sampler: sampler)
@@ -246,10 +247,10 @@ final class MeasurementOnboardingStoreTests: XCTestCase {
         store.startMeasurement()
         await waitUntil { store.stage == .ready }
 
-        XCTAssertEqual(autoAdjuster.callCount, 1)
-        XCTAssertTrue(store.validationAdjustmentApplied)
-        XCTAssertEqual(store.validationDetectedCountBeforeAdjustment, 0)
-        XCTAssertEqual(store.validationDetectedCount, 10)
+        XCTAssertEqual(adjustmentSearcher.callCount, 1)
+        XCTAssertTrue(store.gateAdjustmentApplied)
+        XCTAssertEqual(store.detectedCountBeforeAdjustment, 0)
+        XCTAssertEqual(store.adjustmentDetectedCount, 10)
         XCTAssertEqual(store.profile?.gateThresholds, adjustedThresholds)
     }
 
@@ -358,6 +359,53 @@ final class MeasurementOnboardingStoreTests: XCTestCase {
         XCTAssertTrue(store.isMeasuring)
     }
 
+    func testRestartAfterLeavingWaitsForPreviousSamplerToStop() async {
+        let sampler = SuspendingStopCalibrationSampler()
+        let store = MeasurementOnboardingStore(
+            stage: .calibration,
+            isAirPodsConnected: true,
+            sampler: sampler
+        )
+        store.startMeasurement()
+
+        store.cancelMeasurement()
+        await waitUntil { sampler.isStopPending }
+        store.startMeasurement()
+
+        XCTAssertEqual(sampler.startCount, 1)
+        XCTAssertFalse(store.isMeasuring)
+
+        sampler.finishStop()
+        await waitUntil { sampler.startCount == 2 }
+
+        XCTAssertTrue(store.isMeasuring)
+        XCTAssertEqual(store.stage, .calibration)
+    }
+
+    func testLeavingAdjustmentDoesNotReportFailureAfterGuidesFinish() async {
+        let sampler = ManualCalibrationSampler()
+        let store = MeasurementOnboardingStore(
+            stage: .calibration,
+            isAirPodsConnected: true,
+            timing: .init(cueCount: 10, cueInterval: .milliseconds(2)),
+            sampler: sampler,
+            gateCalibrator: StubGateCalibrator()
+        )
+        store.startMeasurement()
+        emitNaturalChews(sampler: sampler)
+        await store.finishNaturalMeasurement()
+        store.moveForward()
+        store.startMeasurement()
+        await waitUntil { store.cuePulseID > 0 }
+
+        store.cancelMeasurement()
+        try? await Task.sleep(for: .milliseconds(30))
+
+        XCTAssertEqual(store.stage, .adjustment)
+        XCTAssertNil(store.issue)
+        XCTAssertFalse(store.isMeasuring)
+    }
+
     private func makeStore(isAirPodsConnected: Bool) -> MeasurementOnboardingStore {
         MeasurementOnboardingStore(
             isAirPodsConnected: isAirPodsConnected,
@@ -430,7 +478,7 @@ private final class ManualCalibrationSampler: MeasurementCalibrationSampling {
     }
 
     private func isValidationMode(_ mode: MeasurementCalibrationSamplingMode?) -> Bool {
-        if case .some(.validate) = mode { return true }
+        if case .some(.adjust) = mode { return true }
         return false
     }
 }
@@ -470,19 +518,20 @@ private struct StubGateCalibrator: ChewingGateCalibrating {
 }
 
 @MainActor
-private final class StubValidationGateAutoAdjuster: ValidationGateAutoAdjusting {
-    private let result: ValidationGateAdjustment?
+private final class StubGateAdjustmentSearcher: GateAdjustmentSearching {
+    private let result: GateAdjustmentResult?
     private(set) var callCount = 0
 
-    init(result: ValidationGateAdjustment?) {
+    init(result: GateAdjustmentResult?) {
         self.result = result
     }
 
     func adjustment(
         for _: MeasurementCalibrationCapture,
         minPeakAmplitude _: Double,
-        initialThresholds _: ChewingGateThresholds
-    ) async -> ValidationGateAdjustment? {
+        initialThresholds _: ChewingGateThresholds,
+        initialCount _: Int
+    ) async -> GateAdjustmentResult? {
         callCount += 1
         return result
     }
@@ -494,7 +543,6 @@ private final class SuspendingStopCalibrationSampler: MeasurementCalibrationSamp
     private(set) var startCount = 0
     private(set) var isStopPending = false
     private var stopContinuation: CheckedContinuation<Void, Never>?
-
     func start(
         mode _: MeasurementCalibrationSamplingMode,
         onEvent _: @escaping @MainActor (ChewDetectionEvent) -> Void,

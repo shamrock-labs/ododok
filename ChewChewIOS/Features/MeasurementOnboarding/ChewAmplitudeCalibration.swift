@@ -12,8 +12,9 @@ enum PeakAmplitudeCalibration {
     static let minimumRequiredPeaks = 7
     static let maximumRepresentativePeaks = 10
     static let minimumPeakSeparation: TimeInterval = 0.32
-    static let acceptableValidationCount = 5...15
-    static let validationIntervalRange: ClosedRange<TimeInterval> = 0.45...1.25
+    static let adjustmentTargetCount = 8...10
+    static let fallbackAdjustmentTargetCount = 5...15
+    static let adjustmentIntervalRange: ClosedRange<TimeInterval> = 0.45...1.25
 
     struct NaturalMeasurement: Equatable {
         let representativePeaks: [ChewPeak]
@@ -23,8 +24,8 @@ enum PeakAmplitudeCalibration {
             representativePeaks.map(\.amplitude)
         }
 
-        var validationCueInterval: TimeInterval {
-            min(max(naturalChewInterval, validationIntervalRange.lowerBound), validationIntervalRange.upperBound)
+        var adjustmentCueInterval: TimeInterval {
+            min(max(naturalChewInterval, adjustmentIntervalRange.lowerBound), adjustmentIntervalRange.upperBound)
         }
     }
 
@@ -37,8 +38,12 @@ enum PeakAmplitudeCalibration {
         return min(max(conservativePeak * 0.6, 0.001), 0.03)
     }
 
-    static func validationPassed(detectedCount: Int) -> Bool {
-        acceptableValidationCount.contains(detectedCount)
+    static func adjustmentSucceeded(detectedCount: Int) -> Bool {
+        adjustmentTargetCount.contains(detectedCount)
+    }
+
+    static func fallbackAdjustmentSucceeded(detectedCount: Int) -> Bool {
+        fallbackAdjustmentTargetCount.contains(detectedCount)
     }
 
     static func naturalMeasurement(from events: [ChewDetectionEvent]) -> NaturalMeasurement? {
@@ -99,7 +104,7 @@ enum PeakAmplitudeCalibration {
 enum MeasurementCalibrationSamplingMode: Equatable {
     case captureBaseline
     case collectPersonalSignal
-    case validate(minPeakAmplitude: Double, gateThresholds: ChewingGateThresholds)
+    case adjust(minPeakAmplitude: Double, gateThresholds: ChewingGateThresholds)
 }
 
 @MainActor
@@ -145,6 +150,7 @@ final class LocalMeasurementCalibrationSampler: MeasurementCalibrationSampling {
     private var processingGeneration = UUID()
     private var captureStartedAt: Date?
     private var capturedSamples: [HeadphoneMotionSample] = []
+    private var isAcceptingSamples = false
 
     init(motionService: any MealMotionServicing = HeadphoneMotionService()) {
         self.motionService = motionService
@@ -164,6 +170,7 @@ final class LocalMeasurementCalibrationSampler: MeasurementCalibrationSampling {
         processingGeneration = UUID()
         captureStartedAt = Date()
         capturedSamples = []
+        isAcceptingSamples = true
 
         let processor: Processor
         switch mode {
@@ -171,7 +178,7 @@ final class LocalMeasurementCalibrationSampler: MeasurementCalibrationSampling {
             processor = .captureOnly
         case .collectPersonalSignal:
             processor = .amplitudeProbe(ChewPeakAmplitudeProbe())
-        case let .validate(minPeakAmplitude, gateThresholds):
+        case let .adjust(minPeakAmplitude, gateThresholds):
             processor = .detectionEngine(ChewDetectionEngine(
                 configuration: ChewDetectionConfiguration(
                     minPeakAmplitude: minPeakAmplitude,
@@ -185,13 +192,18 @@ final class LocalMeasurementCalibrationSampler: MeasurementCalibrationSampling {
 
         motionService.start { [weak self] sample in
             self?.enqueue(sample, processor: processor, generation: generation)
-        } onError: { message in
-            Task { @MainActor in onError(message) }
+        } onError: { [weak self] message in
+            Task { @MainActor in
+                guard self?.processingGeneration == generation,
+                      self?.isAcceptingSamples == true else { return }
+                onError(message)
+            }
         }
     }
 
     func stop() async -> MeasurementCalibrationCapture? {
         motionService.stop()
+        isAcceptingSamples = false
         let pendingTask = sampleProcessingTailTask
         sampleProcessingTailTask = nil
         await pendingTask?.value
@@ -219,6 +231,7 @@ final class LocalMeasurementCalibrationSampler: MeasurementCalibrationSampling {
         processor: Processor,
         generation: UUID
     ) {
+        guard isAcceptingSamples, processingGeneration == generation else { return }
         capturedSamples.append(sample)
         let previousTask = sampleProcessingTailTask
         sampleProcessingTailTask = Task { [weak self] in
@@ -270,7 +283,7 @@ final class SimulatedMeasurementCalibrationSampler: MeasurementCalibrationSampli
                     ))
                 }
             }
-        case let .validate(threshold, _):
+        case let .adjust(threshold, _):
             eventTask = Task {
                 for (index, amplitude) in amplitudes.enumerated() {
                     do {
@@ -298,7 +311,7 @@ final class SimulatedMeasurementCalibrationSampler: MeasurementCalibrationSampli
             return makeCapture(isChewing: false, duration: 5)
         case .collectPersonalSignal:
             return makeCapture(isChewing: true, duration: 8)
-        case .validate, .none:
+        case .adjust, .none:
             return nil
         }
     }

@@ -10,6 +10,7 @@ struct MeasurementOnboardingView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var diagnosticsShareItems: [URL] = []
 
     var body: some View {
         VStack(spacing: 0) {
@@ -38,7 +39,9 @@ struct MeasurementOnboardingView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(LinearGradient.appBackground.ignoresSafeArea())
         .interactiveDismissDisabled(store.isMeasuring)
-        .onDisappear { store.cancelMeasurement() }
+        .background {
+            MeasurementDiagnosticsSharePresenter(items: $diagnosticsShareItems)
+        }
     }
 
     private var accessibilityLayout: Bool { dynamicTypeSize.isAccessibilitySize }
@@ -128,12 +131,12 @@ struct MeasurementOnboardingView: View {
                 isComplete: store.measurementCompleted,
                 reduceMotion: reduceMotion
             )
-        case .validation:
+        case .adjustment:
             MeasurementRhythmFeedbackVisual(
                 cueIndex: store.cueIndex,
                 cuePulseID: store.cuePulseID,
                 cueHitID: store.cueHitID,
-                approachDuration: store.validationCueInterval,
+                approachDuration: store.adjustmentCueInterval,
                 reduceMotion: reduceMotion
             )
         case .ready:
@@ -155,15 +158,15 @@ struct MeasurementOnboardingView: View {
             ])
         case .connection:
             connectionStatus
-        case .baseline, .calibration, .validation:
+        case .baseline, .calibration, .adjustment:
             measurementStatus
         case .ready:
             readyDetails
         case .signalIssue:
-            if store.issue == .validationOutOfRange {
+            if store.issue == .adjustmentNeeded {
                 detailRows([
                     ("airpodspro", store.issue?.message ?? "AirPods 신호를 확인해 주세요"),
-                    ("arrow.clockwise", "찾아둔 내 기준은 유지하고 검증만 다시 해요"),
+                    ("arrow.clockwise", "찾아둔 내 기준은 유지하고 리듬에 맞춰 한 번 더 씹어요"),
                 ])
             } else {
                 detailRows([
@@ -297,7 +300,7 @@ struct MeasurementOnboardingView: View {
                 .accessibilityIdentifier("MeasurementOnboardingRetryCalibration")
             }
 
-            if store.stage == .signalIssue, store.issue == .validationOutOfRange {
+            if store.stage == .signalIssue, store.issue == .adjustmentNeeded {
                 Button("측정부터 다시") {
                     Task { await store.retryMeasurement() }
                 }
@@ -309,7 +312,9 @@ struct MeasurementOnboardingView: View {
             }
 
             if store.stage == .signalIssue, !store.diagnosticArtifactURLs.isEmpty {
-                ShareLink(items: store.diagnosticArtifactURLs) {
+                Button {
+                    diagnosticsShareItems = store.diagnosticArtifactURLs
+                } label: {
                     Label("측정 파일 공유", systemImage: "square.and.arrow.up")
                 }
                 .buttonStyle(.plain)
@@ -327,7 +332,7 @@ struct MeasurementOnboardingView: View {
         case .connection: "먼저 AirPods를\n확인할게요"
         case .baseline: "5초 동안 편하게\n멈춰 있어 주세요"
         case .calibration: "평소처럼 자연스럽게\n10번 씹어보세요"
-        case .validation: "내 리듬으로\n감지를 확인할게요"
+        case .adjustment: "이번에는 리듬에 맞춰\n씹어볼까요?"
         case .ready: "내 씹기 기준을\n확인했어요"
         case .signalIssue: "신호를 충분히\n읽지 못했어요"
         }
@@ -339,7 +344,7 @@ struct MeasurementOnboardingView: View {
         case .connection: "연결된 AirPods의 움직임 센서를 확인해요."
         case .baseline: "가만히 있을 때 생기는 작은 움직임을 먼저 확인해요.\n고개와 턱에 힘을 빼고 편하게 있어 주세요."
         case .calibration: "속도에 신경 쓰지 말고 평소 식사하듯 씹어주세요.\n10번을 다 씹으면 측정 완료를 눌러요."
-        case .validation: "방금 찾은 내 속도를 따라 편안하게 씹어주세요.\n감지 횟수는 화면에 표시하지 않아요."
+        case .adjustment: "오른쪽에서 오는 신호가 왼쪽에 닿을 때 편안하게 씹어주세요.\n감지 횟수는 화면에 표시하지 않아요."
         case .ready: "다음 식사부터 이 기준으로 씹기를 감지해요."
         case .signalIssue: "괜찮아요. 착용 상태와 씹는 리듬을 확인해요."
         }
@@ -378,10 +383,10 @@ struct MeasurementOnboardingView: View {
         case .calibration:
             if store.isFinishingMeasurement { return "신호 확인 중" }
             if store.isMeasuring { return "측정 완료" }
-            return store.measurementCompleted ? "내 리듬 검증하기" : "자연 측정 시작"
-        case .validation: return store.isMeasuring ? "내 리듬 확인 중" : "리듬 검증 시작"
+            return store.measurementCompleted ? "리듬에 맞춰 씹기" : "측정 시작하기"
+        case .adjustment: return store.isMeasuring ? "내 리듬 확인 중" : "리듬에 맞춰 씹기"
         case .ready: return "맞춤 기준 사용하기"
-        case .signalIssue: return store.issue == .validationOutOfRange ? "검증 다시하기" : "측정 다시하기"
+        case .signalIssue: return store.issue == .adjustmentNeeded ? "한 번 더 해보기" : "측정 다시하기"
         }
     }
 
@@ -392,15 +397,16 @@ struct MeasurementOnboardingView: View {
         case .baseline: "record.circle"
         case .calibration:
             store.isMeasuring ? "stop.circle" : store.measurementCompleted ? "arrow.right" : "record.circle"
-        case .validation: "record.circle"
+        case .adjustment: "record.circle"
         case .ready: "checkmark"
         case .signalIssue: "arrow.clockwise"
         }
     }
 
     private var primaryDisabled: Bool {
-        store.isFinishingMeasurement || (store.stage == .baseline && store.isMeasuring)
-            || (store.stage == .validation && store.isMeasuring) || (store.stage == .connection
+        store.isFinishingMeasurement || store.isRestartingMeasurement
+            || (store.stage == .baseline && store.isMeasuring)
+            || (store.stage == .adjustment && store.isMeasuring) || (store.stage == .connection
                 && (!store.isAirPodsConnected || isPreparingAirPods))
     }
 
@@ -411,13 +417,13 @@ struct MeasurementOnboardingView: View {
         case .calibration where store.isMeasuring:
             Task { await store.finishNaturalMeasurement() }
         case .calibration where !store.measurementCompleted,
-             .validation where !store.measurementCompleted:
+             .adjustment where !store.measurementCompleted:
             store.startMeasurement()
         case .ready:
             onComplete()
         case .signalIssue:
-            if store.issue == .validationOutOfRange {
-                Task { await store.retryValidation() }
+            if store.issue == .adjustmentNeeded {
+                Task { await store.retryAdjustment() }
             } else {
                 Task { await store.retryMeasurement() }
             }
@@ -428,47 +434,6 @@ struct MeasurementOnboardingView: View {
         }
     }
 }
-
-#if DEBUG
-struct MeasurementOnboardingPreviewHost: View {
-    @State private var store: MeasurementOnboardingStore
-
-    init() {
-        let arguments = ProcessInfo.processInfo.arguments
-        let stage: MeasurementOnboardingStore.Stage
-        if let index = arguments.firstIndex(of: "-measurementOnboardingStage"),
-           index + 1 < arguments.count,
-           let requestedStage = MeasurementOnboardingStore.Stage(rawValue: arguments[index + 1]) {
-            stage = requestedStage
-        } else {
-            stage = .intro
-        }
-        #if targetEnvironment(simulator)
-        let sampler: any MeasurementCalibrationSampling = SimulatedMeasurementCalibrationSampler()
-        #else
-        let sampler: any MeasurementCalibrationSampling = LocalMeasurementCalibrationSampler()
-        #endif
-        _store = State(initialValue: MeasurementOnboardingStore.preview(
-            stage: stage,
-            sampler: sampler
-        ))
-    }
-
-    var body: some View {
-        MeasurementOnboardingView(
-            store: store,
-            onComplete: {},
-            onSkip: {},
-            onRetryConnection: { store.setAirPodsConnected(true) }
-        )
-        .task {
-            if store.stage == .baseline || store.stage == .calibration || store.stage == .validation {
-                store.startMeasurement()
-            }
-        }
-    }
-}
-#endif
 
 private struct StillSignalMeasurementVisual: View {
     let isMeasuring: Bool
