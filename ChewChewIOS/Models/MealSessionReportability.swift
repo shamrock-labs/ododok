@@ -23,11 +23,16 @@ enum MealSessionReportability {
               let axes = report.axisScores,
               axisScoresAreValid(axes),
               let metrics = report.metrics,
-              metricsAreValid(metrics),
               let grade = report.grade,
               isKnown(grade),
               let baseline = report.recommendedBaseline,
-              baselineIsValid(baseline) else { return nil }
+              sharedMetricsAreValid(metrics),
+              sharedBaselineIsValid(baseline),
+              policySpecificMetricsAreValid(
+                policy: report.scorePolicyVersion,
+                metrics: metrics,
+                baseline: baseline
+              ) else { return nil }
         return report
     }
 
@@ -54,23 +59,59 @@ enum MealSessionReportability {
             .allSatisfy { (0...100).contains($0) }
     }
 
-    private static func metricsAreValid(_ metrics: MealReportMetricsDTO) -> Bool {
-        let rates = [metrics.legacyMealRatePerMin, metrics.chewingTimeRatio, metrics.mealDurationSec]
-        return rates.allSatisfy(\.isFinite)
-            && metrics.legacyMealRatePerMin >= 0
+    private static func sharedMetricsAreValid(_ metrics: MealReportMetricsDTO) -> Bool {
+        metrics.chewingTimeRatio.isFinite
             && (0...1).contains(metrics.chewingTimeRatio)
             && metrics.totalChewCount >= 0
+            && metrics.mealDurationSec.isFinite
             && metrics.mealDurationSec > 0
-            && (metrics.chewingRatePerMin?.isFinite ?? true)
     }
 
-    private static func baselineIsValid(_ baseline: MealReportRecommendedBaselineDTO) -> Bool {
-        baseline.chewingRatePerMin.target.isFinite
-            && baseline.chewingRatePerMin.target > 0
-            && baseline.chewingTimeRatio.isFinite
+    private static func sharedBaselineIsValid(_ baseline: MealReportRecommendedBaselineDTO) -> Bool {
+        baseline.chewingTimeRatio.isFinite
             && (0...1).contains(baseline.chewingTimeRatio)
             && baseline.totalChewCount > 0
             && baseline.mealDurationSec.isFinite
             && baseline.mealDurationSec > 0
+    }
+
+    private static func policySpecificMetricsAreValid(
+        policy: String?,
+        metrics: MealReportMetricsDTO,
+        baseline: MealReportRecommendedBaselineDTO
+    ) -> Bool {
+        switch policy {
+        case "legacy-ios-v1":
+            finiteNonNegative(metrics.legacyMealRatePerMin)
+                && metrics.chewingRatePerMin == nil
+                && positive(baseline.chewingRatePerMin.target)
+                && baseline.chewingRatePerMin.min == nil
+                && baseline.chewingRatePerMin.max == nil
+        case "meal-score-v1":
+            finiteNonNegative(metrics.chewingRatePerMin)
+                && metrics.legacyMealRatePerMin == nil
+                && baseline.chewingRatePerMin.target == nil
+                && validRange(
+                    min: baseline.chewingRatePerMin.min,
+                    max: baseline.chewingRatePerMin.max
+                )
+        default:
+            false
+        }
+    }
+
+    private static func finiteNonNegative(_ value: Double?) -> Bool {
+        guard let value else { return false }
+        return value.isFinite && value >= 0
+    }
+
+    private static func positive(_ value: Double?) -> Bool {
+        guard let value else { return false }
+        return value.isFinite && value > 0
+    }
+
+    private static func validRange(min: Double?, max: Double?) -> Bool {
+        guard positive(min), positive(max), let min, let max else { return false }
+        return min <= max
     }
 }

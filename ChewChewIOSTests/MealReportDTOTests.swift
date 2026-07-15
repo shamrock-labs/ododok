@@ -4,6 +4,17 @@ import XCTest
 final class MealReportDTOTests: XCTestCase {
     private let sessionId = UUID(uuidString: "7ad46ae5-3521-45b5-950f-97d433081737")!
 
+    func testDecodeMealScoreV1RangeBaseline() throws {
+        let report = try JSONDecoder().decode(MealReportDTO.self, from: Data(v1JSON.utf8))
+
+        XCTAssertEqual(report.scorePolicyVersion, "meal-score-v1")
+        XCTAssertEqual(report.metrics?.chewingRatePerMin, 100)
+        XCTAssertNil(report.metrics?.legacyMealRatePerMin)
+        XCTAssertNil(report.recommendedBaseline?.chewingRatePerMin.target)
+        XCTAssertEqual(report.recommendedBaseline?.chewingRatePerMin.min, 56)
+        XCTAssertEqual(report.recommendedBaseline?.chewingRatePerMin.max, 130)
+    }
+
     func testGeneratedReportDecodesExactServerSnapshotIncludingExplicitNullRate() throws {
         let report = try JSONDecoder().decode(MealReportDTO.self, from: Data(generatedReportJSON.utf8))
 
@@ -222,6 +233,37 @@ final class MealReportDTOTests: XCTestCase {
           "grade": "soso",
           "recommendedBaseline": {
             "chewingRatePerMin": {"target": 28.0},
+            "chewingTimeRatio": 0.6,
+            "totalChewCount": 300,
+            "mealDurationSec": 720.0
+          }
+        }
+        """
+    }
+
+    private var v1JSON: String {
+        """
+        {
+          "status": "GENERATED",
+          "sessionId": "\(sessionId.uuidString)",
+          "scorePolicyVersion": "meal-score-v1",
+          "analysisModelVersion": "dsp-chewcounter-1",
+          "totalScore": 84,
+          "axisScores": {
+            "chewingRate": 90,
+            "chewingTimeRatio": 80,
+            "totalChewCount": 85,
+            "mealDuration": 75
+          },
+          "metrics": {
+            "chewingRatePerMin": 100.0,
+            "chewingTimeRatio": 0.72,
+            "totalChewCount": 420,
+            "mealDurationSec": 720.0
+          },
+          "grade": "good",
+          "recommendedBaseline": {
+            "chewingRatePerMin": {"min": 56.0, "max": 130.0},
             "chewingTimeRatio": 0.6,
             "totalChewCount": 300,
             "mealDurationSec": 720.0

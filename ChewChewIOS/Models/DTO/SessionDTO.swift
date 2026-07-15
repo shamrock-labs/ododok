@@ -101,18 +101,22 @@ struct MealReportAxisScoresDTO: Codable, Equatable {
 
 struct MealReportMetricsDTO: Codable, Equatable {
     var chewingRatePerMin: Double?
-    var legacyMealRatePerMin: Double
+    var legacyMealRatePerMin: Double?
     var chewingTimeRatio: Double
     var totalChewCount: Int
     var mealDurationSec: Double
 }
 
-struct MealReportTargetDTO: Codable, Equatable {
-    var target: Double
+struct MealReportRateBaselineDTO: Codable, Equatable {
+    var target: Double? = nil
+    var min: Double? = nil
+    var max: Double? = nil
 }
 
+typealias MealReportTargetDTO = MealReportRateBaselineDTO
+
 struct MealReportRecommendedBaselineDTO: Codable, Equatable {
-    var chewingRatePerMin: MealReportTargetDTO
+    var chewingRatePerMin: MealReportRateBaselineDTO
     var chewingTimeRatio: Double
     var totalChewCount: Int
     var mealDurationSec: Double

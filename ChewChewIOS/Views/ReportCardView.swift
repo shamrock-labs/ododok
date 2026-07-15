@@ -873,9 +873,11 @@ extension ReportCardModel {
               let totalScore = report.totalScore,
               let axes = report.axisScores,
               let metrics = report.metrics,
+              let legacyMealRatePerMin = metrics.legacyMealRatePerMin,
               let reportGrade = report.grade,
               let grade = Grade(reportGrade: reportGrade),
-              let baseline = report.recommendedBaseline else { return nil }
+              let baseline = report.recommendedBaseline,
+              let legacyRateTarget = baseline.chewingRatePerMin.target else { return nil }
         let mood = Mood(grade: grade, score: totalScore)
         let caption = CaptionPool.report(for: grade)
         let chewingRatio = min(max(metrics.chewingTimeRatio, 0), 1)
@@ -886,7 +888,7 @@ extension ReportCardModel {
             grade: grade,
             chewCount: metrics.totalChewCount,
             totalDurationSec: metrics.mealDurationSec,
-            chewsPerMinute: metrics.legacyMealRatePerMin,
+            chewsPerMinute: legacyMealRatePerMin,
             chewingFraction: metrics.chewingTimeRatio,
             chewingSeconds: chewingSeconds,
             restSeconds: restSeconds,
@@ -897,7 +899,7 @@ extension ReportCardModel {
             lengthScore: axes.mealDuration,
             caption: caption,
             mood: mood,
-            recommendedChewsPerMinute: baseline.chewingRatePerMin.target,
+            recommendedChewsPerMinute: legacyRateTarget,
             recommendedChewingFraction: baseline.chewingTimeRatio,
             recommendedChewCount: baseline.totalChewCount,
             recommendedDurationSec: baseline.mealDurationSec,
