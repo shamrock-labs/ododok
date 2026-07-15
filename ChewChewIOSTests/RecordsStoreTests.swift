@@ -116,7 +116,7 @@ final class RecordsStoreTests: XCTestCase {
         let store = RecordsStore(repository: repository, calendar: calendar, initialMonth: jan)
 
         async let pendingLoad: Void = store.loadMonth()
-        await Task.yield()
+        await repository.waitUntilFetchCount(1)
         await store.deleteAllSessions()
         await pendingLoad
 
@@ -154,7 +154,7 @@ final class RecordsStoreTests: XCTestCase {
         let store = RecordsStore(repository: repository, calendar: calendar, initialMonth: jan)
 
         async let firstLoad: Void = store.loadMonth()
-        await Task.yield()
+        await repository.waitUntilFetchCount(1)
         async let secondLoad: Void = store.moveMonth(delta: 1)
         _ = await (firstLoad, secondLoad)
 
@@ -293,6 +293,7 @@ private actor FakeMealSessionRepository: MealSessionRepository {
     private var deletedIDs: [UUID] = []
     private var deleteAllCalled = false
     private var fetchOldestCalled = false
+    private var fetchCount = 0
 
     init(
         calendar: Calendar,
@@ -313,6 +314,7 @@ private actor FakeMealSessionRepository: MealSessionRepository {
     func fetchSessions(since: Date, until: Date?) async throws -> [MealSessionRecord] {
         if let fetchError { throw fetchError }
 
+        fetchCount += 1
         let month = calendar.dateInterval(of: .month, for: since)?.start ?? since
         if let delay = delaysByMonth[month] {
             try? await Task.sleep(nanoseconds: delay)
@@ -346,5 +348,11 @@ private actor FakeMealSessionRepository: MealSessionRepository {
 
     func didFetchOldestSessionStartedAt() -> Bool {
         fetchOldestCalled
+    }
+
+    func waitUntilFetchCount(_ expectedCount: Int) async {
+        while fetchCount < expectedCount {
+            await Task.yield()
+        }
     }
 }
