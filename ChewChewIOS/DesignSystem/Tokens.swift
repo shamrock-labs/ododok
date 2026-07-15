@@ -115,6 +115,11 @@ enum AppSize {
     static let toastIcon = iconSmall
 }
 
+/// 원본 캔버스 안의 투명 여백을 보정하는 일러스트 전용 값.
+enum AppArtwork {
+    static let daramContentScale: CGFloat = 1.35
+}
+
 enum AppMotion {
     static let durationSignal: TimeInterval = 0.07
     static let durationButtonPress: TimeInterval = 0.12

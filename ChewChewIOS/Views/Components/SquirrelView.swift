@@ -12,17 +12,28 @@ struct SquirrelView: View {
 
     @State private var bounce = false
     @State private var eatingMotion = false
-    /// 식사 중이 아닐 때 다람쥐가 살짝 좌우로 흔들리는 idle 모션.
-    @State private var idleSway = false
+    @State private var blinkFrame: BlinkFrame = .open
 
     private var currentImageName: String {
-        "RealDaram"
+        // 식사 중에는 깜빡임 루프의 직전 프레임이 남아 있더라도 항상 원본 눈 상태를 쓴다.
+        isEating ? "RealDaram" : blinkFrame.imageName
     }
 
     var body: some View {
         ZStack {
             Circle()
-                .fill(Color.illustrationHalo.opacity(0.4))
+                .fill(
+                    RadialGradient(
+                        stops: [
+                            .init(color: Color.illustrationHalo.opacity(0.42), location: 0),
+                            .init(color: Color.illustrationHaloFade.opacity(0.18), location: 0.68),
+                            .init(color: .clear, location: 1),
+                        ],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: Metrics.halo / 2
+                    )
+                )
                 .frame(width: Metrics.halo, height: Metrics.halo)
                 .scaleEffect(bounce ? 1.6 : (isEating && eatingMotion ? 1.05 : 0.95))
                 .opacity(bounce ? 0 : 0.6)
@@ -33,17 +44,15 @@ struct SquirrelView: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: Metrics.image, height: Metrics.image)
-                .scaleEffect(bounce ? 1.08 : 1.0)
+                .scaleEffect(AppArtwork.daramContentScale * (bounce ? 1.08 : 1.0))
                 .rotationEffect(.degrees(
                     bounce ? -2
-                        : (isEating && eatingMotion ? 2.5
-                           : (idleSway ? 0.6 : -0.6))
+                        : (isEating && eatingMotion ? 2.5 : 0)
                 ))
-                .offset(y: isEating && eatingMotion ? -4 : (idleSway ? -1.2 : 1.2))
-                .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 6)
+                .offset(y: isEating && eatingMotion ? -4 : 0)
+                .shadow(color: Color.illustrationShadow.opacity(0.12), radius: 10, x: 0, y: 5)
                 .animation(.spring(response: AppMotion.springSquirrelResponse, dampingFraction: AppMotion.springSquirrelDamping), value: bounce)
                 .animation(.easeInOut(duration: AppMotion.durationChew).repeatForever(autoreverses: true), value: eatingMotion)
-                .animation(.easeInOut(duration: AppMotion.durationWave).repeatForever(autoreverses: true), value: idleSway)
 
             if let hat {
                 Text(hat.emoji)
@@ -81,10 +90,6 @@ struct SquirrelView: View {
         .frame(height: Metrics.halo)
         .onAppear {
             eatingMotion = isEating
-            // 첫 프레임 직후 토글 → 미세 sway가 자연스럽게 시작
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                idleSway = true
-            }
         }
         .onChange(of: isEating) { _, isOn in
             eatingMotion = isOn
@@ -95,10 +100,54 @@ struct SquirrelView: View {
                 bounce = false
             }
         }
+        .task(id: isEating) {
+            await runBlinkLoop()
+        }
+    }
+
+    /// 평상시에는 정지해 있다가 매 5초마다 0.5초 간격으로 한 번 눈을 깜빡인다.
+    private func runBlinkLoop() async {
+        blinkFrame = .open
+        guard !isEating else { return }
+
+        do {
+            try await Task.sleep(for: .seconds(Metrics.blinkInterval))
+
+            while !Task.isCancelled {
+                blinkFrame = .halfClosed
+                try await Task.sleep(for: .seconds(Metrics.blinkFrameDuration))
+                blinkFrame = .closed
+                try await Task.sleep(for: .seconds(Metrics.blinkFrameDuration))
+                blinkFrame = .halfClosed
+                try await Task.sleep(for: .seconds(Metrics.blinkFrameDuration))
+                blinkFrame = .open
+
+                try await Task.sleep(for: .seconds(Metrics.blinkRestDuration))
+            }
+        } catch {
+            blinkFrame = .open
+        }
+    }
+}
+
+private enum BlinkFrame {
+    case open
+    case halfClosed
+    case closed
+
+    var imageName: String {
+        switch self {
+        case .open: "RealDaram"
+        case .halfClosed: "DaramHalfClosed"
+        case .closed: "DaramClosed"
+        }
     }
 }
 
 private enum Metrics {
     static let halo = AppSize.visualXLarge
     static let image: CGFloat = 115
+    static let blinkInterval: TimeInterval = 5
+    static let blinkFrameDuration: TimeInterval = 0.5
+    static let blinkRestDuration = blinkInterval - blinkFrameDuration * 3
 }

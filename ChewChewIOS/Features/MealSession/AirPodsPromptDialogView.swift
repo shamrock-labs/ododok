@@ -11,6 +11,7 @@ struct AirPodsPromptDialogView: View {
                     .resizable()
                     .scaledToFit()
                     .frame(width: Metrics.image, height: Metrics.image)
+                    .scaleEffect(AppArtwork.daramContentScale)
 
                 Text("에어팟을 착용해주세요!")
                     .font(.appFont(.heavyHeadlineLarge))

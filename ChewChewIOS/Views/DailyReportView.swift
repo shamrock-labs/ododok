@@ -725,6 +725,7 @@ struct DailyReportView: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: Metrics.coachAvatar, height: Metrics.coachAvatar)
+                .scaleEffect(AppArtwork.daramContentScale)
                 .background(Color.statusWarningMuted.opacity(0.7), in: Circle())
             VStack(alignment: .leading, spacing: AppSpacing.microLabelGap) {
                 Text("다람이 코치")

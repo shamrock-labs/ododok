@@ -14,6 +14,7 @@ struct RewardDialogView: View {
                 .resizable()
                 .scaledToFit()
                 .frame(width: Metrics.image, height: Metrics.image)
+                .scaleEffect(AppArtwork.daramContentScale)
 
             Text(grant.kind.title)
                 .font(.appFont(.heavyHeadlineLarge))

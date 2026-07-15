@@ -24,7 +24,6 @@ extension Color {
 
     static let butter50  = Color(hex: 0xFFF9E5)
     static let butter100 = Color(hex: 0xFCF1D2)
-    static let butter200 = Color(hex: 0xF8E2A6)
     static let butter400 = Color(hex: 0xF5C97B)
     static let butter500 = Color(hex: 0xE8B055)
     static let butter600 = Color(hex: 0xC9912E)
@@ -156,7 +155,10 @@ extension Color {
     static let rewardAcornStrong = tintInteractive
     static let controlOnSurface = surface.opacity(0.72)
     static let controlOnAccent = surface
-    static let illustrationHalo = butter200
+    static let illustrationHalo = blush100
+    static let illustrationHaloFade = acorn50
+    static let illustrationRing = acorn400
+    static let illustrationShadow = acorn800
     static let illustrationSparkle = butter500
     static let mealStartGradient = [acorn400, acorn600]
     static let mealStopGradient = [blush400, blush500]
