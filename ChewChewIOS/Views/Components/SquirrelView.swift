@@ -22,7 +22,18 @@ struct SquirrelView: View {
     var body: some View {
         ZStack {
             Circle()
-                .fill(Color.illustrationHalo.opacity(0.4))
+                .fill(
+                    RadialGradient(
+                        stops: [
+                            .init(color: Color.illustrationHalo.opacity(0.42), location: 0),
+                            .init(color: Color.illustrationHaloFade.opacity(0.18), location: 0.68),
+                            .init(color: .clear, location: 1),
+                        ],
+                        center: .center,
+                        startRadius: 0,
+                        endRadius: Metrics.halo / 2
+                    )
+                )
                 .frame(width: Metrics.halo, height: Metrics.halo)
                 .scaleEffect(bounce ? 1.6 : (isEating && eatingMotion ? 1.05 : 0.95))
                 .opacity(bounce ? 0 : 0.6)
@@ -39,7 +50,7 @@ struct SquirrelView: View {
                         : (isEating && eatingMotion ? 2.5 : 0)
                 ))
                 .offset(y: isEating && eatingMotion ? -4 : 0)
-                .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 6)
+                .shadow(color: Color.illustrationShadow.opacity(0.12), radius: 10, x: 0, y: 5)
                 .animation(.spring(response: AppMotion.springSquirrelResponse, dampingFraction: AppMotion.springSquirrelDamping), value: bounce)
                 .animation(.easeInOut(duration: AppMotion.durationChew).repeatForever(autoreverses: true), value: eatingMotion)
 

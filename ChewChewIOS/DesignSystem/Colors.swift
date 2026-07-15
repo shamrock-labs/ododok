@@ -156,7 +156,10 @@ extension Color {
     static let rewardAcornStrong = tintInteractive
     static let controlOnSurface = surface.opacity(0.72)
     static let controlOnAccent = surface
-    static let illustrationHalo = butter200
+    static let illustrationHalo = blush100
+    static let illustrationHaloFade = acorn50
+    static let illustrationRing = acorn400
+    static let illustrationShadow = acorn800
     static let illustrationSparkle = butter500
     static let mealStartGradient = [acorn400, acorn600]
     static let mealStopGradient = [blush400, blush500]

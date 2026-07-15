@@ -218,7 +218,7 @@ struct HomeView: View {
                     Circle()
                         .trim(from: 0, to: home.todayProgress)
                         .stroke(
-                            Color.dataChew,
+                            Color.illustrationRing.opacity(0.85),
                             style: StrokeStyle(lineWidth: 5, lineCap: .round)
                         )
                         .frame(width: Metrics.progressRing, height: Metrics.progressRing)
