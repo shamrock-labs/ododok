@@ -5,11 +5,11 @@ import UIKit
 struct DaramChewingView: View {
     let size: CGSize
     let isPlaying: Bool
-    let fps: Double
+    let fps: Double?
 
     @State private var playbackStartedAt = Date()
 
-    init(size: CGSize, isPlaying: Bool, fps: Double = 8) {
+    init(size: CGSize, isPlaying: Bool, fps: Double? = nil) {
         self.size = size
         self.isPlaying = isPlaying
         self.fps = fps
@@ -31,7 +31,7 @@ struct DaramChewingView: View {
 
     @ViewBuilder
     private func frameImage(at date: Date) -> some View {
-        if let frame = Self.frames[safe: frameIndex(at: date)] {
+        if let frame = Self.sprite.frames[safe: frameIndex(at: date)] {
             Image(uiImage: frame)
                 .resizable()
                 .interpolation(.none)
@@ -45,7 +45,7 @@ struct DaramChewingView: View {
     }
 
     private var effectiveFPS: Double {
-        max(fps, 0.1)
+        max(fps ?? Self.sprite.fps, 0.1)
     }
 
     private var frameDuration: TimeInterval {
@@ -53,35 +53,39 @@ struct DaramChewingView: View {
     }
 
     private func frameIndex(at date: Date) -> Int {
-        guard isPlaying, !Self.frames.isEmpty else { return 0 }
+        guard isPlaying, !Self.sprite.frames.isEmpty else { return 0 }
         let elapsed = max(0, date.timeIntervalSince(playbackStartedAt))
-        return Int(elapsed * effectiveFPS) % Self.frames.count
+        return Int(elapsed * effectiveFPS) % Self.sprite.frames.count
     }
 
-    private static let frames: [UIImage] = DaramChewingFrames.load()
+    private static let sprite = DaramChewingFrames.load()
 }
 
 private enum DaramChewingFrames {
     private static let sheetAssetName = "daram_chew_sheet"
     private static let manifestResourceName = "daram_chew_manifest"
-    private static let animationName = "chew-rhythm"
+    private static let animationName = "chew"
 
-    static func load(bundle: Bundle = .main) -> [UIImage] {
+    static func load(bundle: Bundle = .main) -> DaramChewingSprite {
         guard
             let manifestURL = bundle.url(forResource: manifestResourceName, withExtension: "json"),
             let data = try? Data(contentsOf: manifestURL),
             let manifest = try? JSONDecoder().decode(SpriteManifest.self, from: data),
+            let animation = manifest.animation.rows[animationName],
             let layout = manifest.frameLayout.rows[animationName],
+            animation.frames == layout.count,
+            animation.fps > 0,
+            animation.loop,
             let sheet = UIImage(named: sheetAssetName, in: bundle, compatibleWith: nil),
             let cgSheet = sheet.cgImage,
             cgSheet.width == manifest.frameLayout.sheetWidth,
             cgSheet.height == manifest.frameLayout.sheetHeight
         else {
             assertionFailure("다람이 씹기 스프라이트 또는 manifest를 불러오지 못했습니다.")
-            return []
+            return .empty
         }
 
-        return layout.compactMap { frame in
+        let frames: [UIImage] = layout.compactMap { frame in
             let rect = CGRect(x: frame.x, y: frame.y, width: frame.w, height: frame.h)
             guard
                 frame.w == manifest.frameLayout.cellWidth,
@@ -93,14 +97,40 @@ private enum DaramChewingFrames {
             }
             return UIImage(cgImage: cropped, scale: sheet.scale, orientation: sheet.imageOrientation)
         }
+
+        guard frames.count == animation.frames else {
+            assertionFailure("다람이 씹기 스프라이트의 모든 프레임을 자르지 못했습니다.")
+            return .empty
+        }
+
+        return DaramChewingSprite(frames: frames, fps: animation.fps)
     }
 }
 
+private struct DaramChewingSprite {
+    let frames: [UIImage]
+    let fps: Double
+
+    static let empty = DaramChewingSprite(frames: [], fps: 4)
+}
+
 private struct SpriteManifest: Decodable {
+    let animation: Animation
     let frameLayout: FrameLayout
 
     enum CodingKeys: String, CodingKey {
+        case animation
         case frameLayout = "frame_layout"
+    }
+
+    struct Animation: Decodable {
+        let rows: [String: AnimationRow]
+    }
+
+    struct AnimationRow: Decodable {
+        let frames: Int
+        let fps: Double
+        let loop: Bool
     }
 
     struct FrameLayout: Decodable {

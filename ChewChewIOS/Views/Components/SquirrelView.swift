@@ -131,8 +131,7 @@ struct SquirrelView: View {
         if isEating {
             DaramChewingView(
                 size: CGSize(width: Metrics.image, height: Metrics.image),
-                isPlaying: true,
-                fps: 4
+                isPlaying: true
             )
             .scaleEffect(Metrics.chewingContentScale)
         } else {
@@ -163,7 +162,7 @@ private enum BlinkFrame {
 private enum Metrics {
     static let halo = AppSize.visualXLarge
     static let image: CGFloat = 115
-    static let chewingContentScale: CGFloat = 1.2
+    static let chewingContentScale: CGFloat = 1.12
     static let blinkInterval: TimeInterval = 5
     static let blinkFrameDuration: TimeInterval = 0.5
     static let blinkRestDuration = blinkInterval - blinkFrameDuration * 3
