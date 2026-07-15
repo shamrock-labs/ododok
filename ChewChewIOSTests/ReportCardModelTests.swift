@@ -41,6 +41,7 @@ final class ReportCardModelTests: XCTestCase {
 
     private func makeGeneratedReport(
         status: MealReportStatusDTO = .generated,
+        policy: String = "legacy-ios-v1",
         totalScore: Int? = 71,
         axisScores: MealReportAxisScoresDTO? = .init(
             chewingRate: 0,
@@ -67,7 +68,7 @@ final class ReportCardModelTests: XCTestCase {
         MealReportDTO(
             status: status,
             reason: reason,
-            scorePolicyVersion: "legacy-ios-v1",
+            scorePolicyVersion: policy,
             analysisModelVersion: "test",
             totalScore: totalScore,
             axisScores: axisScores,
@@ -106,7 +107,7 @@ final class ReportCardModelTests: XCTestCase {
         XCTAssertEqual(model?.chewingFraction ?? -1, 0.97, accuracy: 0.001)
         XCTAssertEqual(model?.chewCount, 589)
         XCTAssertEqual(model?.totalDurationSec ?? -1, 811, accuracy: 0.001)
-        XCTAssertEqual(model?.recommendedChewsPerMinute ?? -1, 31.5, accuracy: 0.001)
+        XCTAssertEqual(model?.rateRecommendation, .init(target: 31.5))
         XCTAssertEqual(model?.recommendedChewingFraction ?? -1, 0.63, accuracy: 0.001)
         XCTAssertEqual(model?.recommendedChewCount, 257)
         XCTAssertEqual(model?.recommendedDurationSec ?? -1, 845, accuracy: 0.001)
@@ -128,6 +129,56 @@ final class ReportCardModelTests: XCTestCase {
     func testFrom_generatedReport_withIncompletePayload_returnsNil() {
         XCTAssertNil(ReportCardModel.from(makeDTO(mealReport: makeGeneratedReport(totalScore: nil))))
         XCTAssertNil(ReportCardModel.from(makeDTO(mealReport: makeGeneratedReport(recommendedBaseline: nil))))
+    }
+
+    func testFromMealScoreV1_usesStoredRateAndRange() {
+        let report = makeGeneratedReport(
+            policy: "meal-score-v1",
+            metrics: .init(
+                chewingRatePerMin: 100,
+                legacyMealRatePerMin: nil,
+                chewingTimeRatio: 0.6,
+                totalChewCount: 300,
+                mealDurationSec: 720
+            ),
+            recommendedBaseline: .init(
+                chewingRatePerMin: .init(target: nil, min: 56, max: 130),
+                chewingTimeRatio: 0.6,
+                totalChewCount: 300,
+                mealDurationSec: 720
+            )
+        )
+
+        let model = ReportCardModel.from(makeDTO(mealReport: report))
+
+        XCTAssertEqual(model?.chewsPerMinute, 100)
+        XCTAssertEqual(model?.rateRecommendation.displayText, "56~130")
+        XCTAssertEqual(model?.rateRecommendation.delta(from: 100), 0)
+    }
+
+    func testFrom_unknownScorePolicy_returnsNil() {
+        XCTAssertNil(ReportCardModel.from(makeDTO(
+            mealReport: makeGeneratedReport(policy: "meal-score-v2")
+        )))
+    }
+
+    func testRateRangeDelta_usesNearestBoundaryOutsideRange() {
+        let range = ReportCardModel.RateRecommendation(min: 56, max: 130)
+
+        XCTAssertEqual(range.delta(from: 40), -16)
+        XCTAssertEqual(range.delta(from: 100), 0)
+        XCTAssertEqual(range.delta(from: 150), 20)
+        XCTAssertEqual(range.normalizedDelta(from: 40), -16 / (56 * 0.5), accuracy: 0.001)
+        XCTAssertEqual(range.normalizedDelta(from: 100), 0)
+        XCTAssertEqual(range.normalizedDelta(from: 150), 20 / (130 * 0.5), accuracy: 0.001)
+    }
+
+    func testRateRecommendation_exposesScalarTargetOnlyForLegacyRecommendation() {
+        XCTAssertEqual(ReportCardModel.RateRecommendation(target: 31.5).target, 31.5)
+        XCTAssertNil(ReportCardModel.RateRecommendation(min: 56, max: 130).target)
+        let degenerateRange = ReportCardModel.RateRecommendation(min: 56, max: 56)
+        XCTAssertNil(degenerateRange.target)
+        XCTAssertEqual(degenerateRange.displayText, "56~56")
     }
 
     func testFrom_bothRawDurationsMissing_derivesMeaningfulDurationsFromReportMetrics() {

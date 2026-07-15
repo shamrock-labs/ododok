@@ -134,7 +134,9 @@ extension DailyReportModel {
         let totalDuration = report.totalEatingSeconds
         let avgCpm = report.avgChewRatePerMin ?? 0
         let avgFraction = report.avgChewingFraction ?? 0
-        let recommendedRate = entries.map(\.model.recommendedChewsPerMinute).reduce(0, +) / Double(count)
+        let scalarRateTargets = entries.compactMap { $0.model.rateRecommendation.target }
+        guard scalarRateTargets.count == count else { return nil }
+        let recommendedRate = scalarRateTargets.reduce(0, +) / Double(count)
         let recommendedRatio = entries.map(\.model.recommendedChewingFraction).reduce(0, +) / Double(count)
         let recommendedChews = Int(
             (Double(entries.map(\.model.recommendedChewCount).reduce(0, +)) / Double(count)).rounded()
