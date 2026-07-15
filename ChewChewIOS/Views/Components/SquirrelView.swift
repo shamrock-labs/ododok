@@ -40,11 +40,8 @@ struct SquirrelView: View {
                 .animation(.easeOut(duration: AppMotion.durationPulse), value: bounce)
                 .animation(.easeInOut(duration: AppMotion.durationChew).repeatForever(autoreverses: true), value: eatingMotion)
 
-            Image(currentImageName)
-                .resizable()
-                .scaledToFit()
-                .frame(width: Metrics.image, height: Metrics.image)
-                .scaleEffect(AppArtwork.daramContentScale * (bounce ? 1.08 : 1.0))
+            characterImage
+                .scaleEffect(bounce ? 1.08 : 1.0)
                 .rotationEffect(.degrees(
                     bounce ? -2
                         : (isEating && eatingMotion ? 2.5 : 0)
@@ -128,6 +125,23 @@ struct SquirrelView: View {
             blinkFrame = .open
         }
     }
+
+    @ViewBuilder
+    private var characterImage: some View {
+        if isEating {
+            DaramChewingView(
+                size: CGSize(width: Metrics.image, height: Metrics.image),
+                isPlaying: true,
+                fps: 4
+            )
+        } else {
+            Image(currentImageName)
+                .resizable()
+                .scaledToFit()
+                .frame(width: Metrics.image, height: Metrics.image)
+                .scaleEffect(AppArtwork.daramContentScale)
+        }
+    }
 }
 
 private enum BlinkFrame {
@@ -142,6 +156,7 @@ private enum BlinkFrame {
         case .closed: "DaramClosed"
         }
     }
+
 }
 
 private enum Metrics {

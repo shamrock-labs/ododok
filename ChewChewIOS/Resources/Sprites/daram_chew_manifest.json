@@ -1,0 +1,98 @@
+{
+  "characterId": "daram-chew-rhythm-8-web",
+  "engine": "component-row",
+  "game_input": "sprite-sheet-alpha.png",
+  "degraded_static_fallback": false,
+  "curation_applied": true,
+  "frame_variant": "pixel",
+  "sprite_sheet_alpha": "sprite-sheet-alpha.png",
+  "sprite_sheet_alpha_report": "sprite-sheet-alpha.report.json",
+  "base_image": "base-source.png",
+  "cell": {
+    "shape": "square",
+    "width": 256,
+    "height": 256,
+    "size": 256,
+    "safe_margin": 0
+  },
+  "chroma_key": {
+    "name": "magenta",
+    "hex": "#FF00FF",
+    "rgb": [
+      255,
+      0,
+      255
+    ]
+  },
+  "animation": {
+    "cellWidth": 256,
+    "cellHeight": 256,
+    "columns": 8,
+    "rows": {
+      "chew-rhythm": {
+        "row": 0,
+        "frames": 8,
+        "fps": 8,
+        "loop": true
+      }
+    }
+  },
+  "frame_layout": {
+    "sheetWidth": 2048,
+    "sheetHeight": 256,
+    "cellWidth": 256,
+    "cellHeight": 256,
+    "rows": {
+      "chew-rhythm": [
+        {
+          "x": 0,
+          "y": 0,
+          "w": 256,
+          "h": 256
+        },
+        {
+          "x": 256,
+          "y": 0,
+          "w": 256,
+          "h": 256
+        },
+        {
+          "x": 512,
+          "y": 0,
+          "w": 256,
+          "h": 256
+        },
+        {
+          "x": 768,
+          "y": 0,
+          "w": 256,
+          "h": 256
+        },
+        {
+          "x": 1024,
+          "y": 0,
+          "w": 256,
+          "h": 256
+        },
+        {
+          "x": 1280,
+          "y": 0,
+          "w": 256,
+          "h": 256
+        },
+        {
+          "x": 1536,
+          "y": 0,
+          "w": 256,
+          "h": 256
+        },
+        {
+          "x": 1792,
+          "y": 0,
+          "w": 256,
+          "h": 256
+        }
+      ]
+    }
+  }
+}
