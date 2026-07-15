@@ -86,6 +86,11 @@ private final class FakeAuthTokenStorage: AuthTokenStorage {
         self.refreshToken = refreshToken
     }
 
+    func save(access: String, refresh: String) {
+        accessToken = access
+        refreshToken = refresh
+    }
+
     func clear() {
         accessToken = nil
         refreshToken = nil

@@ -113,3 +113,23 @@ jobs:
             CODE_SIGN_IDENTITY="" \
             build \
             | xcbeautify --renderer github-actions
+
+      - name: Run iOS unit tests
+        if: steps.changes.outputs.docs_only != 'true'
+        env:
+          NSUnbufferedIO: YES
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace ChewChewIOS.xcworkspace \
+            -scheme ChewChewIOSTests \
+            -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=latest' \
+            -clonedSourcePackagesDirPath .spm-source-packages \
+            -skipPackagePluginValidation \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            -only-testing:ChewChewIOSTests \
+            test \
+            | xcbeautify --renderer github-actions

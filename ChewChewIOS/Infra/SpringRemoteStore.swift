@@ -28,6 +28,7 @@ final class SpringRemoteStore: RemoteStore {
     private let session: URLSession
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
+    private let tokenStore: any AuthTokenStorage
     /// access 만료(401) 시 토큰 재발급용. 로그인/로그아웃 자체는 LoginView가 별도 인스턴스로 호출.
     private let authClient: SpringAuthClient
 
@@ -62,10 +63,15 @@ final class SpringRemoteStore: RemoteStore {
         case captured(String?)
     }
 
-    init(config: SpringConfig, session: URLSession = .shared) {
+    init(
+        config: SpringConfig,
+        session: URLSession = .shared,
+        tokenStore: any AuthTokenStorage = KeychainAuthTokenStorage()
+    ) {
         self.config = config
         self.session = session
-        self.authClient = SpringAuthClient(config: config, session: session)
+        self.tokenStore = tokenStore
+        self.authClient = SpringAuthClient(config: config, session: session, tokenStore: tokenStore)
 
         let enc = JSONEncoder()
         // camelCase 그대로 — convertToSnakeCase 사용 안 함.
@@ -201,6 +207,12 @@ final class SpringRemoteStore: RemoteStore {
         let req = jsonRequest(method: "GET", path: "/v1/me/reports/daily?\(query)")
         let data = try await sendExpectingSuccess(req)
         let report = try decodeResult(DailyReportDTO.self, from: data)
+        guard report.date == date else {
+            throw RemoteStoreError.malformed("daily report date does not match requested date")
+        }
+        guard dailyReportAggregatesAreValid(report) else {
+            throw RemoteStoreError.malformed("daily report aggregate contract violation")
+        }
         guard report.meals.allSatisfy({
             MealSessionReportability.completeGeneratedReport(
                 $0.mealReport,
@@ -210,6 +222,43 @@ final class SpringRemoteStore: RemoteStore {
             throw RemoteStoreError.malformed("daily mealReport contract violation")
         }
         return report
+    }
+
+    private func dailyReportAggregatesAreValid(_ report: DailyReportDTO) -> Bool {
+        guard report.mealCount == report.meals.count,
+              report.totalEatingSeconds.isFinite,
+              report.totalEatingSeconds >= 0,
+              report.totalChews >= 0,
+              report.meals.allSatisfy({
+                  $0.durationSec.isFinite && $0.durationSec > 0
+                      && ($0.totalChews.map { $0 >= 0 } ?? false)
+              }) else { return false }
+
+        let summedDuration = report.meals.reduce(0) { $0 + $1.durationSec }
+        let summedChews = report.meals.compactMap(\.totalChews).reduce(0, +)
+        guard approximatelyEqual(report.totalEatingSeconds, summedDuration),
+              report.totalChews == summedChews else { return false }
+
+        if report.meals.isEmpty {
+            return report.totalEatingSeconds == 0
+                && report.totalChews == 0
+                && report.avgChewRatePerMin == nil
+                && report.avgChewingFraction == nil
+                && report.avgTotalScore == nil
+        }
+
+        return finite(report.avgChewRatePerMin, in: 0...Double.greatestFiniteMagnitude)
+            && finite(report.avgChewingFraction, in: 0...1)
+            && finite(report.avgTotalScore, in: 0...100)
+    }
+
+    private func finite(_ value: Double?, in range: ClosedRange<Double>) -> Bool {
+        guard let value else { return false }
+        return value.isFinite && range.contains(value)
+    }
+
+    private func approximatelyEqual(_ lhs: Double, _ rhs: Double) -> Bool {
+        abs(lhs - rhs) <= max(0.001, abs(rhs) * 0.000_001)
     }
 
     func deleteChewingSession(id: UUID, deviceId: String) async throws {
@@ -319,7 +368,7 @@ final class SpringRemoteStore: RemoteStore {
         let token: String?
         switch authorization {
         case .tokenManager:
-            token = TokenManager.accessToken
+            token = tokenStore.accessToken
         case .captured(let capturedToken):
             token = capturedToken
         }
@@ -344,10 +393,10 @@ final class SpringRemoteStore: RemoteStore {
         // 재시도 후에도 401이면 만료로 확정해 authExpired를 던진다(AppState가 로그인 게이트로 내려보냄).
         if http.statusCode == 401 {
             guard retryingOn401 else { throw RemoteStoreError.authExpired }
-            guard TokenManager.refreshToken != nil else { throw RemoteStoreError.authExpired }
+            guard tokenStore.refreshToken != nil else { throw RemoteStoreError.authExpired }
             guard await authClient.refresh() else { throw RemoteStoreError.authExpired }
             var retried = req
-            if let token = TokenManager.accessToken {
+            if let token = tokenStore.accessToken {
                 retried.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
             }
             return try await send(retried, retryingOn401: false)

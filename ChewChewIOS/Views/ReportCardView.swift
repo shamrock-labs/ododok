@@ -18,7 +18,7 @@ struct ReportCardModel: Equatable {
     let restSeconds: Double
     let chewRestSegments: [ChewRestSegment]
     /// 리포트 생성 시점의 서버 권장 기준 스냅샷.
-    let recommendedChewsPerMinute: Double
+    let rateRecommendation: RateRecommendation
     let recommendedChewingFraction: Double
     let recommendedChewCount: Int
     let recommendedDurationSec: Double
@@ -50,7 +50,7 @@ struct ReportCardModel: Equatable {
         lengthScore: Int,
         caption: String?,
         mood: Mood,
-        recommendedChewsPerMinute: Double,
+        rateRecommendation: RateRecommendation,
         recommendedChewingFraction: Double,
         recommendedChewCount: Int,
         recommendedDurationSec: Double,
@@ -71,11 +71,58 @@ struct ReportCardModel: Equatable {
         self.lengthScore = lengthScore
         self.caption = caption
         self.mood = mood
-        self.recommendedChewsPerMinute = recommendedChewsPerMinute
+        self.rateRecommendation = rateRecommendation
         self.recommendedChewingFraction = recommendedChewingFraction
         self.recommendedChewCount = recommendedChewCount
         self.recommendedDurationSec = recommendedDurationSec
         self.endedAt = endedAt
+    }
+
+    /// 기존 scalar fixture/call site를 단일 목표 정책으로 보존한다.
+    init(
+        score: Int,
+        grade: Grade,
+        chewCount: Int,
+        totalDurationSec: Double,
+        chewsPerMinute: Double,
+        chewingFraction: Double,
+        chewingSeconds: Double,
+        restSeconds: Double,
+        chewRestSegments: [ChewRestSegment] = [],
+        speedScore: Int,
+        rhythmScore: Int,
+        continuityScore: Int,
+        lengthScore: Int,
+        caption: String?,
+        mood: Mood,
+        recommendedChewsPerMinute: Double,
+        recommendedChewingFraction: Double,
+        recommendedChewCount: Int,
+        recommendedDurationSec: Double,
+        endedAt: Date
+    ) {
+        self.init(
+            score: score,
+            grade: grade,
+            chewCount: chewCount,
+            totalDurationSec: totalDurationSec,
+            chewsPerMinute: chewsPerMinute,
+            chewingFraction: chewingFraction,
+            chewingSeconds: chewingSeconds,
+            restSeconds: restSeconds,
+            chewRestSegments: chewRestSegments,
+            speedScore: speedScore,
+            rhythmScore: rhythmScore,
+            continuityScore: continuityScore,
+            lengthScore: lengthScore,
+            caption: caption,
+            mood: mood,
+            rateRecommendation: .init(target: recommendedChewsPerMinute),
+            recommendedChewingFraction: recommendedChewingFraction,
+            recommendedChewCount: recommendedChewCount,
+            recommendedDurationSec: recommendedDurationSec,
+            endedAt: endedAt
+        )
     }
 
     enum Grade {
@@ -87,6 +134,42 @@ struct ReportCardModel: Equatable {
             case .soso: "조금 더 천천히"
             case .bad:  "다음엔 천천히"
             }
+        }
+    }
+
+    struct RateRecommendation: Equatable {
+        let min: Double
+        let max: Double
+        let target: Double?
+
+        init(target: Double) {
+            self.min = target
+            self.max = target
+            self.target = target
+        }
+
+        init(min: Double, max: Double) {
+            self.min = min
+            self.max = max
+            self.target = nil
+        }
+
+        var displayText: String {
+            if let target {
+                return formatRecommendedChewsPerMinute(target)
+            }
+            return "\(Int(min.rounded()))~\(Int(max.rounded()))"
+        }
+
+        func delta(from value: Double) -> Double {
+            if value < min { return value - min }
+            if value > max { return value - max }
+            return 0
+        }
+
+        func normalizedDelta(from value: Double) -> Double {
+            let boundary = value < min ? min : max
+            return delta(from: value) / Swift.max(boundary * 0.5, 1)
         }
     }
 
@@ -370,9 +453,9 @@ struct ReportCardView: View {
                 recommendedComparisonCell(
                     label: "식사 속도",
                     current: "약 \(Int(model.chewsPerMinute.rounded()))회/분",
-                    recommended: "권장 \(formatRecommendedChewsPerMinute(model.recommendedChewsPerMinute))회/분",
-                    delta: signedDelta(Int((model.chewsPerMinute - model.recommendedChewsPerMinute).rounded()), suffix: "회/분"),
-                    ratio: (model.chewsPerMinute - model.recommendedChewsPerMinute) / (model.recommendedChewsPerMinute * 0.5),
+                    recommended: "권장 \(model.rateRecommendation.displayText)회/분",
+                    delta: signedDelta(Int(model.rateRecommendation.delta(from: model.chewsPerMinute).rounded()), suffix: "회/분"),
+                    ratio: model.rateRecommendation.normalizedDelta(from: model.chewsPerMinute),
                     color: .blush500
                 )
                 recommendedComparisonCell(
@@ -582,7 +665,7 @@ struct ReportCardView: View {
 
     private var recommendedComparisonSummary: RecommendedComparisonSummary {
         let chewDelta = model.chewCount - model.recommendedChewCount
-        let speedDelta = model.chewsPerMinute - model.recommendedChewsPerMinute
+        let speedDelta = model.rateRecommendation.delta(from: model.chewsPerMinute)
         let minuteDelta = durationDeltaMinutes
         let focusDelta = chewingFocusDeltaPercent
         let positiveSignals = [
@@ -701,7 +784,7 @@ private struct ScoreGuideView: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     VStack(spacing: AppSpacing.inner) {
-                        guideRow("속도", "서버 권장 기준은 분당 약 \(formatRecommendedChewsPerMinute(model.recommendedChewsPerMinute))회예요.", .blush500)
+                        guideRow("속도", "서버 권장 기준은 분당 약 \(model.rateRecommendation.displayText)회예요.", .blush500)
                         guideRow("비율", "서버 권장 기준은 식사 중 씹기 비율 \(Int((model.recommendedChewingFraction * 100).rounded()))%예요.", .butter600)
                         guideRow("횟수", "서버 권장 기준은 한 끼 \(model.recommendedChewCount.koLocale)회예요.", .acorn700)
                         guideRow("시간", "서버 권장 기준은 한 끼 약 \(Int((model.recommendedDurationSec / 60).rounded()))분이에요.", .sage600)
@@ -796,7 +879,7 @@ struct DashedDivider: View {
             lengthScore: 87,
             caption: "오늘은 천천히 잘 씹었어요. 한 입에 30회 목표 달성!",
             mood: .champ,
-            recommendedChewsPerMinute: 28,
+            rateRecommendation: .init(target: 28),
             recommendedChewingFraction: 0.5,
             recommendedChewCount: 200,
             recommendedDurationSec: 720,
@@ -824,7 +907,7 @@ struct DashedDivider: View {
             lengthScore: 50,
             caption: nil,
             mood: .puffy,
-            recommendedChewsPerMinute: 28,
+            rateRecommendation: .init(target: 28),
             recommendedChewingFraction: 0.5,
             recommendedChewCount: 200,
             recommendedDurationSec: 720,
@@ -852,7 +935,7 @@ struct DashedDivider: View {
             lengthScore: 10,
             caption: "조금 빨리 먹은 것 같아요. 다음 식사엔 한 입 30회를 의식해 봐요.",
             mood: .sleepy,
-            recommendedChewsPerMinute: 28,
+            rateRecommendation: .init(target: 28),
             recommendedChewingFraction: 0.5,
             recommendedChewCount: 200,
             recommendedDurationSec: 720,
@@ -877,6 +960,23 @@ extension ReportCardModel {
               let reportGrade = report.grade,
               let grade = Grade(reportGrade: reportGrade),
               let baseline = report.recommendedBaseline else { return nil }
+        let rate: Double
+        let recommendation: RateRecommendation
+        switch report.scorePolicyVersion {
+        case "legacy-ios-v1":
+            guard let legacyRate = metrics.legacyMealRatePerMin,
+                  let target = baseline.chewingRatePerMin.target else { return nil }
+            rate = legacyRate
+            recommendation = .init(target: target)
+        case "meal-score-v1":
+            guard let v1Rate = metrics.chewingRatePerMin,
+                  let min = baseline.chewingRatePerMin.min,
+                  let max = baseline.chewingRatePerMin.max else { return nil }
+            rate = v1Rate
+            recommendation = .init(min: min, max: max)
+        default:
+            return nil
+        }
         let mood = Mood(grade: grade, score: totalScore)
         let caption = CaptionPool.report(for: grade)
         let chewingRatio = min(max(metrics.chewingTimeRatio, 0), 1)
@@ -887,7 +987,7 @@ extension ReportCardModel {
             grade: grade,
             chewCount: metrics.totalChewCount,
             totalDurationSec: metrics.mealDurationSec,
-            chewsPerMinute: metrics.legacyMealRatePerMin,
+            chewsPerMinute: rate,
             chewingFraction: metrics.chewingTimeRatio,
             chewingSeconds: chewingSeconds,
             restSeconds: restSeconds,
@@ -898,7 +998,7 @@ extension ReportCardModel {
             lengthScore: axes.mealDuration,
             caption: caption,
             mood: mood,
-            recommendedChewsPerMinute: baseline.chewingRatePerMin.target,
+            rateRecommendation: recommendation,
             recommendedChewingFraction: baseline.chewingTimeRatio,
             recommendedChewCount: baseline.totalChewCount,
             recommendedDurationSec: baseline.mealDurationSec,

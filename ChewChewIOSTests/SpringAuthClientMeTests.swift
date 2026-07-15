@@ -9,8 +9,11 @@ final class SpringAuthClientMeTests: XCTestCase {
     }
 
     func testMe_decodesAlertVolumeFromAuthMe() async throws {
-        TokenManager.save(access: "access-token", refresh: "refresh-token")
-        let client = makeClient()
+        let tokenStore = InMemoryAuthTokenStore(
+            accessToken: "access-token",
+            refreshToken: "refresh-token"
+        )
+        let client = makeClient(tokenStore: tokenStore)
         var capturedRequest: URLRequest?
 
         SpringAuthClientMeMockURLProtocol.handler = { request in
@@ -166,12 +169,15 @@ final class SpringAuthClientMeTests: XCTestCase {
         }
     }
 
-    private func makeClient() -> SpringAuthClient {
+    private func makeClient(
+        tokenStore: any AuthTokenStorage = KeychainAuthTokenStorage()
+    ) -> SpringAuthClient {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SpringAuthClientMeMockURLProtocol.self]
         return SpringAuthClient(
             config: SpringConfig(baseURL: URL(string: "https://api.dev.ododok.cloud")!),
-            session: URLSession(configuration: config)
+            session: URLSession(configuration: config),
+            tokenStore: tokenStore
         )
     }
 }

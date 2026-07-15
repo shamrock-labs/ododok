@@ -46,25 +46,65 @@ final class DailyReportServerMealReportTests: XCTestCase {
         XCTAssertEqual(model.totalChews, 589)
         XCTAssertEqual(model.totalDurationSec, 811)
         XCTAssertEqual(model.avgChewingFraction, 0.97, accuracy: 0.001)
-        XCTAssertEqual(model.recommendedChewsPerMinute, 31)
+        XCTAssertEqual(model.rateGuidance, .target(31))
         XCTAssertEqual(model.recommendedChewingFraction, 0.64)
         XCTAssertEqual(model.recommendedChewCount, 333)
         XCTAssertEqual(model.recommendedDurationSec, 777)
     }
 
-    func testUnavailableCopyIsDistinctForEveryServerReasonAndUnknownFallback() {
-        let tooShort = MealReportUnavailableContent.from(.init(status: .unreportable, reason: .sessionTooShort))
-        let missing = MealReportUnavailableContent.from(.init(status: .unreportable, reason: .analysisMissing))
-        let invalid = MealReportUnavailableContent.from(.init(status: .unreportable, reason: .invalidAnalysisInput))
-        let unknown = MealReportUnavailableContent.from(.init(status: .unknown("QUEUED")))
+    func testUnavailableCopyMatchesEveryKnownServerReasonAndUnknownFallback() {
+        let cases: [(MealReportReasonDTO, MealReportUnavailableContent)] = [
+            (
+                .sessionTooShort,
+                .init(
+                    emoji: "⏱️",
+                    title: "식사 기록이 너무 짧았어요",
+                    message: "30초 이상 식사하면 리포트를 만들 수 있어요."
+                )
+            ),
+            (
+                .analysisMissing,
+                .init(
+                    emoji: "🎧",
+                    title: "씹기 신호를 받지 못했어요",
+                    message: "AirPods 연결과 센서 신호를 확인한 뒤 다시 기록해 주세요."
+                )
+            ),
+            (
+                .invalidAnalysisInput,
+                .init(
+                    emoji: "🔎",
+                    title: "분석값을 확인하지 못했어요",
+                    message: "이번 식사의 분석값이 올바르지 않아 리포트를 만들지 않았어요."
+                )
+            ),
+            (
+                .unsupportedModelVersion,
+                .init(
+                    emoji: "⬆️",
+                    title: "아직 지원하지 않는 분석이에요",
+                    message: "앱을 최신 버전으로 업데이트한 뒤 다시 확인해 주세요."
+                )
+            ),
+        ]
 
-        XCTAssertNotEqual(tooShort, missing)
-        XCTAssertNotEqual(missing, invalid)
-        XCTAssertNotEqual(invalid, tooShort)
-        XCTAssertTrue(tooShort.message.contains("30초"))
-        XCTAssertTrue(missing.message.contains("신호"))
-        XCTAssertTrue(invalid.message.contains("분석값"))
-        XCTAssertTrue(unknown.title.contains("준비"))
+        for (reason, expected) in cases {
+            XCTAssertEqual(
+                MealReportUnavailableContent.from(.init(status: .unreportable, reason: reason)),
+                expected
+            )
+        }
+
+        XCTAssertEqual(
+            MealReportUnavailableContent.from(
+                .init(status: .unreportable, reason: .unknown("FUTURE_REASON"))
+            ),
+            .init(
+                emoji: "🐿️",
+                title: "리포트를 준비하고 있어요",
+                message: "알 수 없는 사유로 리포트를 표시할 수 없어요. 잠시 후 다시 확인해 주세요."
+            )
+        )
     }
 
     private func makeSession(

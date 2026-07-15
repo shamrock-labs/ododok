@@ -131,6 +131,77 @@ final class MealSessionUploadRepositoryTests: XCTestCase {
         await assertMalformed(response)
     }
 
+    func testUploadAcceptsCompleteMealScoreV1Report() async throws {
+        let sessionId = UUID()
+        let report = makeV1Report(sessionId: sessionId)
+        let response = try makeNetworkResponse(
+            sessionId: sessionId,
+            topLevelReport: report,
+            embeddedReport: report
+        )
+        let repository = RemoteStoreMealSessionUploadRepository(
+            remoteStore: MealSessionRepositoryRemoteStore(response: response),
+            deviceIdProvider: { "test-device" }
+        )
+
+        let upload = try await repository.uploadSession(
+            output: makeOutput(sessionId: sessionId),
+            stats: nil,
+            appVersion: nil
+        )
+
+        XCTAssertEqual(upload.result.mealReport, report)
+    }
+
+    func testUploadRejectsMealScoreV1WithoutChewingRate() async throws {
+        let sessionId = UUID()
+        var report = makeV1Report(sessionId: sessionId)
+        report.metrics?.chewingRatePerMin = nil
+
+        await assertMalformed(try makeMatchingResponse(sessionId: sessionId, report: report))
+    }
+
+    func testUploadRejectsMealScoreV1WithoutMinimumRate() async throws {
+        let sessionId = UUID()
+        var report = makeV1Report(sessionId: sessionId)
+        report.recommendedBaseline?.chewingRatePerMin.min = nil
+
+        await assertMalformed(try makeMatchingResponse(sessionId: sessionId, report: report))
+    }
+
+    func testUploadRejectsMealScoreV1WithoutMaximumRate() async throws {
+        let sessionId = UUID()
+        var report = makeV1Report(sessionId: sessionId)
+        report.recommendedBaseline?.chewingRatePerMin.max = nil
+
+        await assertMalformed(try makeMatchingResponse(sessionId: sessionId, report: report))
+    }
+
+    func testUploadRejectsMealScoreV1WithReversedRateRange() async throws {
+        let sessionId = UUID()
+        var report = makeV1Report(sessionId: sessionId)
+        report.recommendedBaseline?.chewingRatePerMin.min = 131
+        report.recommendedBaseline?.chewingRatePerMin.max = 130
+
+        await assertMalformed(try makeMatchingResponse(sessionId: sessionId, report: report))
+    }
+
+    func testUploadRejectsMealScoreV1WithLegacyTarget() async throws {
+        let sessionId = UUID()
+        var report = makeV1Report(sessionId: sessionId)
+        report.recommendedBaseline?.chewingRatePerMin.target = 100
+
+        await assertMalformed(try makeMatchingResponse(sessionId: sessionId, report: report))
+    }
+
+    func testUploadRejectsGeneratedReportWithUnknownScorePolicy() async throws {
+        let sessionId = UUID()
+        var report = makeReport(status: .generated, sessionId: sessionId)
+        report.scorePolicyVersion = "meal-score-v2"
+
+        await assertMalformed(try makeMatchingResponse(sessionId: sessionId, report: report))
+    }
+
     func testUploadRejectsUnreportableReportWithoutReason() async throws {
         let sessionId = UUID()
         let report = makeReport(status: .unreportable, sessionId: sessionId)
@@ -210,6 +281,17 @@ final class MealSessionUploadRepositoryTests: XCTestCase {
         )
     }
 
+    private func makeMatchingResponse(
+        sessionId: UUID,
+        report: MealReportDTO
+    ) throws -> CreateSessionResultDTO {
+        try makeNetworkResponse(
+            sessionId: sessionId,
+            topLevelReport: report,
+            embeddedReport: report
+        )
+    }
+
     private func reportJSONObject(
         _ report: MealReportDTO,
         encoder: JSONEncoder
@@ -255,6 +337,36 @@ final class MealSessionUploadRepositoryTests: XCTestCase {
             )
         }
         return MealReportDTO(status: status, reason: reason, sessionId: sessionId)
+    }
+
+    private func makeV1Report(sessionId: UUID) -> MealReportDTO {
+        MealReportDTO(
+            status: .generated,
+            sessionId: sessionId,
+            scorePolicyVersion: "meal-score-v1",
+            analysisModelVersion: "server",
+            totalScore: 84,
+            axisScores: .init(
+                chewingRate: 90,
+                chewingTimeRatio: 80,
+                totalChewCount: 85,
+                mealDuration: 75
+            ),
+            metrics: .init(
+                chewingRatePerMin: 100,
+                legacyMealRatePerMin: nil,
+                chewingTimeRatio: 0.72,
+                totalChewCount: 420,
+                mealDurationSec: 720
+            ),
+            grade: .good,
+            recommendedBaseline: .init(
+                chewingRatePerMin: .init(target: nil, min: 56, max: 130),
+                chewingTimeRatio: 0.6,
+                totalChewCount: 300,
+                mealDurationSec: 720
+            )
+        )
     }
 
     private func makeSession(id: UUID, mealReport: MealReportDTO?) -> ChewingSessionDTO {

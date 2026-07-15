@@ -21,14 +21,20 @@ struct NoopAuthSessionManager: AuthSessionManaging {
 final class SpringAuthClient: AuthSessionManaging {
     private let config: SpringConfig
     private let session: URLSession
+    private let tokenStore: any AuthTokenStorage
     private let encoder = JSONEncoder()
     private let decoder = JSONDecoder()
     /// 동시 401에서 refresh가 중복 실행되는 것을 막는 single-flight 코디네이터.
     private let refreshCoordinator = RefreshCoordinator()
 
-    init(config: SpringConfig, session: URLSession = .shared) {
+    init(
+        config: SpringConfig,
+        session: URLSession = .shared,
+        tokenStore: any AuthTokenStorage = KeychainAuthTokenStorage()
+    ) {
         self.config = config
         self.session = session
+        self.tokenStore = tokenStore
     }
 
     private struct LoginRequest: Encodable {
@@ -62,7 +68,7 @@ final class SpringAuthClient: AuthSessionManaging {
         guard let user = token.user, !user.id.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw RemoteStoreError.malformed("missing login user id")
         }
-        TokenManager.save(access: token.accessToken, refresh: token.refreshToken)
+        tokenStore.save(access: token.accessToken, refresh: token.refreshToken)
         return LoginResult(userId: user.id, displayName: user.displayName, onboardingCompleted: user.onboardingCompleted ?? false)
     }
 
@@ -76,17 +82,17 @@ final class SpringAuthClient: AuthSessionManaging {
     }
 
     private func performRefresh() async -> Bool {
-        guard let refreshToken = TokenManager.refreshToken else { return false }
+        guard let refreshToken = tokenStore.refreshToken else { return false }
         do {
             let token = try await post("/auth/refresh", body: RefreshRequest(refreshToken: refreshToken), as: TokenResult.self)
-            TokenManager.save(access: token.accessToken, refresh: token.refreshToken)
+            tokenStore.save(access: token.accessToken, refresh: token.refreshToken)
             return true
         } catch RemoteStoreError.offline {
             // 일시적 네트워크 실패는 세션을 비우지 않는다 — 다음 요청에서 다시 시도할 수 있다.
             return false
         } catch {
             // refresh가 거부됨(만료/폐기 등) → 세션 종료.
-            TokenManager.clear()
+            tokenStore.clear()
             return false
         }
     }
@@ -99,7 +105,7 @@ final class SpringAuthClient: AuthSessionManaging {
         if base.hasSuffix("/") { base.removeLast() }
         var req = URLRequest(url: URL(string: base + "/auth/me")!)
         req.httpMethod = "GET"
-        if let token = TokenManager.accessToken {
+        if let token = tokenStore.accessToken {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         let (data, response): (Data, URLResponse)
@@ -126,10 +132,10 @@ final class SpringAuthClient: AuthSessionManaging {
 
     /// 서버 refresh 폐기 + 로컬 토큰 제거. 네트워크 실패해도 로컬은 비운다.
     func logout() async {
-        if let refreshToken = TokenManager.refreshToken {
+        if let refreshToken = tokenStore.refreshToken {
             _ = try? await post("/auth/logout", body: LogoutRequest(refreshToken: refreshToken), as: EmptyResult.self)
         }
-        TokenManager.clear()
+        tokenStore.clear()
     }
 
     private func post<B: Encodable, T: Decodable>(_ path: String, body: B, as type: T.Type) async throws -> T {

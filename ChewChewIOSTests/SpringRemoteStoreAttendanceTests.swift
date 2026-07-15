@@ -72,8 +72,11 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
     }
 
     func testEarnAttendanceThrowsAuthExpiredWhenRefreshFails() async throws {
-        TokenManager.save(access: "expired-access", refresh: "expired-refresh")
-        let store = makeStore()
+        let tokenStore = InMemoryAuthTokenStore(
+            accessToken: "expired-access",
+            refreshToken: "expired-refresh"
+        )
+        let store = makeStore(tokenStore: tokenStore)
 
         MockURLProtocol.handler = { request in
             return (
@@ -91,15 +94,18 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
             }
         }
 
-        XCTAssertNil(TokenManager.accessToken)
-        XCTAssertNil(TokenManager.refreshToken)
+        XCTAssertNil(tokenStore.accessToken)
+        XCTAssertNil(tokenStore.refreshToken)
     }
 
     /// refresh는 성공했지만 재발급 후 재시도한 요청이 다시 401이면, 최종 401을 authExpired로
     /// 승격해 만료 세션 처리 경로(AppState.expireSession)로 이어지게 한다.
     func testEarnAttendance_throwsAuthExpired_whenRetriedRequestStill401AfterRefresh() async throws {
-        TokenManager.save(access: "stale-access", refresh: "valid-refresh")
-        let store = makeStore()
+        let tokenStore = InMemoryAuthTokenStore(
+            accessToken: "stale-access",
+            refreshToken: "valid-refresh"
+        )
+        let store = makeStore(tokenStore: tokenStore)
 
         var refreshCount = 0
         var attendanceCount = 0
@@ -136,7 +142,7 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
         XCTAssertEqual(refreshCount, 1)
         XCTAssertEqual(attendanceCount, 2)
         // refresh 성공으로 새 토큰이 저장됐음 — 재발급 경로를 실제로 탔다는 증거.
-        XCTAssertEqual(TokenManager.accessToken, "new-access")
+        XCTAssertEqual(tokenStore.accessToken, "new-access")
     }
 
     func testDeleteUserData_usesRefreshSnapshotWithoutRestoringKeychainWhenAccessExpired() async throws {
@@ -242,12 +248,15 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
         XCTAssertNil(result.last?.sessionId)
     }
 
-    private func makeStore() -> SpringRemoteStore {
+    private func makeStore(
+        tokenStore: any AuthTokenStorage = KeychainAuthTokenStorage()
+    ) -> SpringRemoteStore {
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [MockURLProtocol.self]
         return SpringRemoteStore(
             config: SpringConfig(baseURL: URL(string: "http://localhost:8080")!),
-            session: URLSession(configuration: config)
+            session: URLSession(configuration: config),
+            tokenStore: tokenStore
         )
     }
 

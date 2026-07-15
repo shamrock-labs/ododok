@@ -82,6 +82,107 @@ final class SpringRemoteStoreDailyReportTests: XCTestCase {
         XCTAssertEqual(report.avgTotalScore, 71)
         XCTAssertEqual(report.meals.first?.mealReport.sessionId, sessionId)
     }
+
+    func testFetchDailyReportRejectsResponseForDifferentRequestedDate() async throws {
+        stubDailyReport(result: emptyReportJSON(date: "2026-07-14"))
+        let store = makeStore()
+
+        do {
+            _ = try await store.fetchDailyReport(date: "2026-07-15")
+            XCTFail("Expected malformed daily report")
+        } catch RemoteStoreError.malformed(let message) {
+            XCTAssertTrue(message.contains("date"))
+        }
+    }
+
+    func testFetchDailyReportRejectsInconsistentAggregateMealCount() async throws {
+        stubDailyReport(result: emptyReportJSON(date: "2026-07-15", mealCount: 1))
+        let store = makeStore()
+
+        do {
+            _ = try await store.fetchDailyReport(date: "2026-07-15")
+            XCTFail("Expected malformed daily report")
+        } catch RemoteStoreError.malformed(let message) {
+            XCTAssertTrue(message.contains("aggregate"))
+        }
+    }
+
+    func testFetchDailyReportRejectsInvalidEmptyDayAggregates() async throws {
+        stubDailyReport(result: emptyReportJSON(
+            date: "2026-07-15",
+            totalEatingSeconds: -1,
+            totalChews: -1,
+            avgTotalScore: 101
+        ))
+        let store = makeStore()
+
+        do {
+            _ = try await store.fetchDailyReport(date: "2026-07-15")
+            XCTFail("Expected malformed daily report")
+        } catch RemoteStoreError.malformed(let message) {
+            XCTAssertTrue(message.contains("aggregate"))
+        }
+    }
+
+    func testIOSCIExecutesUnitTests() throws {
+        let root = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let workflow = try String(contentsOf: root.appendingPathComponent(".github/workflows/ios-ci.yml"))
+
+        XCTAssertTrue(workflow.contains("-scheme ChewChewIOSTests"))
+        XCTAssertTrue(workflow.contains("-only-testing:ChewChewIOSTests"))
+        XCTAssertTrue(workflow.contains(" test"))
+        XCTAssertTrue(workflow.contains("platform=iOS Simulator,name=iPhone"))
+    }
+
+    private func makeStore() -> SpringRemoteStore {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [DailyReportMockURLProtocol.self]
+        return SpringRemoteStore(
+            config: SpringConfig(baseURL: URL(string: "https://example.test")!),
+            session: URLSession(configuration: configuration)
+        )
+    }
+
+    private func stubDailyReport(result: String) {
+        DailyReportMockURLProtocol.handler = { request in
+            let body = """
+            {"code":0,"message":"ok","result":\(result)}
+            """
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+            return (response, Data(body.utf8))
+        }
+    }
+
+    private func emptyReportJSON(
+        date: String,
+        mealCount: Int = 0,
+        totalEatingSeconds: Double = 0,
+        totalChews: Int = 0,
+        avgTotalScore: Double? = nil
+    ) -> String {
+        let score = avgTotalScore.map { String($0) } ?? "null"
+        return """
+        {
+          "date":"\(date)",
+          "timezone":"Asia/Seoul",
+          "mealCount":\(mealCount),
+          "totalEatingSeconds":\(totalEatingSeconds),
+          "totalChews":\(totalChews),
+          "avgChewRatePerMin":null,
+          "avgChewingFraction":null,
+          "avgTotalScore":\(score),
+          "meals":[],
+          "vsYesterday":null
+        }
+        """
+    }
 }
 
 private final class DailyReportMockURLProtocol: URLProtocol {
