@@ -65,4 +65,27 @@ final class OnboardingUITests: XCTestCase {
         let dismissed = app.buttons["OnboardingSkip"].waitForNonExistence(timeout: 10)
         XCTAssertTrue(dismissed, "Onboarding should be dismissed after skipping the tutorial")
     }
+
+    func testMeasurementOnboardingPrimary_remainsReachableWithAccessibilityText() {
+        app.launchArguments = [
+            "-showMeasurementOnboarding",
+            "-measurementOnboardingStage",
+            "intro",
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityXXXL",
+        ]
+        app.launch()
+
+        let primaryButton = app.buttons["MeasurementOnboardingPrimary"]
+        XCTAssertTrue(primaryButton.waitForExistence(timeout: 5))
+
+        for _ in 0..<8 where !primaryButton.isHittable {
+            app.swipeUp()
+        }
+
+        XCTAssertTrue(
+            primaryButton.isHittable,
+            "접근성 글자 크기에서도 내용을 읽은 뒤 주요 동작 버튼에 도달할 수 있어야 한다"
+        )
+    }
 }

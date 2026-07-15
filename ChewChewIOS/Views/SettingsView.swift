@@ -13,10 +13,6 @@ struct SettingsView: View {
     @State private var showDeleteConfirmation = false
     @State private var showAirPodsPicker = false
     @State private var showFeedback = false
-    @State private var showMeasurementPersonalization = false
-    @State private var personalizationSettings = UserDefaultsChewProfileStore().load()
-
-    private let personalizationStore = UserDefaultsChewProfileStore()
 
     private static let feedbackFormURL = URL(string: "https://forms.gle/6AsoDPHhywVpV9Qb6")!
 
@@ -114,11 +110,6 @@ struct SettingsView: View {
         .sheet(isPresented: $showFeedback) {
             SafariView(url: Self.feedbackFormURL)
         }
-        .fullScreenCover(isPresented: $showMeasurementPersonalization) {
-            MeasurementPersonalizationFlow(personalizationStore: personalizationStore) { settings in
-                personalizationSettings = settings
-            }
-        }
     }
 
     // MARK: - Sections
@@ -177,14 +168,7 @@ struct SettingsView: View {
             .buttonStyle(.plain)
             .accessibilityIdentifier("AirPodsModelPicker")
 
-            Button {
-                showMeasurementPersonalization = true
-            } label: {
-                ChewDetectionPersonalizationSettingsRow(isPersonalized: personalizationSettings != nil)
-            }
-            .buttonStyle(.plain)
-            .padding(.top, AppSpacing.topInsetCompact)
-            .accessibilityIdentifier("ChewDetectionPersonalization")
+                ChewPersonalizationSettingsControls()
         }
     }
 

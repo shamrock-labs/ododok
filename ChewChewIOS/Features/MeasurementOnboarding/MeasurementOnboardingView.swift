@@ -9,6 +9,7 @@ struct MeasurementOnboardingView: View {
     var isPreparingAirPods = false
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(spacing: 0) {
@@ -16,41 +17,56 @@ struct MeasurementOnboardingView: View {
             stepProgress
 
             ScrollView(showsIndicators: false) {
-                VStack(spacing: AppSpacing.six) {
-                    stageVisual
-                        .frame(height: Metrics.visualHeight)
+                VStack(spacing: accessibilityLayout ? AppSpacing.six : 0) {
+                    stageContent
 
-                    VStack(spacing: AppSpacing.gap) {
-                        Text(stageTitle)
-                            .font(.appFont(.heavyDisplay))
-                            .foregroundStyle(Color.textDefault)
-                            .multilineTextAlignment(.center)
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        Text(stageMessage)
-                            .font(.appFont(.regularBodyLarge))
-                            .foregroundStyle(Color.textMuted)
-                            .multilineTextAlignment(.center)
-                            .lineSpacing(5)
-                            .fixedSize(horizontal: false, vertical: true)
+                    if accessibilityLayout {
+                        actions
+                            .padding(.horizontal, AppSpacing.page)
                     }
-
-                    stageDetail
                 }
-                .padding(.horizontal, AppSpacing.page)
-                .padding(.top, AppSpacing.seven)
-                .padding(.bottom, AppSpacing.four)
+                .padding(.bottom, accessibilityLayout ? AppSpacing.six : AppSpacing.four)
             }
 
-            actions
-                .padding(.horizontal, AppSpacing.page)
-                .padding(.top, AppSpacing.gap)
-                .padding(.bottom, AppSpacing.six)
+            if !accessibilityLayout {
+                actions
+                    .padding(.horizontal, AppSpacing.page)
+                    .padding(.top, AppSpacing.gap)
+                    .padding(.bottom, AppSpacing.six)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(LinearGradient.appBackground.ignoresSafeArea())
         .interactiveDismissDisabled(store.isMeasuring)
         .onDisappear { store.cancelMeasurement() }
+    }
+
+    private var accessibilityLayout: Bool { dynamicTypeSize.isAccessibilitySize }
+
+    private var stageContent: some View {
+        VStack(spacing: AppSpacing.six) {
+            stageVisual
+                .frame(height: Metrics.visualHeight)
+
+            VStack(spacing: AppSpacing.gap) {
+                Text(stageTitle)
+                    .font(.appFont(.heavyDisplay))
+                    .foregroundStyle(Color.textDefault)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(stageMessage)
+                    .font(.appFont(.regularBodyLarge))
+                    .foregroundStyle(Color.textMuted)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(5)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            stageDetail
+        }
+        .padding(.horizontal, AppSpacing.page)
+        .padding(.top, AppSpacing.seven)
     }
 
     private var header: some View {
@@ -101,24 +117,23 @@ struct MeasurementOnboardingView: View {
                 isConnected: store.isAirPodsConnected,
                 isPreparing: isPreparingAirPods
             )
+        case .baseline:
+            StillSignalMeasurementVisual(
+                isMeasuring: store.isMeasuring,
+                reduceMotion: reduceMotion
+            )
         case .calibration:
-            MeasurementRhythmFeedbackVisual(
-                mode: .calibration,
-                cueIndex: store.cueIndex,
-                cueCount: store.cueCount,
-                detectedCount: store.calibrationAmplitudes.count,
-                cuePulseID: store.cuePulseID,
-                cueHitID: store.cueHitID,
+            NaturalChewMeasurementVisual(
+                isMeasuring: store.isMeasuring,
+                isComplete: store.measurementCompleted,
                 reduceMotion: reduceMotion
             )
         case .validation:
             MeasurementRhythmFeedbackVisual(
-                mode: .validation,
                 cueIndex: store.cueIndex,
-                cueCount: store.cueCount,
-                detectedCount: store.validationDetectedCount,
                 cuePulseID: store.cuePulseID,
                 cueHitID: store.cueHitID,
+                approachDuration: store.validationCueInterval,
                 reduceMotion: reduceMotion
             )
         case .ready:
@@ -134,20 +149,28 @@ struct MeasurementOnboardingView: View {
         case .intro:
             detailRows([
                 ("airpodspro", "AirPods 연결을 확인해요"),
-                ("metronome", "박자에 맞춰 10번 씹어 기준을 맞춰요"),
-                ("checkmark.circle", "다시 10번 씹어 감지가 맞는지 확인해요"),
+                ("figure.stand", "5초 동안 편하게 멈춰 평소 움직임을 확인해요"),
+                ("waveform", "평소처럼 10번 씹어 내 리듬을 찾아요"),
+                ("checkmark.circle", "내 리듬으로 감지가 맞는지 확인해요"),
             ])
         case .connection:
             connectionStatus
-        case .calibration, .validation:
+        case .baseline, .calibration, .validation:
             measurementStatus
         case .ready:
             readyDetails
         case .signalIssue:
-            detailRows([
-                ("airpodspro", store.issue?.message ?? "AirPods 신호를 확인해 주세요"),
-                ("arrow.clockwise", "처음 10회 보정부터 다시 해볼게요"),
-            ])
+            if store.issue == .validationOutOfRange {
+                detailRows([
+                    ("airpodspro", store.issue?.message ?? "AirPods 신호를 확인해 주세요"),
+                    ("arrow.clockwise", "찾아둔 내 기준은 유지하고 검증만 다시 해요"),
+                ])
+            } else {
+                detailRows([
+                    ("airpodspro", store.issue?.message ?? "AirPods 신호를 확인해 주세요"),
+                    ("arrow.clockwise", "정지 상태 확인부터 다시 해볼게요"),
+                ])
+            }
         }
     }
 
@@ -208,10 +231,9 @@ struct MeasurementOnboardingView: View {
     }
 
     private var readyDetails: some View {
-        let detectedCount = store.profile?.validationDetectedCount ?? 0
-        return detailRows([
+        detailRows([
             ("waveform.path.ecg", "내 씹기 신호에 맞는 기준을 만들었어요"),
-            ("checkmark.circle", "검증 10회 중 \(detectedCount)회 감지했어요"),
+            ("metronome", "평소 씹는 리듬까지 확인했어요"),
             ("iphone", "맞춤 기준을 이 기기에 저장해요"),
         ])
     }
@@ -263,6 +285,39 @@ struct MeasurementOnboardingView: View {
                 .padding(.vertical, AppSpacing.two)
                 .accessibilityIdentifier("MeasurementOnboardingRetryConnection")
             }
+
+            if store.stage == .calibration && store.measurementCompleted {
+                Button("다시 측정하기") {
+                    Task { await store.retryMeasurement() }
+                }
+                .buttonStyle(.plain)
+                .font(.appFont(.boldLabel))
+                .foregroundStyle(Color.textAction)
+                .padding(.vertical, AppSpacing.two)
+                .accessibilityIdentifier("MeasurementOnboardingRetryCalibration")
+            }
+
+            if store.stage == .signalIssue, store.issue == .validationOutOfRange {
+                Button("측정부터 다시") {
+                    Task { await store.retryMeasurement() }
+                }
+                .buttonStyle(.plain)
+                .font(.appFont(.boldLabel))
+                .foregroundStyle(Color.textAction)
+                .padding(.vertical, AppSpacing.two)
+                .accessibilityIdentifier("MeasurementOnboardingRestartCalibration")
+            }
+
+            if store.stage == .signalIssue, !store.diagnosticArtifactURLs.isEmpty {
+                ShareLink(items: store.diagnosticArtifactURLs) {
+                    Label("측정 파일 공유", systemImage: "square.and.arrow.up")
+                }
+                .buttonStyle(.plain)
+                .font(.appFont(.boldLabel))
+                .foregroundStyle(Color.textAction)
+                .padding(.vertical, AppSpacing.two)
+                .accessibilityIdentifier("MeasurementOnboardingShareDiagnostics")
+            }
         }
     }
 
@@ -270,8 +325,9 @@ struct MeasurementOnboardingView: View {
         switch store.stage {
         case .intro: "내 리듬에 맞춰\n측정해볼까요?"
         case .connection: "먼저 AirPods를\n확인할게요"
-        case .calibration: "박자에 맞춰\n10번 씹어볼까요?"
-        case .validation: "같은 리듬으로\n10번 더 확인할게요"
+        case .baseline: "5초 동안 편하게\n멈춰 있어 주세요"
+        case .calibration: "평소처럼 자연스럽게\n10번 씹어보세요"
+        case .validation: "내 리듬으로\n감지를 확인할게요"
         case .ready: "내 씹기 기준을\n확인했어요"
         case .signalIssue: "신호를 충분히\n읽지 못했어요"
         }
@@ -281,8 +337,9 @@ struct MeasurementOnboardingView: View {
         switch store.stage {
         case .intro: "사람마다 움직임과 씹는 속도가 달라요.\n식사 전에 짧게 나만의 기준을 맞춰요."
         case .connection: "연결된 AirPods의 움직임 센서를 확인해요."
-        case .calibration: "오른쪽 신호가 왼쪽 선에 닿을 때 한 번씩 씹어주세요.\n10회의 신호로 내 기준을 계산해요."
-        case .validation: "방금 만든 기준으로 실제 감지 횟수를 확인해요."
+        case .baseline: "가만히 있을 때 생기는 작은 움직임을 먼저 확인해요.\n고개와 턱에 힘을 빼고 편하게 있어 주세요."
+        case .calibration: "속도에 신경 쓰지 말고 평소 식사하듯 씹어주세요.\n10번을 다 씹으면 측정 완료를 눌러요."
+        case .validation: "방금 찾은 내 속도를 따라 편안하게 씹어주세요.\n감지 횟수는 화면에 표시하지 않아요."
         case .ready: "다음 식사부터 이 기준으로 씹기를 감지해요."
         case .signalIssue: "괜찮아요. 착용 상태와 씹는 리듬을 확인해요."
         }
@@ -290,35 +347,41 @@ struct MeasurementOnboardingView: View {
 
     private var measurementStatusText: String {
         if store.measurementCompleted {
-            return "10회의 신호로 개인 기준을 만들었어요"
+            return "내 씹기 크기와 리듬을 찾았어요"
         }
         if store.isMeasuring {
-            if store.stage == .calibration {
-                return "기준 신호 \(store.calibrationAmplitudes.count)/10개 확보"
+            if store.stage == .baseline {
+                return "평소 움직임을 확인하고 있어요"
             }
-            return "DSP가 \(store.validationDetectedCount)회 감지했어요"
+            if store.stage == .calibration {
+                return store.isFinishingMeasurement
+                    ? "측정한 신호를 정리하고 있어요"
+                    : "10번을 다 씹은 뒤 측정 완료를 눌러주세요"
+            }
+            return "내 리듬으로 감지를 확인하고 있어요"
         }
-        return store.stage == .calibration
-            ? "준비되면 10회 보정을 시작해요"
-            : "준비되면 새 기준으로 10회를 확인해요"
+        switch store.stage {
+        case .baseline:
+            return "준비되면 5초 동안 편하게 멈춰 있어요"
+        case .calibration:
+            return "준비되면 자연스러운 씹기를 측정해요"
+        default:
+            return "준비되면 내 리듬으로 확인해요"
+        }
     }
 
     private var primaryTitle: String {
         switch store.stage {
-        case .intro:
-            return "맞춤 측정 준비하기"
-        case .connection:
-            return "다음"
+        case .intro: return "맞춤 측정 준비하기"
+        case .connection: return "다음"
+        case .baseline: return store.isMeasuring ? "정지 신호 확인 중" : "5초 측정 시작"
         case .calibration:
-            if store.isMeasuring { return "보정 중 · \(store.cueIndex)/10" }
-            return store.measurementCompleted ? "검증 10회로 이동" : "10회 보정 시작"
-        case .validation:
-            if store.isMeasuring { return "검증 중 · \(store.cueIndex)/10" }
-            return "10회 검증 시작"
-        case .ready:
-            return "맞춤 기준 사용하기"
-        case .signalIssue:
-            return "처음부터 다시"
+            if store.isFinishingMeasurement { return "신호 확인 중" }
+            if store.isMeasuring { return "측정 완료" }
+            return store.measurementCompleted ? "내 리듬 검증하기" : "자연 측정 시작"
+        case .validation: return store.isMeasuring ? "내 리듬 확인 중" : "리듬 검증 시작"
+        case .ready: return "맞춤 기준 사용하기"
+        case .signalIssue: return store.issue == .validationOutOfRange ? "검증 다시하기" : "측정 다시하기"
         }
     }
 
@@ -326,26 +389,38 @@ struct MeasurementOnboardingView: View {
         switch store.stage {
         case .intro: "waveform.path.ecg"
         case .connection: "arrow.right"
-        case .calibration, .validation: store.measurementCompleted ? "arrow.right" : "record.circle"
+        case .baseline: "record.circle"
+        case .calibration:
+            store.isMeasuring ? "stop.circle" : store.measurementCompleted ? "arrow.right" : "record.circle"
+        case .validation: "record.circle"
         case .ready: "checkmark"
         case .signalIssue: "arrow.clockwise"
         }
     }
 
     private var primaryDisabled: Bool {
-        store.isMeasuring
-            || (store.stage == .connection && (!store.isAirPodsConnected || isPreparingAirPods))
+        store.isFinishingMeasurement || (store.stage == .baseline && store.isMeasuring)
+            || (store.stage == .validation && store.isMeasuring) || (store.stage == .connection
+                && (!store.isAirPodsConnected || isPreparingAirPods))
     }
 
     private func handlePrimaryAction() {
         switch store.stage {
+        case .baseline where !store.isMeasuring:
+            store.startMeasurement()
+        case .calibration where store.isMeasuring:
+            Task { await store.finishNaturalMeasurement() }
         case .calibration where !store.measurementCompleted,
              .validation where !store.measurementCompleted:
             store.startMeasurement()
         case .ready:
             onComplete()
         case .signalIssue:
-            store.retryMeasurement()
+            if store.issue == .validationOutOfRange {
+                Task { await store.retryValidation() }
+            } else {
+                Task { await store.retryMeasurement() }
+            }
         default:
             withAnimation(.easeInOut(duration: AppMotion.durationPageChange)) {
                 store.moveForward()
@@ -387,13 +462,110 @@ struct MeasurementOnboardingPreviewHost: View {
             onRetryConnection: { store.setAirPodsConnected(true) }
         )
         .task {
-            if store.stage == .calibration || store.stage == .validation {
+            if store.stage == .baseline || store.stage == .calibration || store.stage == .validation {
                 store.startMeasurement()
             }
         }
     }
 }
 #endif
+
+private struct StillSignalMeasurementVisual: View {
+    let isMeasuring: Bool
+    let reduceMotion: Bool
+
+    @State private var breathing = false
+
+    var body: some View {
+        ZStack {
+            ForEach(0..<3, id: \.self) { index in
+                Circle()
+                    .stroke(Color.tintInteractive.opacity(0.14), lineWidth: AppSize.border)
+                    .frame(width: 108 + CGFloat(index * 22))
+                    .scaleEffect(breathing && isMeasuring && !reduceMotion ? 1.02 : 0.98)
+                    .opacity(isMeasuring ? 0.8 - Double(index) * 0.18 : 0.42)
+                    .animation(
+                        .easeInOut(duration: AppMotion.durationWave)
+                            .repeatForever(autoreverses: true)
+                            .delay(Double(index) * 0.12),
+                        value: breathing
+                    )
+            }
+
+            Circle()
+                .fill(Color.bgSurface)
+                .frame(width: Metrics.signalCore, height: Metrics.signalCore)
+
+            Image(systemName: "figure.stand")
+                .font(.appFont(.regular, size: Metrics.heroIcon))
+                .foregroundStyle(Color.textActionStrong)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("정지 상태 측정")
+        .accessibilityValue(isMeasuring ? "측정 중" : "측정 전")
+        .onAppear { breathing = true }
+    }
+}
+
+private struct NaturalChewMeasurementVisual: View {
+    let isMeasuring: Bool
+    let isComplete: Bool
+    let reduceMotion: Bool
+
+    @State private var breathing = false
+
+    var body: some View {
+        ZStack {
+            ForEach(0..<3, id: \.self) { index in
+                Circle()
+                    .stroke(ringColor.opacity(0.16), lineWidth: AppSize.border)
+                    .frame(width: 112 + CGFloat(index * 22))
+                    .scaleEffect(breathing && !reduceMotion ? 1.04 + Double(index) * 0.025 : 0.96)
+                    .opacity(breathing && !reduceMotion ? 0.4 : 0.9 - Double(index) * 0.18)
+                    .animation(
+                        .easeInOut(duration: AppMotion.durationWave)
+                            .repeatForever(autoreverses: true)
+                            .delay(Double(index) * 0.14),
+                        value: breathing
+                    )
+            }
+
+            SquirrelView(
+                mood: .happy,
+                hat: nil,
+                glasses: nil,
+                acc: nil,
+                animKey: isMeasuring ? 1 : 0,
+                isEating: isMeasuring
+            )
+            .scaleEffect(0.9)
+
+            if isComplete {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.appFont(.regular, size: AppSize.iconXXLarge))
+                    .foregroundStyle(Color.statusSuccess)
+                    .offset(x: 58, y: -50)
+                    .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("자연스러운 씹기 측정")
+        .accessibilityValue(accessibilityValue)
+        .onAppear { breathing = true }
+    }
+
+    private var ringColor: Color {
+        isComplete ? .statusSuccess : .tintInteractive
+    }
+
+    private var accessibilityValue: String {
+        if isComplete { return "측정 완료" }
+        if isMeasuring { return "측정 중" }
+        return "측정 전"
+    }
+}
 
 private struct IntroSignalVisual: View {
     let reduceMotion: Bool

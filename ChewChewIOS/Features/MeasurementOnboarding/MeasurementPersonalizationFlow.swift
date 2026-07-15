@@ -10,10 +10,12 @@ struct MeasurementPersonalizationFlow: View {
 
     private let personalizationStore: any ChewDetectionPersonalizationStoring
     private let readinessService: any AirPodsAudioReadinessServicing
+    private let artifactUploader: any MeasurementCalibrationArtifactUploading
     private let onSaved: (PersonalizedChewDetectionSettings) -> Void
 
     init(
         personalizationStore: any ChewDetectionPersonalizationStoring = UserDefaultsChewProfileStore(),
+        remoteStore: any RemoteStore = NoopRemoteStore(),
         readinessService: (any AirPodsAudioReadinessServicing)? = nil,
         onSaved: @escaping (PersonalizedChewDetectionSettings) -> Void
     ) {
@@ -29,15 +31,18 @@ struct MeasurementPersonalizationFlow: View {
         let isConnected = connectionMonitor.isConnected
         #endif
         let audioReadinessService = readinessService ?? defaultReadinessService
+        let artifactUploader = CalibrationArtifactUploadQueue(remoteStore: remoteStore)
 
         _connectionMonitor = State(initialValue: connectionMonitor)
         _store = State(initialValue: MeasurementOnboardingStore(
             isAirPodsConnected: isConnected,
             sampler: sampler,
+            artifactUploader: artifactUploader,
             cuePlayer: audioReadinessService
         ))
         self.personalizationStore = personalizationStore
         self.readinessService = audioReadinessService
+        self.artifactUploader = artifactUploader
         self.onSaved = onSaved
     }
 
@@ -55,6 +60,9 @@ struct MeasurementPersonalizationFlow: View {
             connectionMonitor.start { connected in
                 Task { @MainActor in store.setAirPodsConnected(connected) }
             }
+        }
+        .task {
+            await artifactUploader.retryPending()
         }
         .onDisappear {
             readinessTask?.cancel()
@@ -95,7 +103,10 @@ struct MeasurementPersonalizationFlow: View {
             minPeakAmplitude: profile.minPeakAmplitude,
             calibrationPeakCount: profile.calibrationAmplitudes.count,
             validationDetectedCount: profile.validationDetectedCount,
-            calibratedAt: Date()
+            calibratedAt: Date(),
+            naturalChewInterval: profile.naturalChewInterval,
+            calibrationAmplitudes: profile.calibrationAmplitudes,
+            gateThresholds: profile.gateThresholds
         )
         personalizationStore.save(settings)
         onSaved(settings)

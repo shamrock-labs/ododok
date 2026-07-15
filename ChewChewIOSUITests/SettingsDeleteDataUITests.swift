@@ -55,8 +55,13 @@ final class SettingsDeleteDataUITests: XCTestCase {
         XCTAssertTrue(primaryButton.isEnabled, "AirPods 준비 완료 후 다음 단계로 이동할 수 있어야 한다")
         primaryButton.tap()
         XCTAssertTrue(
-            app.otherElements["MeasurementRhythmFeedback"].waitForExistence(timeout: 5),
-            "AirPods 준비 후 오른쪽에서 왼쪽으로 진행하는 리듬 보정 화면이 보여야 한다"
+            app.staticTexts["5초 동안 편하게\n멈춰 있어 주세요"].waitForExistence(timeout: 5),
+            "AirPods 준비 후 정지 상태 측정 화면이 보여야 한다"
+        )
+        primaryButton.tap()
+        XCTAssertTrue(
+            app.staticTexts["평소처럼 자연스럽게\n10번 씹어보세요"].waitForExistence(timeout: 10),
+            "정지 상태 측정 후 자연스러운 씹기 측정 화면이 보여야 한다"
         )
     }
 

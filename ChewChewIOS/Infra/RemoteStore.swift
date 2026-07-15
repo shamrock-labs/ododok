@@ -39,6 +39,7 @@ protocol RemoteStore {
     /// 진행 상태는 남김.
     func deleteAllChewingSessions(deviceId: String) async throws
     func uploadIMUCSV(sessionId: UUID, deviceId: String, csvData: Data) async throws -> String
+    func uploadCalibrationArtifacts(_ bundle: CalibrationArtifactBundle) async throws
 
     // MARK: - push (ODO-56)
     /// APNs device token 등록/갱신. 같은 토큰 재등록은 서버가 소유자를 갱신한다.
@@ -88,6 +89,7 @@ extension RemoteStore {
     func fetchFriendInviteCode() async throws -> FriendInviteCodeDTO { .init(code: "") }
     func acceptFriendInvite(code: String) async throws -> FriendAcceptResultDTO { .init(accepted: false, bonusGranted: false) }
     func fetchFriendRanking() async throws -> [FriendRankingDTO] { [] }
+    func uploadCalibrationArtifacts(_ bundle: CalibrationArtifactBundle) async throws {}
 
     /// 상한 없는 편의 메서드 — `fetchChewingSessions(deviceId:since:until:)`에 `until: nil`을
     /// 위임. 기존 "오늘의 식사 기록" 호출자(`AppState.fetchTodaySessions`) 그대로 사용.

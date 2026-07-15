@@ -5,9 +5,33 @@ struct PersonalizedChewDetectionSettings: Codable, Equatable {
     let calibrationPeakCount: Int
     let validationDetectedCount: Int
     let calibratedAt: Date
+    var naturalChewInterval: TimeInterval?
+    var calibrationAmplitudes: [Double]?
+    var gateThresholds: ChewingGateThresholds?
+
+    init(
+        minPeakAmplitude: Double,
+        calibrationPeakCount: Int,
+        validationDetectedCount: Int,
+        calibratedAt: Date,
+        naturalChewInterval: TimeInterval? = nil,
+        calibrationAmplitudes: [Double]? = nil,
+        gateThresholds: ChewingGateThresholds? = nil
+    ) {
+        self.minPeakAmplitude = minPeakAmplitude
+        self.calibrationPeakCount = calibrationPeakCount
+        self.validationDetectedCount = validationDetectedCount
+        self.calibratedAt = calibratedAt
+        self.naturalChewInterval = naturalChewInterval
+        self.calibrationAmplitudes = calibrationAmplitudes
+        self.gateThresholds = gateThresholds
+    }
 
     var configuration: ChewDetectionConfiguration {
-        ChewDetectionConfiguration(minPeakAmplitude: minPeakAmplitude)
+        ChewDetectionConfiguration(
+            minPeakAmplitude: minPeakAmplitude,
+            gateThresholds: gateThresholds ?? .standard
+        )
     }
 }
 

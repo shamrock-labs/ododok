@@ -8,7 +8,6 @@ struct ChewDetectionSnapshot: Sendable, Equatable {
     let intervalStd: Double
     let intervalCV: Double
 }
-
 struct ChewDetectionEvent: Sendable, Equatable {
     let count: Int
     let timestamp: Double
@@ -30,8 +29,32 @@ struct ChewPeak: Equatable {
     let amplitude: Double
 }
 
+struct ChewingGateThresholds: Codable, Sendable, Equatable {
+    let minimumRotationYStd: Double
+    let minimumRotationYDominance: Double
+    let minimumRotationYJitterBandDominance: Double
+
+    static let standard = ChewingGateThresholds(
+        minimumRotationYStd: 0.030,
+        minimumRotationYDominance: 0.15,
+        minimumRotationYJitterBandDominance: 0.15
+    )
+}
+
 struct ChewDetectionConfiguration: Sendable, Equatable {
     let minPeakAmplitude: Double
+    let gateThresholds: ChewingGateThresholds
+    let requiresOpenActivityGate: Bool
+
+    init(
+        minPeakAmplitude: Double,
+        gateThresholds: ChewingGateThresholds = .standard,
+        requiresOpenActivityGate: Bool = true
+    ) {
+        self.minPeakAmplitude = minPeakAmplitude
+        self.gateThresholds = gateThresholds
+        self.requiresOpenActivityGate = requiresOpenActivityGate
+    }
 
     static let standard = ChewDetectionConfiguration(minPeakAmplitude: 0.006)
 }
@@ -153,7 +176,7 @@ struct RepresentativePeakWindow {
 /// keep-alive 신호등 톤 등 외부가 "현재 peak를 셀 수 있는 구간인지"를 읽는 단일 통로다.
 /// 최근 신호가 씹기 상태로 판단될 때만 후보 피크를 카운트한다.
 actor ChewDetectionEngine {
-    static let modelVersion = "dsp-chewcounter-2"
+    static let modelVersion = "dsp-chewcounter-3"
 
     // 1st-order IIR high-pass: y[n] = α*(y[n-1] + x[n] - x[n-1])
     // α = exp(-2π*fc/fs), fc=0.5 Hz, fs=50 Hz → α ≈ 0.9391
@@ -179,10 +202,7 @@ actor ChewDetectionEngine {
     private let minPeakGapSeconds: TimeInterval = 0.32
     // Filters idle sensor noise floor. 온보딩 로컬 실험은 configuration으로 사용자별 값을 주입한다.
     private let configuration: ChewDetectionConfiguration
-    // Heading-motion guard: rotation magnitude above this threshold (rad/s) indicates
-    // a deliberate head turn/nod rather than a jaw chew — peaks are suppressed.
-    private let headingMotionThreshold: Double = 0.12
-    private var chewingActivityGate = ChewingActivityGate()
+    private var chewingActivityGate: ChewingActivityGate
     private var isSessionFinished = false
 
     // 지속 씹기 알림: ChewingActivityGate가 열린 상태가 3초(150샘플 @50Hz) 이어질 때마다
@@ -204,6 +224,7 @@ actor ChewDetectionEngine {
 
     init(configuration: ChewDetectionConfiguration = .standard) {
         self.configuration = configuration
+        chewingActivityGate = ChewingActivityGate(thresholds: configuration.gateThresholds)
     }
 
     /// 씹기 3초 지속마다 호출될 handler 등록. actor 밖(오디오 등)으로 신호를 보내는 유일한 통로.
@@ -232,21 +253,8 @@ actor ChewDetectionEngine {
         } else {
             sustainedChewingSamples = 0
         }
-        // 초당 타임라인은 sampleCount·chewingSamples와 동일 시점에 누적한다(heading-guard return 이전).
+        // 초당 타임라인은 sampleCount·chewingSamples와 동일 시점에 누적한다.
         timelineAccumulator.feed(isChewing: gateState.isOpen)
-
-        // Heading-motion guard: large rotation across any axis = head turn/nod, not a chew.
-        let rotMag = (
-            input.rotX * input.rotX +
-                input.rotY * input.rotY +
-                input.rotZ * input.rotZ
-        ).squareRoot()
-        if rotMag > headingMotionThreshold {
-            f0 = 0; f1 = 0  // reset sliding window to prevent phantom peaks after motion
-            f1Timestamp = nil
-            peakSelectionWindow.reset()
-            return nil
-        }
 
         let expiredPeakEvent = finalizePeakCandidateIfNeeded(at: timestamp)
 
@@ -272,7 +280,8 @@ actor ChewDetectionEngine {
         // f1 is a local maximum: f1 > f0, f1 > f2, above zero (one chew oscillation peak).
         // 단발 피크는 버리고, 짧은 시간 동안 씹기형 신호가 지속될 때만 카운트한다.
         let isLocalPeakCandidate = f1 > f0 && f1 > f2 && f1 > configuration.minPeakAmplitude
-        guard isLocalPeakCandidate, gateState.isOpen, let peakTimestamp = f1Timestamp else {
+        let canCountPeak = !configuration.requiresOpenActivityGate || gateState.isOpen
+        guard isLocalPeakCandidate, canCountPeak, let peakTimestamp = f1Timestamp else {
             return expiredPeakEvent
         }
         return collectPeak(ChewPeak(timestamp: peakTimestamp, amplitude: f1)) ?? expiredPeakEvent
@@ -461,7 +470,14 @@ private struct ChewingGateState {
     let isOpen: Bool
 }
 
-private struct ChewingActivityGate {
+struct ChewingGateFeatures: Equatable {
+    let rotationYStd: Double
+    let rotationYDominance: Double
+    let rotationYJitterBandDominance: Double
+    let accelToRotation: Double
+}
+
+struct ChewingGateFeatureExtractor {
     private var rotationXOneToFive = BiquadBandpass(lowCutHz: 1.0, highCutHz: 5.0)
     private var rotationYOneToFive = BiquadBandpass(lowCutHz: 1.0, highCutHz: 5.0)
     private var rotationZOneToFive = BiquadBandpass(lowCutHz: 1.0, highCutHz: 5.0)
@@ -485,24 +501,11 @@ private struct ChewingActivityGate {
 
     private var rotationYMean = 0.0
     private var rotationYVariance = 0.0
-    private var matchingSampleStreak = 0
-    private var nonMatchingSampleStreak = 0
-    private var isOpen = false
-
     // 0.8초 EWMA: 너무 짧은 단발 피크는 버리고, 2초 안팎의 지속 신호는 빠르게 따라간다.
     private let featureAlpha = exp(-1.0 / (50.0 * 0.8))
-    // 게이트 임계값 — 2026-06-28 실기기 튜닝으로 과소카운트 해결을 위해 완화한 최적값.
-    // 원본의 빡빡한 우세도 게이트가 실제 씹기를 진동으로 오판해 버리던 걸 푼 결과다.
-    private let minimumRotationYStd = 0.030
-    private let minimumRotationYDominance = 0.15
-    private let minimumRotationYJitterBandDominance = 0.15
-    private let maximumAccelToRotation = 0.050
-    private let hardJitterAccelToRotation = 0.060
-    private let samplesRequiredToOpen = 10
-    private let samplesRequiredToClose = 30
     private let epsilon = 1e-12
 
-    mutating func feed(_ sample: ChewDetectionSample) -> ChewingGateState {
+    mutating func feed(_ sample: ChewDetectionSample) -> ChewingGateFeatures {
         let delta = sample.rotY - rotationYMean
         rotationYMean += (1 - featureAlpha) * delta
         rotationYVariance = featureAlpha * (rotationYVariance + (1 - featureAlpha) * delta * delta)
@@ -522,36 +525,16 @@ private struct ChewingActivityGate {
         let rotationYDominance = rotationYOneToFiveEnergy / (rotationOneToFiveEnergy + epsilon)
         let rotationYJitterBandDominance = rotationYJitterBandEnergy / (rotationJitterBandEnergy + epsilon)
         let accelToRotation = accelJitterBandEnergy / (rotationJitterBandEnergy + epsilon)
-        let hardJitterLike = accelToRotation >= hardJitterAccelToRotation
-        let matchesChewingGate = rotationYStd >= minimumRotationYStd &&
-            rotationYDominance >= minimumRotationYDominance &&
-            rotationYJitterBandDominance >= minimumRotationYJitterBandDominance &&
-            accelToRotation <= maximumAccelToRotation
-
-        if hardJitterLike {
-            isOpen = false
-            matchingSampleStreak = 0
-            nonMatchingSampleStreak = samplesRequiredToClose
-        } else if matchesChewingGate {
-            matchingSampleStreak += 1
-            nonMatchingSampleStreak = 0
-        } else {
-            nonMatchingSampleStreak += 1
-            matchingSampleStreak = 0
-        }
-
-        if !isOpen && matchingSampleStreak >= samplesRequiredToOpen {
-            isOpen = true
-        }
-        if isOpen && nonMatchingSampleStreak >= samplesRequiredToClose {
-            isOpen = false
-        }
-
-        return ChewingGateState(isOpen: isOpen)
+        return ChewingGateFeatures(
+            rotationYStd: rotationYStd,
+            rotationYDominance: rotationYDominance,
+            rotationYJitterBandDominance: rotationYJitterBandDominance,
+            accelToRotation: accelToRotation
+        )
     }
 
     mutating func reset() {
-        self = ChewingActivityGate()
+        self = ChewingGateFeatureExtractor()
     }
 
     private mutating func updateFilteredEnergies(with sample: ChewDetectionSample) {
@@ -586,6 +569,60 @@ private struct ChewingActivityGate {
 
     private func smoothEnergy(_ value: Double, previous: Double) -> Double {
         featureAlpha * previous + (1 - featureAlpha) * value * value
+    }
+}
+
+private struct ChewingActivityGate {
+    private let thresholds: ChewingGateThresholds
+    private var featureExtractor = ChewingGateFeatureExtractor()
+    private var matchingSampleStreak = 0
+    private var nonMatchingSampleStreak = 0
+    private var isOpen = false
+
+    private let maximumAccelToRotation = 0.050
+    private let hardJitterAccelToRotation = 0.060
+    private let samplesRequiredToOpen = 10
+    private let samplesRequiredToClose = 30
+
+    init(thresholds: ChewingGateThresholds = .standard) {
+        self.thresholds = thresholds
+    }
+
+    mutating func feed(_ sample: ChewDetectionSample) -> ChewingGateState {
+        let features = featureExtractor.feed(sample)
+        let hardJitterLike = features.accelToRotation >= hardJitterAccelToRotation
+        let matchesChewingGate = features.rotationYStd >= thresholds.minimumRotationYStd &&
+            features.rotationYDominance >= thresholds.minimumRotationYDominance &&
+            features.rotationYJitterBandDominance >= thresholds.minimumRotationYJitterBandDominance &&
+            features.accelToRotation <= maximumAccelToRotation
+
+        if hardJitterLike {
+            isOpen = false
+            matchingSampleStreak = 0
+            nonMatchingSampleStreak = samplesRequiredToClose
+        } else if matchesChewingGate {
+            matchingSampleStreak += 1
+            nonMatchingSampleStreak = 0
+        } else {
+            nonMatchingSampleStreak += 1
+            matchingSampleStreak = 0
+        }
+
+        if !isOpen && matchingSampleStreak >= samplesRequiredToOpen {
+            isOpen = true
+        }
+        if isOpen && nonMatchingSampleStreak >= samplesRequiredToClose {
+            isOpen = false
+        }
+
+        return ChewingGateState(isOpen: isOpen)
+    }
+
+    mutating func reset() {
+        featureExtractor.reset()
+        matchingSampleStreak = 0
+        nonMatchingSampleStreak = 0
+        isOpen = false
     }
 }
 

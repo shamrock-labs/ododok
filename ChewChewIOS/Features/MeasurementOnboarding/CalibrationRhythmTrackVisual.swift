@@ -1,28 +1,15 @@
 import SwiftUI
 
-enum MeasurementRhythmFeedbackMode {
-    case calibration
-    case validation
-
-    var accessibilityLabel: String {
-        switch self {
-        case .calibration: "씹기 리듬 보정"
-        case .validation: "씹기 감지 검증"
-        }
-    }
-}
-
 struct MeasurementRhythmFeedbackVisual: View {
-    let mode: MeasurementRhythmFeedbackMode
     let cueIndex: Int
-    let cueCount: Int
-    let detectedCount: Int
     let cuePulseID: Int
     let cueHitID: Int
+    let approachDuration: TimeInterval
     let reduceMotion: Bool
 
     @State private var noteProgress: CGFloat = 0
     @State private var targetFlash = false
+    @State private var noteApproachTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: Metrics.sceneSpacing) {
@@ -32,8 +19,8 @@ struct MeasurementRhythmFeedbackVisual: View {
         .frame(maxWidth: .infinity)
         .frame(height: Metrics.sceneHeight)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(mode.accessibilityLabel)
-        .accessibilityValue("안내 \(cueIndex)회 중 기준 신호 \(detectedCount)회")
+        .accessibilityLabel("씹기 감지 검증")
+        .accessibilityValue("개인 리듬 안내 중")
         .accessibilityIdentifier("MeasurementRhythmFeedback")
     }
 
@@ -44,16 +31,11 @@ struct MeasurementRhythmFeedbackVisual: View {
                 hat: nil,
                 glasses: nil,
                 acc: nil,
-                animKey: detectedCount,
+                animKey: cueHitID,
                 isEating: true
             )
             .scaleEffect(Metrics.squirrelScale)
 
-            ChewFeedbackPulseOverlay(
-                triggerKey: detectedCount,
-                isActive: cueIndex > 0
-            )
-            .scaleEffect(Metrics.pulseScale)
         }
         .frame(height: Metrics.feedbackHeight)
     }
@@ -82,6 +64,14 @@ struct MeasurementRhythmFeedbackVisual: View {
         }
         .onChange(of: cueHitID) { _, _ in
             flashTarget()
+        }
+        .onAppear {
+            if cuePulseID > 0 {
+                startNoteApproach()
+            }
+        }
+        .onDisappear {
+            noteApproachTask?.cancel()
         }
     }
 
@@ -127,7 +117,7 @@ struct MeasurementRhythmFeedbackVisual: View {
     private func noteOffset(trackWidth: CGFloat) -> CGFloat {
         let targetOffset = targetOffset(trackWidth: trackWidth)
         guard !reduceMotion else { return targetOffset }
-        let startOffset = trackWidth / 2 + Metrics.noteWidth / 2
+        let startOffset = trackWidth / 2 - Metrics.horizontalInset - Metrics.noteWidth / 2
         return startOffset + (targetOffset - startOffset) * noteProgress
     }
 
@@ -136,11 +126,22 @@ struct MeasurementRhythmFeedbackVisual: View {
     }
 
     private func startNoteApproach() {
-        noteProgress = reduceMotion ? 1 : 0
-        guard !reduceMotion else { return }
-        Task { @MainActor in
-            await Task.yield()
-            withAnimation(.linear(duration: Metrics.approachDuration)) {
+        noteApproachTask?.cancel()
+        guard !reduceMotion else {
+            noteProgress = 1
+            return
+        }
+
+        var resetTransaction = Transaction()
+        resetTransaction.disablesAnimations = true
+        withTransaction(resetTransaction) {
+            noteProgress = 0
+        }
+
+        noteApproachTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(Metrics.animationStartDelayMilliseconds))
+            guard !Task.isCancelled else { return }
+            withAnimation(.linear(duration: approachDuration)) {
                 noteProgress = 1
             }
         }
@@ -162,7 +163,6 @@ private enum Metrics {
     static let feedbackHeight: CGFloat = 116
     static let sceneSpacing: CGFloat = 6
     static let squirrelScale: CGFloat = 0.76
-    static let pulseScale: CGFloat = 0.84
     static let trackHeight: CGFloat = 54
     static let trackRadius: CGFloat = 8
     static let horizontalInset: CGFloat = 18
@@ -174,5 +174,5 @@ private enum Metrics {
     static let noteHeight: CGFloat = 28
     static let noteShadowRadius: CGFloat = 8
     static let noteShadowX: CGFloat = 3
-    static let approachDuration: TimeInterval = 1.2
+    static let animationStartDelayMilliseconds = 17
 }

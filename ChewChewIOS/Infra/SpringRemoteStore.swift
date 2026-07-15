@@ -285,6 +285,37 @@ final class SpringRemoteStore: RemoteStore {
         return try decodeResult(UploadResult.self, from: data).key
     }
 
+    func uploadCalibrationArtifacts(_ bundle: CalibrationArtifactBundle) async throws {
+        struct UploadTarget: Decodable {
+            let type: CalibrationArtifactKind
+            let key: String
+            let uploadUrl: URL
+            let headers: [String: String]
+        }
+        struct UploadPlan: Decodable {
+            let calibrationId: UUID
+            let expiresAt: Date
+            let uploads: [UploadTarget]
+        }
+
+        let path = "/v1/me/calibrations/\(bundle.calibrationId.uuidString.lowercased())/upload-plan"
+        let planData = try await sendExpectingSuccess(jsonRequest(method: "POST", path: path))
+        let plan = try decodeResult(UploadPlan.self, from: planData)
+        let targets = Dictionary(uniqueKeysWithValues: plan.uploads.map { ($0.type, $0) })
+
+        for artifact in bundle.artifacts {
+            guard let target = targets[artifact.kind] else {
+                throw RemoteStoreError.invalidUploadResponse
+            }
+            var request = URLRequest(url: target.uploadUrl)
+            request.httpMethod = "PUT"
+            request.httpBody = artifact.data
+            target.headers.forEach { request.setValue($1, forHTTPHeaderField: $0) }
+            let (responseData, response) = try await sendRaw(request)
+            try validateSuccess(statusCode: response.statusCode, data: responseData)
+        }
+    }
+
     // MARK: - push (ODO-56)
 
     func registerPushToken(_ token: String, environment: String) async throws {

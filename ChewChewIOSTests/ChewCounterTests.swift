@@ -77,6 +77,50 @@ final class ChewDetectionEngineTests: XCTestCase {
         XCTAssertEqual(snapshot.chewCount, 0)
     }
 
+    func testValidationConfigurationCountsPeaksWithoutOpeningActivityGate() async {
+        let standardEngine = ChewDetectionEngine(
+            configuration: ChewDetectionConfiguration(minPeakAmplitude: 0.001)
+        )
+        let validationEngine = ChewDetectionEngine(
+            configuration: ChewDetectionConfiguration(
+                minPeakAmplitude: 0.001,
+                requiresOpenActivityGate: false
+            )
+        )
+
+        for index in 0..<500 {
+            let elapsed = Double(index) / 50.0
+            let weakChewSignal = 0.01 * sin(2 * Double.pi * 1.4 * elapsed)
+            let sample = makeSample(index: index, rotationY: weakChewSignal)
+            await standardEngine.feed(sample)
+            await validationEngine.feed(sample)
+        }
+        await standardEngine.finishSession()
+        await validationEngine.finishSession()
+
+        let standardSnapshot = await standardEngine.snapshot()
+        let validationSnapshot = await validationEngine.snapshot()
+        let validationGateOpen = await validationEngine.isChewingGateOpen
+
+        XCTAssertEqual(standardSnapshot.chewCount, 0)
+        XCTAssertFalse(validationGateOpen)
+        XCTAssertGreaterThan(validationSnapshot.chewCount, 0)
+    }
+
+    func testStrongChewRotationIsNotDiscardedAsHeadingMotion() async {
+        let engine = ChewDetectionEngine()
+
+        for index in 0..<500 {
+            let elapsed = Double(index) / 50.0
+            let strongChewSignal = 0.16 * sin(2 * Double.pi * 1.4 * elapsed)
+            await engine.feed(makeSample(index: index, rotationY: strongChewSignal))
+        }
+        await engine.finishSession()
+
+        let snapshot = await engine.snapshot()
+        XCTAssertGreaterThan(snapshot.chewCount, 0)
+    }
+
     func testRepresentativePeakWindowKeepsStrongestPeak() {
         var selector = RepresentativePeakWindow(windowDuration: 0.30)
 
