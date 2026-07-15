@@ -86,7 +86,7 @@ struct HomeView: View {
     // MARK: Top bar
 
     private var topBar: some View {
-        AppHeaderView(eyebrow: todayLabel, title: "오도독", subtitle: homeHeaderSubtitle) {
+        AppHeaderView(eyebrow: todayLabel, title: greetingTitle, subtitle: homeHeaderSubtitle) {
             HStack(spacing: 7) {
                 HeaderMetricPill(icon: .flame, value: "\(home.currentStreak)", tint: .statusWarning)
                 Button {
@@ -105,6 +105,12 @@ struct HomeView: View {
             }
             .offset(y: -8)
         }
+    }
+
+    private var greetingTitle: String {
+        guard let displayName = state.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !displayName.isEmpty else { return "안녕!" }
+        return "안녕, \(displayName)님"
     }
 
     private var homeHeaderSubtitle: String? {
