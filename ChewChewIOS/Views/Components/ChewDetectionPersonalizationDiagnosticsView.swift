@@ -4,6 +4,7 @@ struct ChewPersonalizationDiagnosticsView: View {
     @Environment(\.dismiss) private var dismiss
 
     let settings: PersonalizedChewDetectionSettings
+    let showsInternalValues: Bool
     let onRemeasure: () -> Void
     let onReset: () -> Void
 
@@ -12,8 +13,9 @@ struct ChewPersonalizationDiagnosticsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: AppSpacing.sectionGap) {
                     summary
-                    diagnosticValues
-                    amplitudeValues
+                    if showsInternalValues {
+                        internalValues
+                    }
                     actions
                 }
                 .padding(.horizontal, AppSpacing.page)
@@ -34,16 +36,32 @@ struct ChewPersonalizationDiagnosticsView: View {
     }
 
     private var summary: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.microGap) {
-            Text("마지막 측정")
-                .font(.appFont(.sectionTitle))
-                .foregroundStyle(Color.textDefault)
-            Text(KoDate.dateWithClock(
-                settings.calibratedAt,
-                dateFormat: "yyyy년 M월 d일 EEEE"
-            ))
+        VStack(alignment: .leading, spacing: AppSpacing.gapTight) {
+            Label {
+                Text("맞춤 감지 기준 사용 중")
+                    .font(.appFont(.sectionTitle))
+            } icon: {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(Color.textAction)
+            }
+
+            Text("내 씹기 신호와 리듬에 맞춘 기준으로 감지하고 있어요.")
                 .font(.appFont(.regularCallout))
                 .foregroundStyle(Color.textMuted)
+
+            Text("마지막 측정 \(measurementDateText)")
+                .font(.appFont(.regularCallout))
+                .foregroundStyle(Color.textMuted)
+        }
+    }
+
+    private var internalValues: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.gapTight) {
+            Text("내부 진단값")
+                .font(.appFont(.sectionTitle))
+                .foregroundStyle(Color.textDefault)
+            diagnosticValues
+            amplitudeValues
         }
     }
 
@@ -150,6 +168,13 @@ struct ChewPersonalizationDiagnosticsView: View {
 
     private var gateThresholds: ChewingGateThresholds {
         settings.gateThresholds ?? .standard
+    }
+
+    private var measurementDateText: String {
+        KoDate.dateWithClock(
+            settings.calibratedAt,
+            dateFormat: "yyyy년 M월 d일 EEEE"
+        )
     }
 
     private func format(_ value: Double) -> String {

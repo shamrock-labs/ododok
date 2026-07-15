@@ -22,10 +22,7 @@ struct ChewPersonalizationSettingsControls: View {
             if settings == nil {
                 setupButton
             } else {
-                ChewDetectionPersonalizationSettingsRow(isPersonalized: true)
-                    .padding(.top, AppSpacing.topInsetCompact)
-
-                diagnosticsButton
+                detailsButton
             }
         }
         .fullScreenCover(isPresented: $isPersonalizationPresented) {
@@ -43,6 +40,7 @@ struct ChewPersonalizationSettingsControls: View {
             if let settings {
                 ChewPersonalizationDiagnosticsView(
                     settings: settings,
+                    showsInternalValues: AppFeatureFlags.showsCalibrationDiagnostics,
                     onRemeasure: { pendingDiagnosticsAction = .remeasure },
                     onReset: { pendingDiagnosticsAction = .reset }
                 )
@@ -61,16 +59,14 @@ struct ChewPersonalizationSettingsControls: View {
         .accessibilityIdentifier("ChewDetectionPersonalization")
     }
 
-    private var diagnosticsButton: some View {
+    private var detailsButton: some View {
         Button {
             isDiagnosticsPresented = true
         } label: {
-            Label("측정값 보기", systemImage: "waveform.path.ecg")
+            ChewDetectionPersonalizationSettingsRow(isPersonalized: true)
         }
         .buttonStyle(.plain)
-        .font(.appFont(.semiboldCallout))
-        .foregroundStyle(Color.textAction)
-        .padding(.top, AppSpacing.gap)
+        .padding(.top, AppSpacing.topInsetCompact)
         .accessibilityIdentifier("ChewDetectionPersonalizationDetails")
     }
 

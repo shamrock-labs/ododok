@@ -10,7 +10,8 @@ struct ChewDetectionPersonalizationSettingsRow: View {
             subtitle: isPersonalized
                 ? "내 씹기 신호에 맞춰 감지하고 있어요"
                 : "AirPods로 내 씹기 신호를 맞춰요",
-            value: isPersonalized ? "사용 중" : "설정 전"
+            value: isPersonalized ? "사용 중" : "설정 전",
+            showsChevron: isPersonalized
         )
     }
 }
