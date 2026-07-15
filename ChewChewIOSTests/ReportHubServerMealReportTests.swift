@@ -32,6 +32,45 @@ final class ReportHubServerMealReportTests: XCTestCase {
         )
     }
 
+    func testGeneratedSessionsPreserveMixedPolicyServerSnapshots() throws {
+        let legacyAxes = MealReportAxisScoresDTO(
+            chewingRate: 11,
+            chewingTimeRatio: 22,
+            totalChewCount: 33,
+            mealDuration: 44
+        )
+        let v1Axes = MealReportAxisScoresDTO(
+            chewingRate: 91,
+            chewingTimeRatio: 82,
+            totalChewCount: 73,
+            mealDuration: 64
+        )
+        let legacy = makeSession(report: generatedReport(
+            policy: "legacy-ios-v1",
+            score: 41,
+            axes: legacyAxes,
+            totalChews: 300,
+            duration: 600
+        ))
+        let v1 = makeSession(report: generatedReport(
+            policy: "meal-score-v1",
+            score: 93,
+            axes: v1Axes,
+            totalChews: 420,
+            duration: 720
+        ))
+
+        let selected = ReportHubDaySnapshot.generatedSessions(from: [legacy, v1])
+        let selectedReports = try selected.map { try XCTUnwrap($0.mealReport) }
+
+        XCTAssertEqual(selected.map(\.id), [legacy.id, v1.id])
+        XCTAssertEqual(selectedReports.map(\.scorePolicyVersion), ["legacy-ios-v1", "meal-score-v1"])
+        XCTAssertEqual(selectedReports.map(\.totalScore), [41, 93])
+        XCTAssertEqual(selectedReports.map(\.axisScores), [legacyAxes, v1Axes])
+        XCTAssertNil(selectedReports[1].metrics?.legacyMealRatePerMin)
+        XCTAssertTrue(MealSessionReportability.isReportable(v1))
+    }
+
     func testDaySnapshotUsesDailyEndpointCountAndAverageScore() {
         let report = DailyReportDTO(
             date: "2026-07-15",
@@ -54,15 +93,31 @@ final class ReportHubServerMealReportTests: XCTestCase {
         XCTAssertEqual(snapshot.minutes, 4)
     }
 
-    private func generatedReport(totalChews: Int, duration: Double) -> MealReportDTO {
-        MealReportDTO(
-            status: .generated, scorePolicyVersion: "legacy-ios-v1", analysisModelVersion: "server",
-            totalScore: 80,
-            axisScores: .init(chewingRate: 80, chewingTimeRatio: 80, totalChewCount: 80, mealDuration: 80),
-            metrics: .init(chewingRatePerMin: nil, legacyMealRatePerMin: 30,
+    private func generatedReport(
+        policy: String = "legacy-ios-v1",
+        score: Int = 80,
+        axes: MealReportAxisScoresDTO = .init(
+            chewingRate: 80,
+            chewingTimeRatio: 80,
+            totalChewCount: 80,
+            mealDuration: 80
+        ),
+        totalChews: Int,
+        duration: Double
+    ) -> MealReportDTO {
+        let isV1 = policy == "meal-score-v1"
+        return MealReportDTO(
+            status: .generated, scorePolicyVersion: policy, analysisModelVersion: "server",
+            totalScore: score,
+            axisScores: axes,
+            metrics: .init(chewingRatePerMin: isV1 ? 100 : nil, legacyMealRatePerMin: isV1 ? nil : 30,
                            chewingTimeRatio: 0.7, totalChewCount: totalChews, mealDurationSec: duration),
             grade: .good,
-            recommendedBaseline: .init(chewingRatePerMin: .init(target: 28), chewingTimeRatio: 0.6,
+            recommendedBaseline: .init(
+                chewingRatePerMin: isV1
+                    ? .init(target: nil, min: 56, max: 130)
+                    : .init(target: 28),
+                chewingTimeRatio: 0.6,
                                        totalChewCount: 300, mealDurationSec: 720)
         )
     }

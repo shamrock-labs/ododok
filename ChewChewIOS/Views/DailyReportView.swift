@@ -135,8 +135,10 @@ extension DailyReportModel {
         let avgCpm = report.avgChewRatePerMin ?? 0
         let avgFraction = report.avgChewingFraction ?? 0
         let scalarRateTargets = entries.compactMap { $0.model.rateRecommendation.target }
-        guard scalarRateTargets.count == count else { return nil }
-        let recommendedRate = scalarRateTargets.reduce(0, +) / Double(count)
+        // 기존 daily 모델은 scalar 목표만 표현한다. mixed 정책에서는 v1 범위를 임의의
+        // scalar로 축약하지 않고, 저장된 legacy target끼리만 기존 평균을 유지한다.
+        guard !scalarRateTargets.isEmpty else { return nil }
+        let recommendedRate = scalarRateTargets.reduce(0, +) / Double(scalarRateTargets.count)
         let recommendedRatio = entries.map(\.model.recommendedChewingFraction).reduce(0, +) / Double(count)
         let recommendedChews = Int(
             (Double(entries.map(\.model.recommendedChewCount).reduce(0, +)) / Double(count)).rounded()
