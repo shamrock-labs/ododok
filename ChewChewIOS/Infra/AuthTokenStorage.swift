@@ -5,6 +5,7 @@ protocol AuthTokenStorage {
     var refreshToken: String? { get }
     var isLoggedIn: Bool { get }
 
+    func save(access: String, refresh: String)
     func clear()
 }
 
@@ -19,6 +20,10 @@ struct KeychainAuthTokenStorage: AuthTokenStorage {
 
     var isLoggedIn: Bool {
         TokenManager.isLoggedIn
+    }
+
+    func save(access: String, refresh: String) {
+        TokenManager.save(access: access, refresh: refresh)
     }
 
     func clear() {

@@ -2,6 +2,58 @@ import XCTest
 @testable import ChewChewIOS
 
 final class ReportHubServerMealReportTests: XCTestCase {
+    @MainActor
+    func testDailyReportSelectionIgnoresAStalePreviousReportFromAnOlderDate() async throws {
+        let loader = DailyReportSelectionLoader()
+        let firstSelection = loader.beginSelection()
+        let firstCurrent = report(date: "2026-07-14", score: 14)
+        let firstPrevious = report(date: "2026-07-13", score: 13)
+        let secondCurrent = report(date: "2026-07-15", score: 15)
+        let secondPrevious = report(date: "2026-07-14", score: 140)
+        let firstPreviousGate = AsyncReportGate()
+
+        let staleLoad = Task { @MainActor in
+            await loader.load(
+                selectionID: firstSelection,
+                currentDate: "2026-07-14",
+                previousDate: "2026-07-13"
+            ) { date in
+                if date == "2026-07-13" { return try await firstPreviousGate.value() }
+                return firstCurrent
+            }
+        }
+
+        let secondSelection = loader.beginSelection()
+        await loader.load(
+            selectionID: secondSelection,
+            currentDate: "2026-07-15",
+            previousDate: "2026-07-14"
+        ) { date in
+            date == "2026-07-15" ? secondCurrent : secondPrevious
+        }
+        await firstPreviousGate.resume(returning: firstPrevious)
+        await staleLoad.value
+
+        XCTAssertEqual(loader.currentReport?.date, "2026-07-15")
+        XCTAssertEqual(loader.previousReport?.avgTotalScore, 140)
+    }
+
+    @MainActor
+    func testDailyReportSelectionExposesNonAuthFetchFailureMessage() async {
+        let loader = DailyReportSelectionLoader()
+        let selection = loader.beginSelection()
+
+        await loader.load(
+            selectionID: selection,
+            currentDate: "2026-07-15",
+            previousDate: "2026-07-14"
+        ) { _ in
+            throw RemoteStoreError.offline
+        }
+
+        XCTAssertEqual(loader.errorMessage, RemoteStoreError.offline.userMessage)
+    }
+
     func testDaySnapshotUsesOnlyGeneratedServerReports() {
         let generated = makeSession(
             rawChews: 2,
@@ -122,6 +174,21 @@ final class ReportHubServerMealReportTests: XCTestCase {
         )
     }
 
+    private func report(date: String, score: Double) -> DailyReportDTO {
+        DailyReportDTO(
+            date: date,
+            timezone: "Asia/Seoul",
+            mealCount: 0,
+            totalEatingSeconds: 0,
+            totalChews: 0,
+            avgChewRatePerMin: nil,
+            avgChewingFraction: nil,
+            avgTotalScore: score,
+            meals: [],
+            vsYesterday: nil
+        )
+    }
+
     private func makeSession(
         rawChews: Int = 1,
         rawDuration: Double = 30,
@@ -141,5 +208,27 @@ final class ReportHubServerMealReportTests: XCTestCase {
             chewingFraction: 0.01, estimatedTotalChews: rawChews, modelVersion: "raw",
             mealReport: report
         )
+    }
+}
+
+private actor AsyncReportGate {
+    private var continuation: CheckedContinuation<DailyReportDTO, Error>?
+    private var pendingReport: DailyReportDTO?
+
+    func value() async throws -> DailyReportDTO {
+        if let pendingReport {
+            self.pendingReport = nil
+            return pendingReport
+        }
+        return try await withCheckedThrowingContinuation { continuation = $0 }
+    }
+
+    func resume(returning report: DailyReportDTO) {
+        if let continuation {
+            continuation.resume(returning: report)
+            self.continuation = nil
+        } else {
+            pendingReport = report
+        }
     }
 }

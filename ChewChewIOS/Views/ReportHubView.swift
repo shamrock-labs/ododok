@@ -1,4 +1,43 @@
 import SwiftUI
+import Observation
+
+@Observable
+@MainActor
+final class DailyReportSelectionLoader {
+    private(set) var currentReport: DailyReportDTO?
+    private(set) var previousReport: DailyReportDTO?
+    private(set) var errorMessage: String?
+    private var activeSelectionID = 0
+
+    func beginSelection() -> Int {
+        activeSelectionID += 1
+        currentReport = nil
+        previousReport = nil
+        errorMessage = nil
+        return activeSelectionID
+    }
+
+    func load(
+        selectionID: Int,
+        currentDate: String,
+        previousDate: String,
+        fetch: @escaping (String) async throws -> DailyReportDTO
+    ) async {
+        async let currentResult = fetch(currentDate)
+        async let previousResult = fetch(previousDate)
+        do {
+            let reports = try await (currentResult, previousResult)
+            guard selectionID == activeSelectionID else { return }
+            currentReport = reports.0
+            previousReport = reports.1
+        } catch {
+            guard selectionID == activeSelectionID else { return }
+            if case RemoteStoreError.authExpired = error { return }
+            errorMessage = (error as? RemoteStoreError)?.userMessage
+                ?? "잠시 후 다시 시도해 주세요."
+        }
+    }
+}
 
 struct ReportHubView: View {
     @Environment(AppState.self) private var state
@@ -11,8 +50,8 @@ struct ReportHubView: View {
     @State private var showCalendar = false
     @State private var calendarMonth: Date = mealCalendarCalendar.startOfDay(for: Date())
     @State private var hasTrackedReportTabView = false
-    @State private var selectedDailyReport: DailyReportDTO?
-    @State private var previousDailyReport: DailyReportDTO?
+    @State private var dailyReportLoader = DailyReportSelectionLoader()
+    @State private var dailyReportErrorToast: AppToastMessage?
 
     private let dayWidth: CGFloat = 52
     /// 타임라인 가로 스트립이 한 번에 보여주는 이동 윈도우 길이.
@@ -64,7 +103,11 @@ struct ReportHubView: View {
             )
             .presentationDetents([.medium, .large])
         }
+        .appToast($dailyReportErrorToast)
     }
+
+    private var selectedDailyReport: DailyReportDTO? { dailyReportLoader.currentReport }
+    private var previousDailyReport: DailyReportDTO? { dailyReportLoader.previousReport }
 
     private var today: Date { mealCalendarCalendar.startOfDay(for: Date()) }
 
@@ -779,9 +822,8 @@ struct ReportHubView: View {
     private func selectDate(_ date: Date, source: String) {
         let normalizedDate = mealCalendarCalendar.startOfDay(for: date)
         selectedDate = normalizedDate
-        selectedDailyReport = nil
-        previousDailyReport = nil
-        Task { await loadSelectedDailyReports() }
+        let selectionID = dailyReportLoader.beginSelection()
+        Task { await loadSelectedDailyReports(selectionID: selectionID) }
         state.analytics.track(.reportDateSelected(
             source: source,
             selectedDate: analyticsDateString(normalizedDate),
@@ -791,20 +833,18 @@ struct ReportHubView: View {
     }
 
     @MainActor
-    private func loadSelectedDailyReports() async {
+    private func loadSelectedDailyReports(selectionID: Int? = nil) async {
         let selected = selectedDate
         guard let previous = mealCalendarCalendar.date(byAdding: .day, value: -1, to: selected) else { return }
-        async let currentResult = state.remoteStore.fetchDailyReport(date: analyticsDateString(selected))
-        async let previousResult = state.remoteStore.fetchDailyReport(date: analyticsDateString(previous))
-        do {
-            let current = try await currentResult
-            guard mealCalendarCalendar.isDate(selectedDate, inSameDayAs: selected) else { return }
-            selectedDailyReport = current
-            previousDailyReport = try await previousResult
-        } catch {
-            if case RemoteStoreError.authExpired = error {
-                return
-            }
+        let activeSelectionID = selectionID ?? dailyReportLoader.beginSelection()
+        await dailyReportLoader.load(
+            selectionID: activeSelectionID,
+            currentDate: analyticsDateString(selected),
+            previousDate: analyticsDateString(previous),
+            fetch: state.remoteStore.fetchDailyReport
+        )
+        if let errorMessage = dailyReportLoader.errorMessage {
+            dailyReportErrorToast = AppToastMessage(errorMessage, kind: .warning)
         }
     }
 
