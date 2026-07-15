@@ -40,11 +40,8 @@ struct SquirrelView: View {
                 .animation(.easeOut(duration: AppMotion.durationPulse), value: bounce)
                 .animation(.easeInOut(duration: AppMotion.durationChew).repeatForever(autoreverses: true), value: eatingMotion)
 
-            Image(currentImageName)
-                .resizable()
-                .scaledToFit()
-                .frame(width: Metrics.image, height: Metrics.image)
-                .scaleEffect(AppArtwork.daramContentScale * (bounce ? 1.08 : 1.0))
+            characterImage
+                .scaleEffect(bounce ? 1.08 : 1.0)
                 .rotationEffect(.degrees(
                     bounce ? -2
                         : (isEating && eatingMotion ? 2.5 : 0)
@@ -128,6 +125,23 @@ struct SquirrelView: View {
             blinkFrame = .open
         }
     }
+
+    @ViewBuilder
+    private var characterImage: some View {
+        if isEating {
+            DaramChewingView(
+                size: CGSize(width: Metrics.image, height: Metrics.image),
+                isPlaying: true
+            )
+            .scaleEffect(Metrics.chewingContentScale)
+        } else {
+            Image(currentImageName)
+                .resizable()
+                .scaledToFit()
+                .frame(width: Metrics.image, height: Metrics.image)
+                .scaleEffect(AppArtwork.daramContentScale)
+        }
+    }
 }
 
 private enum BlinkFrame {
@@ -142,11 +156,13 @@ private enum BlinkFrame {
         case .closed: "DaramClosed"
         }
     }
+
 }
 
 private enum Metrics {
     static let halo = AppSize.visualXLarge
     static let image: CGFloat = 115
+    static let chewingContentScale: CGFloat = 1.12
     static let blinkInterval: TimeInterval = 5
     static let blinkFrameDuration: TimeInterval = 0.5
     static let blinkRestDuration = blinkInterval - blinkFrameDuration * 3
