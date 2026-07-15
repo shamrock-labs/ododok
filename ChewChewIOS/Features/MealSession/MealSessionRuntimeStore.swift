@@ -501,7 +501,12 @@ private extension MealSessionRuntimeStore {
         interruptionWasCall = false
         interruptionBeganAt = nil
         runtimeServices.notificationScheduler.cancelInterruptionPrompt()
-        mealActivity.end()
+        let activityController = mealActivity
+        Task {
+            await withMealBackgroundTask(named: "End meal Live Activity") {
+                await activityController.end()
+            }
+        }
         resetIMUWaveform()
         imuWaveformSource = .idle
         return stoppedRuntime

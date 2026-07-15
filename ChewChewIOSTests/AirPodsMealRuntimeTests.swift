@@ -273,7 +273,7 @@ private final class FakeAirPodsCallInterruptionMonitor: MealCallInterruptionMoni
 private final class FakeAirPodsMealActivityController: MealActivityControlling {
     func start(startedAt: Date) {}
     func setPaused(_ paused: Bool, callActive: Bool) async {}
-    func end() {}
+    func end() async {}
 }
 
 private final class FakeAirPodsInterruptionNotifier: MealInterruptionNotificationScheduling {

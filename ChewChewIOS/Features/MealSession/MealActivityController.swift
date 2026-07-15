@@ -45,11 +45,17 @@ final class MealActivityController {
         #endif
     }
 
-    func end() {
+    func end() async {
         #if os(iOS)
-        guard let activity else { return }
+        var activeActivities = Activity<MealActivityAttributes>.activities
+        if let activity,
+           !activeActivities.contains(where: { $0.id == activity.id }) {
+            activeActivities.append(activity)
+        }
         self.activity = nil
-        Task { await activity.end(nil, dismissalPolicy: .immediate) }
+        for activity in activeActivities {
+            await activity.end(nil, dismissalPolicy: .immediate)
+        }
         #endif
     }
 }

@@ -95,6 +95,18 @@ final class MealSessionPhaseTests: XCTestCase {
         store.discardCurrentSession()
     }
 
+    func testStoppingEatingEndsActivityAndCancelsInterruptionPrompt() async {
+        let runtime = FakeMealSessionRuntimeServices()
+        let store = makeStore(runtime: runtime)
+        store.startEating()
+
+        store.stopEating()
+        await waitUntil { runtime.activity.endCallCount == 1 }
+
+        XCTAssertEqual(runtime.activity.endCallCount, 1)
+        XCTAssertEqual(runtime.notification.cancelCallCount, 1)
+    }
+
     func testCallInterruptionEventPausesInjectedRuntimeServices() async {
         let runtime = FakeMealSessionRuntimeServices()
         let store = makeStore(runtime: runtime)
@@ -120,6 +132,18 @@ final class MealSessionPhaseTests: XCTestCase {
             onSessionReadyForUpload: { _, _ in },
             runtimeServices: runtime.services
         )
+    }
+
+    private func waitUntil(
+        timeout: Duration = .seconds(1),
+        condition: @escaping @MainActor () -> Bool
+    ) async {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while !condition(), clock.now < deadline {
+            try? await Task.sleep(for: .milliseconds(1))
+        }
+        XCTAssertTrue(condition())
     }
 }
 
@@ -232,13 +256,14 @@ private final class FakeMealActivityController: MealActivityControlling {
         pauseEvents.append(.init(paused: paused, callActive: callActive))
     }
 
-    func end() {
+    func end() async {
         endCallCount += 1
     }
 }
 
 private final class FakeInterruptionNotifier: MealInterruptionNotificationScheduling {
     var requestAuthorizationCallCount = 0
+    var cancelCallCount = 0
 
     func requestAuthorizationIfNeeded() async -> Bool {
         requestAuthorizationCallCount += 1
@@ -247,5 +272,7 @@ private final class FakeInterruptionNotifier: MealInterruptionNotificationSchedu
 
     func scheduleInterruptionPrompt() async {}
 
-    func cancelInterruptionPrompt() {}
+    func cancelInterruptionPrompt() {
+        cancelCallCount += 1
+    }
 }
