@@ -26,7 +26,7 @@ struct DailyReportModel {
     let totalDurationSec: Double
     let avgChewsPerMinute: Double
     let avgChewingFraction: Double
-    let recommendedChewsPerMinute: Double
+    let rateGuidance: RateGuidance
     let recommendedChewingFraction: Double
     let recommendedChewCount: Int
     let recommendedDurationSec: Double
@@ -49,6 +49,45 @@ struct DailyReportModel {
 
     // 12. 데이터 신뢰 상태
     let trust: Trust
+
+    enum RateGuidance: Equatable {
+        case target(Double)
+        case range(min: Double, max: Double)
+        case perMeal
+
+        init(recommendations: [ReportCardModel.RateRecommendation]) {
+            guard let first = recommendations.first,
+                  recommendations.dropFirst().allSatisfy({ $0 == first }) else {
+                self = .perMeal
+                return
+            }
+            if let target = first.target {
+                self = .target(target)
+            } else {
+                self = .range(min: first.min, max: first.max)
+            }
+        }
+
+        var displayText: String {
+            switch self {
+            case .target(let target):
+                formatDailyRecommended(target)
+            case .range(let min, let max):
+                "\(Int(min.rounded()))~\(Int(max.rounded()))"
+            case .perMeal:
+                "끼니별 기준"
+            }
+        }
+
+        var metricSubtitle: String {
+            switch self {
+            case .target, .range:
+                "권장 \(displayText)회/분"
+            case .perMeal:
+                displayText
+            }
+        }
+    }
 
     /// 한 끼(슬롯) 단위 집계. 같은 슬롯에 여러 세션이면 합산하고 점수는 평균낸다.
     struct MealSummary: Identifiable {
@@ -134,11 +173,7 @@ extension DailyReportModel {
         let totalDuration = report.totalEatingSeconds
         let avgCpm = report.avgChewRatePerMin ?? 0
         let avgFraction = report.avgChewingFraction ?? 0
-        let scalarRateTargets = entries.compactMap { $0.model.rateRecommendation.target }
-        // 기존 daily 모델은 scalar 목표만 표현한다. mixed 정책에서는 v1 범위를 임의의
-        // scalar로 축약하지 않고, 저장된 legacy target끼리만 기존 평균을 유지한다.
-        guard !scalarRateTargets.isEmpty else { return nil }
-        let recommendedRate = scalarRateTargets.reduce(0, +) / Double(scalarRateTargets.count)
+        let rateGuidance = RateGuidance(recommendations: entries.map(\.model.rateRecommendation))
         let recommendedRatio = entries.map(\.model.recommendedChewingFraction).reduce(0, +) / Double(count)
         let recommendedChews = Int(
             (Double(entries.map(\.model.recommendedChewCount).reduce(0, +)) / Double(count)).rounded()
@@ -234,7 +269,7 @@ extension DailyReportModel {
             totalDurationSec: totalDuration,
             avgChewsPerMinute: avgCpm,
             avgChewingFraction: avgFraction,
-            recommendedChewsPerMinute: recommendedRate,
+            rateGuidance: rateGuidance,
             recommendedChewingFraction: recommendedRatio,
             recommendedChewCount: recommendedChews,
             recommendedDurationSec: recommendedDuration,
@@ -244,7 +279,7 @@ extension DailyReportModel {
             yesterday: yesterday,
             causeText: weakest.causeText,
             tomorrowGoal: weakest.goalText(
-                recommendedRate: recommendedRate,
+                rateGuidance: rateGuidance,
                 recommendedRatio: recommendedRatio,
                 recommendedChews: recommendedChews,
                 recommendedDuration: recommendedDuration
@@ -268,14 +303,21 @@ extension DailyReportModel {
             }
         }
         func goalText(
-            recommendedRate: Double,
+            rateGuidance: RateGuidance,
             recommendedRatio: Double,
             recommendedChews: Int,
             recommendedDuration: Double
         ) -> String {
             switch self {
             case .speed:
-                "내일은 첫 5분 동안 분당 약 \(formatDailyRecommended(recommendedRate))회를 의식해봐요."
+                switch rateGuidance {
+                case .target(let target):
+                    "내일은 첫 5분 동안 분당 약 \(formatDailyRecommended(target))회를 의식해봐요."
+                case .range:
+                    "내일은 첫 5분 동안 분당 \(rateGuidance.displayText)회 범위를 의식해봐요."
+                case .perMeal:
+                    "내일은 각 끼니 리포트의 권장 속도 기준을 확인해봐요."
+                }
             case .rhythm:
                 "내일은 한 끼 씹기 비율 \(Int((recommendedRatio * 100).rounded()))%를 목표로 해봐요."
             case .continuity:
@@ -528,7 +570,7 @@ struct DailyReportView: View {
                     metricCell(
                         label: "평균 속도",
                         value: "약 \(Int(model.avgChewsPerMinute.rounded()))회/분",
-                        sub: "권장 \(formatDailyRecommended(model.recommendedChewsPerMinute))회/분"
+                        sub: model.rateGuidance.metricSubtitle
                     )
                     metricCell(
                         label: "씹기 비율",

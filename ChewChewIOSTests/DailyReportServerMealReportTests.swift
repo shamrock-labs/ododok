@@ -46,7 +46,7 @@ final class DailyReportServerMealReportTests: XCTestCase {
         XCTAssertEqual(model.totalChews, 589)
         XCTAssertEqual(model.totalDurationSec, 811)
         XCTAssertEqual(model.avgChewingFraction, 0.97, accuracy: 0.001)
-        XCTAssertEqual(model.recommendedChewsPerMinute, 31)
+        XCTAssertEqual(model.rateGuidance, .target(31))
         XCTAssertEqual(model.recommendedChewingFraction, 0.64)
         XCTAssertEqual(model.recommendedChewCount, 333)
         XCTAssertEqual(model.recommendedDurationSec, 777)

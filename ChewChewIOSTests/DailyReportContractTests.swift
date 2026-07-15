@@ -29,6 +29,8 @@ final class DailyReportContractTests: XCTestCase {
         XCTAssertEqual(model.avgChewsPerMinute, 44)
         XCTAssertEqual(model.avgChewingFraction, 0.77)
         XCTAssertEqual(model.sessionCount, 2)
+        XCTAssertEqual(model.rateGuidance, .target(28))
+        XCTAssertEqual(model.rateGuidance.displayText, "28")
     }
 
     func testDailyModelUsesStoredMealReportsForMealSummaries() throws {
@@ -134,9 +136,69 @@ final class DailyReportContractTests: XCTestCase {
         XCTAssertEqual(selectedReports.map(\.scorePolicyVersion), ["legacy-ios-v1", "meal-score-v1"])
         XCTAssertEqual(selectedReports.map(\.totalScore), [43, 94])
         XCTAssertEqual(selectedReports.map(\.axisScores), [legacyAxes, v1Axes])
-        XCTAssertEqual(model.recommendedChewsPerMinute, 28)
+        XCTAssertEqual(model.rateGuidance, .perMeal)
+        XCTAssertEqual(model.rateGuidance.displayText, "끼니별 기준")
+        XCTAssertEqual(model.tomorrowGoal, "내일은 각 끼니 리포트의 권장 속도 기준을 확인해봐요.")
         XCTAssertNil(selectedReports[1].metrics?.legacyMealRatePerMin)
         XCTAssertTrue(MealSessionReportability.isReportable(meals[1].session))
+    }
+
+    func testDailyModelSupportsAllV1ReportsWithStoredRangeAndTotals() throws {
+        let date = Date(timeIntervalSince1970: 1_725_000_000)
+        let meals = [
+            makeMeal(
+                startedAt: date,
+                slot: "LUNCH",
+                policy: "meal-score-v1",
+                score: 61,
+                axes: .init(
+                    chewingRate: 10,
+                    chewingTimeRatio: 80,
+                    totalChewCount: 80,
+                    mealDuration: 80
+                ),
+                chews: 300
+            ),
+            makeMeal(
+                startedAt: date.addingTimeInterval(60),
+                slot: "DINNER",
+                policy: "meal-score-v1",
+                score: 77,
+                axes: .init(
+                    chewingRate: 10,
+                    chewingTimeRatio: 80,
+                    totalChewCount: 80,
+                    mealDuration: 80
+                ),
+                chews: 420
+            ),
+        ]
+        let report = DailyReportDTO(
+            date: "2024-08-29",
+            timezone: "Asia/Seoul",
+            mealCount: 2,
+            totalEatingSeconds: 1_440,
+            totalChews: 720,
+            avgChewRatePerMin: 100,
+            avgChewingFraction: 0.6,
+            avgTotalScore: 69,
+            meals: meals,
+            vsYesterday: nil
+        )
+
+        let model = try XCTUnwrap(DailyReportModel.from(
+            date: date,
+            report: report,
+            previousReport: nil
+        ))
+
+        XCTAssertEqual(model.rateGuidance, .range(min: 56, max: 130))
+        XCTAssertEqual(model.rateGuidance.displayText, "56~130")
+        XCTAssertEqual(model.tomorrowGoal, "내일은 첫 5분 동안 분당 56~130회 범위를 의식해봐요.")
+        XCTAssertEqual(model.mealCount, 2)
+        XCTAssertEqual(model.totalChews, 720)
+        XCTAssertEqual(model.totalDurationSec, 1_440)
+        XCTAssertEqual(model.dayScore, 69)
     }
 
     private func makeMeal(
