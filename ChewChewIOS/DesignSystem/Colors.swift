@@ -24,7 +24,6 @@ extension Color {
 
     static let butter50  = Color(hex: 0xFFF9E5)
     static let butter100 = Color(hex: 0xFCF1D2)
-    static let butter200 = Color(hex: 0xF8E2A6)
     static let butter400 = Color(hex: 0xF5C97B)
     static let butter500 = Color(hex: 0xE8B055)
     static let butter600 = Color(hex: 0xC9912E)
