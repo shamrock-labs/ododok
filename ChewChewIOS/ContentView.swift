@@ -4,6 +4,10 @@ struct ContentView: View {
     @Environment(AppState.self) private var state
     @State private var tab: Tab = Tab.initial
     @State private var presentedGlobalToast: AppToastMessage?
+    @State private var isCalibrationOfferQueued = false
+    @State private var isCalibrationPromptPresented = false
+    @State private var isCalibrationFlowQueued = false
+    @State private var isCalibrationFlowPresented = false
 
     private var mealSession: MealSessionRuntimeStore { state.mealSession }
     private var mealResults: MealSessionResultStore { state.mealResults }
@@ -41,13 +45,7 @@ struct ContentView: View {
     }
 
     var body: some View {
-        Group {
-            if state.isLoggedIn {
-                mainTabs
-            } else {
-                LoginView(store: state.auth)
-            }
-        }
+        rootContent
         // 로그인 직후 프로필 로딩/온보딩 진입 전엔 홈을 크림+스피너로 덮어 홈 깜빡임을 차단한다.
         // 홈(mainTabs)은 그대로 렌더돼 온보딩 시트가 그 위로 정상 표시되고, 이 커버는 시각적으로만 가린다.
         // (홈을 replace하면 시트가 뜰 base가 사라져 신규 유저가 스피너에 갇히는 회귀가 있어, overlay로 덮기만 한다.)
@@ -68,6 +66,30 @@ struct ContentView: View {
         .onChange(of: state.friendsTabRequestID) { _, requestID in
             guard requestID > 0 else { return }
             tab = .friends
+        }
+    }
+
+    @ViewBuilder
+    private var rootContent: some View {
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-showMeasurementOnboarding") {
+            MeasurementOnboardingPreviewHost()
+        } else {
+            authenticatedContent
+        }
+        #else
+        authenticatedContent
+        #endif
+    }
+
+    @ViewBuilder
+    private var authenticatedContent: some View {
+        Group {
+            if state.isLoggedIn {
+                mainTabs
+            } else {
+                LoginView(store: state.auth)
+            }
         }
     }
 
@@ -133,14 +155,29 @@ struct ContentView: View {
                 onClose: closeResultSheet
             )
         }
-        .sheet(isPresented: onboardingBinding) {
-            OnboardingFlowView()
+        .sheet(
+            isPresented: onboardingBinding,
+            onDismiss: presentCalibrationOfferIfQueued
+        ) {
+            OnboardingFlowView(onTutorialFinished: finishOnboardingTutorial)
         }
-        // RewardDialogView는 overlay라 SessionResultSheet에 가려진다. sheet가 떠 있는 동안엔
-        // 그리지 않고 대기 — sheet 닫히는 순간 자연스럽게 등장하고 그때부터 2.5s 자동 dismiss
-        // 타이머가 시작되어, 세션 종료 보상 다이얼로그가 가려진 채 사라지는 회귀를 차단.
+        .appDialog(
+            isPresented: $isCalibrationPromptPresented,
+            title: "내 씹기 신호에 맞춰볼까요?",
+            message: "짧게 씹어보면 다음 식사부터 내 움직임에 맞는 기준으로 감지해요.",
+            supportingText: "설정 > 맞춤 감지 기준에서 언제든지 할 수 있어요.",
+            primary: .init("지금 바로 하기") {
+                presentCalibrationFlowAfterDialogDismissal()
+            },
+            secondary: .init("다음에 할게요", role: .cancel) {}
+        )
+        .fullScreenCover(isPresented: $isCalibrationFlowPresented) {
+            MeasurementPersonalizationFlow(remoteStore: state.remoteStore) { _ in }
+        }
+        // 보상은 결과 sheet와 첫 캘리브레이션 흐름이 모두 끝난 뒤에 그린다. 먼저 도착한
+        // pendingRewardGrant는 유지하므로 가려진 채 자동 dismiss되지 않고 다음 순서에 나타난다.
         .overlay(alignment: .center) {
-            if mealResults.lastCompletedSession == nil, let grant = state.home.pendingRewardGrant {
+            if canPresentReward, let grant = state.home.pendingRewardGrant {
                 ZStack {
                     Color.black.opacity(0.28).ignoresSafeArea()
                     RewardDialogView(grant: grant) {
@@ -236,6 +273,41 @@ struct ContentView: View {
 
     private func closeResultSheet() {
         mealResults.closeResultPresentation()
+    }
+
+    private var canPresentReward: Bool {
+        mealResults.lastCompletedSession == nil && !isPostOnboardingCalibrationActive
+    }
+
+    private var isPostOnboardingCalibrationActive: Bool {
+        onboardingBinding.wrappedValue
+            || isCalibrationOfferQueued
+            || isCalibrationPromptPresented
+            || isCalibrationFlowQueued
+            || isCalibrationFlowPresented
+    }
+
+    private func finishOnboardingTutorial() {
+        isCalibrationOfferQueued = true
+        state.completeOnboarding()
+    }
+
+    private func presentCalibrationOfferIfQueued() {
+        guard isCalibrationOfferQueued else { return }
+        Task { @MainActor in
+            await Task.yield()
+            isCalibrationPromptPresented = true
+            isCalibrationOfferQueued = false
+        }
+    }
+
+    private func presentCalibrationFlowAfterDialogDismissal() {
+        isCalibrationFlowQueued = true
+        Task { @MainActor in
+            await Task.yield()
+            isCalibrationFlowPresented = true
+            isCalibrationFlowQueued = false
+        }
     }
 
     /// 첫 실행 onboarding sheet binding — DB fetch 한 번 끝났고(`didLoadProfile`) 온보딩을

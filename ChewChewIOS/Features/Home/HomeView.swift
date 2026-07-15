@@ -8,7 +8,6 @@ struct HomeView: View {
 
     // MARK: - 측정 시작 햅틱 trigger
     @State private var hapticTrigger = false
-    @State private var chewAcornPulses: [ChewAcornPulse] = []
 
     // MARK: - 끼니 알림 설정 sheet
     @State private var showMealReminderSettings = false
@@ -43,21 +42,6 @@ struct HomeView: View {
             // 콜드스타트로 열려 onChange를 놓친 경우 보완.
             if mealSession.consumePendingMealStartRequest() {
                 if !mealSession.isEating { handleMealToggle() }
-            }
-        }
-        .onDisappear {
-            clearChewAcornPulses()
-        }
-        .onChange(of: state.animKey) { _, key in
-            guard mealSession.phase.showsChewFeedback else {
-                clearChewAcornPulses()
-                return
-            }
-            addChewAcornPulse(for: key)
-        }
-        .onChange(of: mealSession.phase) { _, phase in
-            if !phase.showsChewFeedback {
-                clearChewAcornPulses()
             }
         }
         .sensoryFeedback(.impact(weight: .medium), trigger: hapticTrigger)
@@ -102,7 +86,7 @@ struct HomeView: View {
     // MARK: Top bar
 
     private var topBar: some View {
-        AppHeaderView(eyebrow: todayLabel, title: "오도독", subtitle: homeHeaderSubtitle) {
+        AppHeaderView(eyebrow: todayLabel, title: greetingTitle, subtitle: homeHeaderSubtitle) {
             HStack(spacing: 7) {
                 HeaderMetricPill(icon: .flame, value: "\(home.currentStreak)", tint: .statusWarning)
                 Button {
@@ -121,6 +105,12 @@ struct HomeView: View {
             }
             .offset(y: -8)
         }
+    }
+
+    private var greetingTitle: String {
+        guard let displayName = state.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !displayName.isEmpty else { return "안녕!" }
+        return "안녕, \(displayName)님"
     }
 
     private var homeHeaderSubtitle: String? {
@@ -238,11 +228,10 @@ struct HomeView: View {
                 )
                 .scaleEffect(1.5)
 
-                ForEach(chewAcornPulses) { pulse in
-                    ChewAcornPulseView(pulse: pulse)
-                }
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+                ChewFeedbackPulseOverlay(
+                    triggerKey: state.animKey,
+                    isActive: mealSession.phase.showsChewFeedback
+                )
             }
             .frame(height: Metrics.squirrelAreaHeight)
 
@@ -312,81 +301,6 @@ struct HomeView: View {
         )
     }
 
-    private func addChewAcornPulse(for key: Int) {
-        let pulse = ChewAcornPulse.make(for: key)
-        withAnimation(.spring(response: AppMotion.springFastResponse, dampingFraction: AppMotion.springDampingFraction)) {
-            chewAcornPulses.append(pulse)
-            if chewAcornPulses.count > Metrics.maxChewAcornPulses {
-                chewAcornPulses.removeFirst(chewAcornPulses.count - Metrics.maxChewAcornPulses)
-            }
-        }
-
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(Metrics.chewAcornLifetime))
-            withAnimation(.easeOut(duration: AppMotion.durationButtonPress)) {
-                chewAcornPulses.removeAll { $0.id == pulse.id }
-            }
-        }
-    }
-
-    private func clearChewAcornPulses() {
-        guard !chewAcornPulses.isEmpty else { return }
-        chewAcornPulses.removeAll()
-    }
-}
-
-private struct ChewAcornPulse: Identifiable, Equatable {
-    let id = UUID()
-    let offset: CGSize
-
-    static func make(for key: Int) -> ChewAcornPulse {
-        let positions = [
-            CGSize(width: -76, height: -52),
-            CGSize(width: 72, height: -62),
-            CGSize(width: -58, height: 34),
-            CGSize(width: 66, height: 28),
-        ]
-        let index = ((key % positions.count) + positions.count) % positions.count
-        return ChewAcornPulse(offset: positions[index])
-    }
-}
-
-private struct ChewAcornPulseView: View {
-    let pulse: ChewAcornPulse
-
-    @State private var appeared = false
-    @State private var disappearing = false
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(Color.acorn100.opacity(0.92))
-                .frame(width: Metrics.acornBubbleSize, height: Metrics.acornBubbleSize)
-                .overlay {
-                    Circle()
-                        .stroke(Color.surface.opacity(0.9), lineWidth: AppSize.border)
-                }
-                .shadow(color: Color.highlightShadow.opacity(0.2), radius: 8, x: 0, y: 5)
-
-            OpenIconView(icon: .acorn, color: .rewardAcorn, lineWidth: 2.1)
-                .frame(width: Metrics.acornIconSize, height: Metrics.acornIconSize)
-        }
-        .scaleEffect(appeared ? (disappearing ? 0.82 : 1.05) : 0.45)
-        .opacity(appeared ? (disappearing ? 0 : 1) : 0)
-        .offset(
-            x: pulse.offset.width,
-            y: pulse.offset.height + (appeared ? -18 : 4) + (disappearing ? -16 : 0)
-        )
-        .animation(.spring(response: AppMotion.springPlayfulResponse, dampingFraction: AppMotion.springPlayfulDamping), value: appeared)
-        .animation(.easeOut(duration: AppMotion.durationStateChange), value: disappearing)
-        .onAppear {
-            appeared = true
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(0.68))
-                disappearing = true
-            }
-        }
-    }
 }
 
 private struct RewardHistorySheet: View {
@@ -512,10 +426,6 @@ private enum Metrics {
     static let squirrelCardRadius: CGFloat = 26
     static let mealButtonRadius = AppSize.controlTiny
     static let mealButtonHighlightBorder = AppSize.indicatorTiny
-    static let maxChewAcornPulses = 4
-    static let chewAcornLifetime: TimeInterval = 0.95
-    static let acornBubbleSize: CGFloat = 30
-    static let acornIconSize: CGFloat = 17
     static let rewardSheetIconContainer = AppSize.iconContainer
     static let rewardSheetRowHeight: CGFloat = 76
     static let rewardSheetSeparatorInset = AppSize.iconContainer + AppSpacing.inner

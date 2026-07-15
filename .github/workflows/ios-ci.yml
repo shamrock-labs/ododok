@@ -94,7 +94,8 @@ jobs:
         if: steps.changes.outputs.docs_only != 'true'
         run: tuist generate --no-open
 
-      - name: Build for iOS Simulator
+      # 유닛 테스트 타깃이 앱을 호스트로 사용하므로 test 한 번으로 앱 컴파일과 테스트를 함께 검증한다.
+      - name: Build and run iOS unit tests
         if: steps.changes.outputs.docs_only != 'true'
         env:
           NSUnbufferedIO: YES
@@ -102,27 +103,7 @@ jobs:
           set -o pipefail
           xcodebuild \
             -workspace ChewChewIOS.xcworkspace \
-            -scheme ChewChewIOS \
-            -configuration Debug \
-            -destination 'generic/platform=iOS Simulator' \
-            -clonedSourcePackagesDirPath .spm-source-packages \
-            -skipPackagePluginValidation \
-            ONLY_ACTIVE_ARCH=YES \
-            CODE_SIGNING_ALLOWED=NO \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGN_IDENTITY="" \
-            build \
-            | xcbeautify --renderer github-actions
-
-      - name: Run iOS unit tests
-        if: steps.changes.outputs.docs_only != 'true'
-        env:
-          NSUnbufferedIO: YES
-        run: |
-          set -o pipefail
-          xcodebuild \
-            -workspace ChewChewIOS.xcworkspace \
-            -scheme ChewChewIOSTests \
+            -scheme ChewChewIOSUnitTests \
             -configuration Debug \
             -destination 'platform=iOS Simulator,name=iPhone 16 Pro,OS=latest' \
             -clonedSourcePackagesDirPath .spm-source-packages \
@@ -130,6 +111,5 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            -only-testing:ChewChewIOSTests \
             test \
             | xcbeautify --renderer github-actions

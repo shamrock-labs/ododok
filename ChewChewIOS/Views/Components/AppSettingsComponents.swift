@@ -21,6 +21,7 @@ private enum Metrics {
 struct AppSettingsRow: View {
     let icon: String
     let title: String
+    var subtitle: String?
     var value: String?
     var showsChevron = false
 
@@ -31,9 +32,18 @@ struct AppSettingsRow: View {
                 .foregroundStyle(Color.textMuted)
                 .frame(width: Metrics.iconWidth)
 
-            Text(title)
-                .font(.appFont(.semiboldBodyLarge))
-                .foregroundStyle(Color.textDefault)
+            VStack(alignment: .leading, spacing: AppSpacing.microGap) {
+                Text(title)
+                    .font(.appFont(.semiboldBodyLarge))
+                    .foregroundStyle(Color.textDefault)
+
+                if let subtitle {
+                    Text(subtitle)
+                        .font(.appFont(.regularCallout))
+                        .foregroundStyle(Color.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
 
             Spacer()
 

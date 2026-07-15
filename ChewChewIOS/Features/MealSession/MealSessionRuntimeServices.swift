@@ -32,7 +32,7 @@ protocol MealCallInterruptionMonitoring: AnyObject {
 protocol MealActivityControlling: AnyObject {
     func start(startedAt: Date)
     func setPaused(_ paused: Bool, callActive: Bool) async
-    func end()
+    func end() async
 }
 
 extension MealActivityControlling {

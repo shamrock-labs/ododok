@@ -2,6 +2,31 @@ import XCTest
 @testable import ChewChewIOS
 
 final class ChewDetectionEngineTests: XCTestCase {
+    func testCalibrationProbeFindsWeakPeakWithoutActivityGate() async {
+        let probe = ChewPeakAmplitudeProbe()
+        var events: [ChewDetectionEvent] = []
+
+        for index in 0..<100 {
+            let timestamp = Double(index) / 50
+            let rotationY = 0.005 * sin(2 * Double.pi * timestamp)
+            let event = await probe.feed(ChewDetectionSample(
+                timestamp: timestamp,
+                rotX: 0,
+                rotY: rotationY,
+                rotZ: 0,
+                accelX: 0,
+                accelY: 0,
+                accelZ: 0
+            ))
+            if let event {
+                events.append(event)
+            }
+        }
+
+        XCTAssertFalse(events.isEmpty)
+        XCTAssertTrue(events.allSatisfy { $0.amplitude < 0.006 })
+    }
+
     func testFeedReturnsDetectionEventWhenPeakIsCounted() async {
         let engine = ChewDetectionEngine()
         var events: [ChewDetectionEvent] = []
@@ -38,6 +63,62 @@ final class ChewDetectionEngineTests: XCTestCase {
         XCTAssertEqual(snapshot.chewCount, 0)
         XCTAssertTrue(snapshot.chewTimestamps.isEmpty)
         XCTAssertTrue(snapshot.chewAmplitudes.isEmpty)
+    }
+
+    func testConfiguredPeakAmplitudeSuppressesPeaksBelowPersonalThreshold() async {
+        let engine = ChewDetectionEngine(
+            configuration: ChewDetectionConfiguration(minPeakAmplitude: 1)
+        )
+
+        await feedChewingSamples(to: engine)
+        _ = await engine.finishSession()
+
+        let snapshot = await engine.snapshot()
+        XCTAssertEqual(snapshot.chewCount, 0)
+    }
+
+    func testValidationConfigurationCountsPeaksWithoutOpeningActivityGate() async {
+        let standardEngine = ChewDetectionEngine(
+            configuration: ChewDetectionConfiguration(minPeakAmplitude: 0.001)
+        )
+        let validationEngine = ChewDetectionEngine(
+            configuration: ChewDetectionConfiguration(
+                minPeakAmplitude: 0.001,
+                requiresOpenActivityGate: false
+            )
+        )
+
+        for index in 0..<500 {
+            let elapsed = Double(index) / 50.0
+            let weakChewSignal = 0.01 * sin(2 * Double.pi * 1.4 * elapsed)
+            let sample = makeSample(index: index, rotationY: weakChewSignal)
+            await standardEngine.feed(sample)
+            await validationEngine.feed(sample)
+        }
+        await standardEngine.finishSession()
+        await validationEngine.finishSession()
+
+        let standardSnapshot = await standardEngine.snapshot()
+        let validationSnapshot = await validationEngine.snapshot()
+        let validationGateOpen = await validationEngine.isChewingGateOpen
+
+        XCTAssertEqual(standardSnapshot.chewCount, 0)
+        XCTAssertFalse(validationGateOpen)
+        XCTAssertGreaterThan(validationSnapshot.chewCount, 0)
+    }
+
+    func testStrongChewRotationIsNotDiscardedAsHeadingMotion() async {
+        let engine = ChewDetectionEngine()
+
+        for index in 0..<500 {
+            let elapsed = Double(index) / 50.0
+            let strongChewSignal = 0.16 * sin(2 * Double.pi * 1.4 * elapsed)
+            await engine.feed(makeSample(index: index, rotationY: strongChewSignal))
+        }
+        await engine.finishSession()
+
+        let snapshot = await engine.snapshot()
+        XCTAssertGreaterThan(snapshot.chewCount, 0)
     }
 
     func testRepresentativePeakWindowKeepsStrongestPeak() {

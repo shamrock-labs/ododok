@@ -60,6 +60,7 @@ final class MealSessionRuntimeStore {
     private let onChewPulse: @MainActor () -> Void
     private let onPersistSnapshot: @MainActor () -> Void
     private let onSessionReadyForUpload: @MainActor (IMUSessionRecorder.Output, SessionStats?) async -> Void
+    private let chewDetectionConfiguration: () -> ChewDetectionConfiguration
     @ObservationIgnored private let runtimeServices: MealSessionRuntimeServices
 
     @ObservationIgnored private lazy var headphoneMotionService = runtimeServices.makeMotionService()
@@ -95,12 +96,16 @@ final class MealSessionRuntimeStore {
         onChewPulse: @escaping @MainActor () -> Void,
         onPersistSnapshot: @escaping @MainActor () -> Void,
         onSessionReadyForUpload: @escaping @MainActor (IMUSessionRecorder.Output, SessionStats?) async -> Void,
+        chewDetectionConfiguration: @escaping () -> ChewDetectionConfiguration = {
+            UserDefaultsChewProfileStore().load()?.configuration ?? .standard
+        },
         runtimeServices: MealSessionRuntimeServices = .live
     ) {
         self.analytics = analytics
         self.onChewPulse = onChewPulse
         self.onPersistSnapshot = onPersistSnapshot
         self.onSessionReadyForUpload = onSessionReadyForUpload
+        self.chewDetectionConfiguration = chewDetectionConfiguration
         self.runtimeServices = runtimeServices
     }
 
@@ -124,7 +129,7 @@ final class MealSessionRuntimeStore {
         phase = .measuring(MealSessionMeasurementContext(startedAt: now))
 
         prepareEatingSession(startedAt: now)
-        let engine = ChewDetectionEngine()
+        let engine = ChewDetectionEngine(configuration: chewDetectionConfiguration())
         chewDetectionEngine = engine
         sampleProcessingTailTask = nil
         chewPulseDeliveryGate.reset()
@@ -496,7 +501,12 @@ private extension MealSessionRuntimeStore {
         interruptionWasCall = false
         interruptionBeganAt = nil
         runtimeServices.notificationScheduler.cancelInterruptionPrompt()
-        mealActivity.end()
+        let activityController = mealActivity
+        Task {
+            await withMealBackgroundTask(named: "End meal Live Activity") {
+                await activityController.end()
+            }
+        }
         resetIMUWaveform()
         imuWaveformSource = .idle
         return stoppedRuntime
