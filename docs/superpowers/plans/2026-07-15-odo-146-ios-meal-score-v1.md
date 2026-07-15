@@ -348,4 +348,3 @@ git diff --stat e257e3b...HEAD
 ```
 
 Expected: no local score formula, clean stacked diff.
-
