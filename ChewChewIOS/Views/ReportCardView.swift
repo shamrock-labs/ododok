@@ -17,6 +17,11 @@ struct ReportCardModel: Equatable {
     let chewingSeconds: Double
     let restSeconds: Double
     let chewRestSegments: [ChewRestSegment]
+    /// 리포트 생성 시점의 서버 권장 기준 스냅샷.
+    let recommendedChewsPerMinute: Double
+    let recommendedChewingFraction: Double
+    let recommendedChewCount: Int
+    let recommendedDurationSec: Double
     /// 내부 4요소 분해 (각 0~100). 씹기 점수 섹션에서 4축 미니바로 노출한다.
     let speedScore: Int
     let rhythmScore: Int
@@ -45,6 +50,10 @@ struct ReportCardModel: Equatable {
         lengthScore: Int,
         caption: String?,
         mood: Mood,
+        recommendedChewsPerMinute: Double,
+        recommendedChewingFraction: Double,
+        recommendedChewCount: Int,
+        recommendedDurationSec: Double,
         endedAt: Date
     ) {
         self.score = score
@@ -62,6 +71,10 @@ struct ReportCardModel: Equatable {
         self.lengthScore = lengthScore
         self.caption = caption
         self.mood = mood
+        self.recommendedChewsPerMinute = recommendedChewsPerMinute
+        self.recommendedChewingFraction = recommendedChewingFraction
+        self.recommendedChewCount = recommendedChewCount
+        self.recommendedDurationSec = recommendedDurationSec
         self.endedAt = endedAt
     }
 
@@ -179,6 +192,15 @@ func scoreCountUpValue(progress: Double, target: Int) -> Int {
     return Int((clamped * Double(target)).rounded())
 }
 
+/// 서버 기준값의 소수 정밀도를 보존하되 정수에는 불필요한 `.0`을 붙이지 않는다.
+func formatRecommendedChewsPerMinute(_ value: Double) -> String {
+    guard value.isFinite else { return String(value) }
+    if value.rounded(.towardZero) == value {
+        return String(format: "%.0f", locale: Locale(identifier: "en_US_POSIX"), value)
+    }
+    return String(value)
+}
+
 /// 식사 후 분석 리포트 카드. 식사 종료 직후 sheet/overlay 표시와 캘린더에서 과거 세션
 /// 재현 양쪽에서 동일하게 사용된다. 1080×1920 PNG 공유도 같은 View를 ImageRenderer로 렌더.
 ///
@@ -211,7 +233,7 @@ struct ReportCardView: View {
             }
         }
         .sheet(isPresented: $showScoreGuide) {
-            ScoreGuideView()
+            ScoreGuideView(model: model)
         }
     }
 
@@ -237,7 +259,7 @@ struct ReportCardView: View {
         }
     }
 
-    // MARK: - 씹기 점수 (SessionScore 노출)
+    // MARK: - 씹기 점수 (서버 스냅샷 노출)
 
     /// 내부에서 계산만 하고 버리던 0~100 점수 + 4축(속도·리듬·연속·길이)을 실제로 노출한다.
     /// 흐리멍덩한 형용사 배지의 정량 근거가 된다.
@@ -331,34 +353,34 @@ struct ReportCardView: View {
                 recommendedComparisonCell(
                     label: "저작 횟수",
                     current: "약 \(model.chewCount.koLocale)회",
-                    recommended: "권장 \(RecommendedBaseline.chewCount.koLocale)회",
-                    delta: signedDelta(model.chewCount - RecommendedBaseline.chewCount, suffix: "회"),
+                    recommended: "권장 \(model.recommendedChewCount.koLocale)회",
+                    delta: signedDelta(model.chewCount - model.recommendedChewCount, suffix: "회"),
                     // 풀스케일 = 권장 기준의 ±50%. 네 지표가 동일한 상대 논리로 막대를 채운다.
-                    ratio: Double(model.chewCount - RecommendedBaseline.chewCount) / (Double(RecommendedBaseline.chewCount) * 0.5),
+                    ratio: Double(model.chewCount - model.recommendedChewCount) / (Double(model.recommendedChewCount) * 0.5),
                     color: .acorn700
                 )
                 recommendedComparisonCell(
                     label: "식사 시간",
                     current: formatDurationShort(model.totalDurationSec),
-                    recommended: "권장 \(formatDurationShort(RecommendedBaseline.durationSec))",
+                    recommended: "권장 \(formatDurationShort(model.recommendedDurationSec))",
                     delta: signedDelta(durationDeltaMinutes, suffix: "분"),
-                    ratio: Double(durationDeltaMinutes) / (RecommendedBaseline.durationSec / 60 * 0.5),
+                    ratio: Double(durationDeltaMinutes) / (model.recommendedDurationSec / 60 * 0.5),
                     color: .sage600
                 )
                 recommendedComparisonCell(
                     label: "식사 속도",
                     current: "약 \(Int(model.chewsPerMinute.rounded()))회/분",
-                    recommended: "권장 \(Int(RecommendedBaseline.chewsPerMinute))회/분",
-                    delta: signedDelta(Int((model.chewsPerMinute - RecommendedBaseline.chewsPerMinute).rounded()), suffix: "회/분"),
-                    ratio: (model.chewsPerMinute - RecommendedBaseline.chewsPerMinute) / (RecommendedBaseline.chewsPerMinute * 0.5),
+                    recommended: "권장 \(formatRecommendedChewsPerMinute(model.recommendedChewsPerMinute))회/분",
+                    delta: signedDelta(Int((model.chewsPerMinute - model.recommendedChewsPerMinute).rounded()), suffix: "회/분"),
+                    ratio: (model.chewsPerMinute - model.recommendedChewsPerMinute) / (model.recommendedChewsPerMinute * 0.5),
                     color: .blush500
                 )
                 recommendedComparisonCell(
                     label: "씹기 비율",
                     current: "\(Int((model.chewingFraction * 100).rounded()))%",
-                    recommended: "권장 \(Int(RecommendedBaseline.chewingFraction * 100))%",
+                    recommended: "권장 \(Int(model.recommendedChewingFraction * 100))%",
                     delta: signedDelta(chewingFocusDeltaPercent, suffix: "%"),
-                    ratio: Double(chewingFocusDeltaPercent) / (RecommendedBaseline.chewingFraction * 100 * 0.5),
+                    ratio: Double(chewingFocusDeltaPercent) / (model.recommendedChewingFraction * 100 * 0.5),
                     color: .butter600
                 )
             }
@@ -551,16 +573,16 @@ struct ReportCardView: View {
     }
 
     private var durationDeltaMinutes: Int {
-        Int(((model.totalDurationSec - RecommendedBaseline.durationSec) / 60).rounded())
+        Int(((model.totalDurationSec - model.recommendedDurationSec) / 60).rounded())
     }
 
     private var chewingFocusDeltaPercent: Int {
-        Int(((model.chewingFraction - RecommendedBaseline.chewingFraction) * 100).rounded())
+        Int(((model.chewingFraction - model.recommendedChewingFraction) * 100).rounded())
     }
 
     private var recommendedComparisonSummary: RecommendedComparisonSummary {
-        let chewDelta = model.chewCount - RecommendedBaseline.chewCount
-        let speedDelta = model.chewsPerMinute - RecommendedBaseline.chewsPerMinute
+        let chewDelta = model.chewCount - model.recommendedChewCount
+        let speedDelta = model.chewsPerMinute - model.recommendedChewsPerMinute
         let minuteDelta = durationDeltaMinutes
         let focusDelta = chewingFocusDeltaPercent
         let positiveSignals = [
@@ -619,15 +641,6 @@ struct ReportCardView: View {
     }
 }
 
-/// 권장 기준(목표)값. 모집단 평균이 아니라 "한 끼에 이 정도면 충분히 천천히 씹은 것"이라는
-/// 권장 목표다. 개인 평균 집계 인프라가 없으므로 정직하게 '권장 기준'으로 노출한다.
-private enum RecommendedBaseline {
-    static let chewCount = 300
-    static let durationSec: Double = 720      // 12분
-    static let chewsPerMinute: Double = 28
-    static let chewingFraction: Double = 0.6
-}
-
 private struct RecommendedComparisonSummary {
     let badge: String
     let title: String
@@ -672,9 +685,10 @@ private struct RecommendedDeltaBar: View {
 }
 
 /// 씹기 점수 산정 방식 가이드. "씹기 점수" 옆 ⓘ 버튼이 시트로 띄운다.
-/// 내용은 `SessionScore.compute(_:)`의 4요소(속도·리듬·연속·길이)와 등급 기준을 사용자 언어로 설명.
+/// 서버 리포트 스냅샷의 4요소와 권장 기준을 사용자 언어로 설명한다.
 private struct ScoreGuideView: View {
     @Environment(\.dismiss) private var dismiss
+    let model: ReportCardModel
 
     var body: some View {
         NavigationStack {
@@ -687,17 +701,17 @@ private struct ScoreGuideView: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     VStack(spacing: AppSpacing.inner) {
-                        guideRow("속도", "분당 저작 횟수예요. 권장(약 28회/분)에 가까울수록 높고, 너무 빠르거나 느리면 낮아져요.", .blush500)
-                        guideRow("비율", "식사 중 실제로 씹은 시간의 비율(씹기 비율)이에요. 50% 이상이면 만점에 가까워요.", .butter600)
-                        guideRow("횟수", "한 끼의 총 저작 횟수예요. 약 200회 이상이면 만점에 가까워요.", .acorn700)
-                        guideRow("시간", "식사에 들인 시간이에요. 약 12분 근처에서 가장 높아요.", .sage600)
+                        guideRow("속도", "서버 권장 기준은 분당 약 \(formatRecommendedChewsPerMinute(model.recommendedChewsPerMinute))회예요.", .blush500)
+                        guideRow("비율", "서버 권장 기준은 식사 중 씹기 비율 \(Int((model.recommendedChewingFraction * 100).rounded()))%예요.", .butter600)
+                        guideRow("횟수", "서버 권장 기준은 한 끼 \(model.recommendedChewCount.koLocale)회예요.", .acorn700)
+                        guideRow("시간", "서버 권장 기준은 한 끼 약 \(Int((model.recommendedDurationSec / 60).rounded()))분이에요.", .sage600)
                     }
 
                     VStack(alignment: .leading, spacing: AppSpacing.two) {
                         Text("등급 기준")
                             .font(.appFont(.heavyLabel))
                             .foregroundStyle(Color.textDefault)
-                        Text("80점 이상은 잘 씹은 식사, 60~79점은 보통, 60점 미만은 조금 빠른 편이에요.")
+                        Text("등급은 서버가 리포트를 생성한 시점의 점수 정책에 따라 저장된 값을 표시해요.")
                             .font(.appFont(.semiboldCallout))
                             .foregroundStyle(Color.textMuted)
                             .lineSpacing(2)
@@ -782,6 +796,10 @@ struct DashedDivider: View {
             lengthScore: 87,
             caption: "오늘은 천천히 잘 씹었어요. 한 입에 30회 목표 달성!",
             mood: .champ,
+            recommendedChewsPerMinute: 28,
+            recommendedChewingFraction: 0.5,
+            recommendedChewCount: 200,
+            recommendedDurationSec: 720,
             endedAt: Date()
         ), onDeepReport: {})
         .padding(AppSpacing.page)
@@ -806,6 +824,10 @@ struct DashedDivider: View {
             lengthScore: 50,
             caption: nil,
             mood: .puffy,
+            recommendedChewsPerMinute: 28,
+            recommendedChewingFraction: 0.5,
+            recommendedChewCount: 200,
+            recommendedDurationSec: 720,
             endedAt: Date()
         ))
         .padding(AppSpacing.page)
@@ -830,6 +852,10 @@ struct DashedDivider: View {
             lengthScore: 10,
             caption: "조금 빨리 먹은 것 같아요. 다음 식사엔 한 입 30회를 의식해 봐요.",
             mood: .sleepy,
+            recommendedChewsPerMinute: 28,
+            recommendedChewingFraction: 0.5,
+            recommendedChewCount: 200,
+            recommendedDurationSec: 720,
             endedAt: Date()
         ), onDeepReport: {})
         .padding(AppSpacing.page)
@@ -839,41 +865,43 @@ struct DashedDivider: View {
 // MARK: - ChewingSessionDTO → ReportCardModel mapper
 //
 // UI 레이어가 DTO 변경에 직접 결합되지 않도록 카드용 변환 진입점만 이 extension에서
-// 노출. 점수 산출은 `SessionScore.compute(_:)`에 위임.
+// 노출. 점수와 권장 기준은 서버가 저장한 `mealReport` 스냅샷만 사용한다.
 
 extension ReportCardModel {
-    /// `ChewingSessionDTO` → 카드 모델. `durationSec < 60`이거나 분석 5필드가
-    /// 채워지지 않은 세션에서 nil 반환 → 호출자가 빈 상태 카드를 표시 (PRD #3 빈 분석 카드 "분석을 만들지 못했어요").
+    /// `ChewingSessionDTO` → 카드 모델. GENERATED 서버 리포트가 완전할 때만 모델을 만든다.
     static func from(_ dto: ChewingSessionDTO) -> ReportCardModel? {
-        guard dto.durationSec >= MealSessionReportability.minDurationSec else { return nil }
-        guard let score = SessionScore.compute(dto) else { return nil }
-        let mins = max(0.001, dto.durationSec / 60)
-        let chews = dto.estimatedTotalChews ?? 0
-        let chewsPerMin = Double(chews) / mins
-        let grade = Grade(scoreGrade: score.grade)
-        let mood = Mood(grade: grade, score: score.total)
+        guard let report = MealSessionReportability.completeGeneratedReport(dto.mealReport, sessionId: dto.id),
+              let totalScore = report.totalScore,
+              let axes = report.axisScores,
+              let metrics = report.metrics,
+              let reportGrade = report.grade,
+              let grade = Grade(reportGrade: reportGrade),
+              let baseline = report.recommendedBaseline else { return nil }
+        let mood = Mood(grade: grade, score: totalScore)
         let caption = CaptionPool.report(for: grade)
-        let inferredChewingSeconds = dto.chewingSeconds
-            ?? dto.chewingFraction.map { dto.durationSec * min(max($0, 0), 1) }
-            ?? 0
-        let inferredRestSeconds = dto.restSeconds
-            ?? max(0, dto.durationSec - inferredChewingSeconds)
+        let chewingRatio = min(max(metrics.chewingTimeRatio, 0), 1)
+        let chewingSeconds = metrics.mealDurationSec * chewingRatio
+        let restSeconds = metrics.mealDurationSec * (1 - chewingRatio)
         return ReportCardModel(
-            score: score.total,
+            score: totalScore,
             grade: grade,
-            chewCount: chews,
-            totalDurationSec: dto.durationSec,
-            chewsPerMinute: chewsPerMin,
-            chewingFraction: dto.chewingFraction ?? 0,
-            chewingSeconds: inferredChewingSeconds,
-            restSeconds: inferredRestSeconds,
-            chewRestSegments: ChewRestSegment.fromTimeline(dto.chewingTimeline),
-            speedScore: score.speed,
-            rhythmScore: score.rhythm,
-            continuityScore: score.continuity,
-            lengthScore: score.length,
+            chewCount: metrics.totalChewCount,
+            totalDurationSec: metrics.mealDurationSec,
+            chewsPerMinute: metrics.legacyMealRatePerMin,
+            chewingFraction: metrics.chewingTimeRatio,
+            chewingSeconds: chewingSeconds,
+            restSeconds: restSeconds,
+            chewRestSegments: [],
+            speedScore: axes.chewingRate,
+            rhythmScore: axes.chewingTimeRatio,
+            continuityScore: axes.totalChewCount,
+            lengthScore: axes.mealDuration,
             caption: caption,
             mood: mood,
+            recommendedChewsPerMinute: baseline.chewingRatePerMin.target,
+            recommendedChewingFraction: baseline.chewingTimeRatio,
+            recommendedChewCount: baseline.totalChewCount,
+            recommendedDurationSec: baseline.mealDurationSec,
             endedAt: dto.endedAt
         )
     }
@@ -894,11 +922,12 @@ private extension ReportCardModel {
 }
 
 private extension ReportCardModel.Grade {
-    init(scoreGrade: SessionScore.Grade) {
-        switch scoreGrade {
+    init?(reportGrade: MealReportGradeDTO) {
+        switch reportGrade {
         case .good: self = .good
         case .soso: self = .soso
         case .bad:  self = .bad
+        case .unknown: return nil
         }
     }
 }

@@ -21,7 +21,12 @@ struct SessionResultSheet: View {
                         if let model = ReportCardModel.from(dto) {
                             ReportCardView(model: model)
                         } else {
-                            EmptyReportCardView()
+                            let content = MealReportUnavailableContent.from(dto.mealReport)
+                            EmptyReportCardView(
+                                emoji: content.emoji,
+                                title: content.title,
+                                subtitle: content.message
+                            )
                         }
                     } else {
                         analyzingView
@@ -83,5 +88,60 @@ struct SessionResultSheet: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, AppSpacing.eight)
+    }
+}
+
+struct MealReportUnavailableContent: Equatable {
+    let emoji: String
+    let title: String
+    let message: String
+
+    static func from(_ report: MealReportDTO?) -> MealReportUnavailableContent {
+        guard let report else {
+            return .init(
+                emoji: "🐿️",
+                title: "리포트를 준비하고 있어요",
+                message: "서버 리포트를 아직 받지 못했어요. 잠시 후 다시 확인해 주세요."
+            )
+        }
+        guard report.status == .unreportable else {
+            return .init(
+                emoji: "🐿️",
+                title: "리포트를 준비하고 있어요",
+                message: "현재 상태의 리포트는 아직 표시할 수 없어요. 잠시 후 다시 확인해 주세요."
+            )
+        }
+        switch report.reason {
+        case .sessionTooShort:
+            return .init(
+                emoji: "⏱️",
+                title: "식사 기록이 너무 짧았어요",
+                message: "30초 이상 식사하면 리포트를 만들 수 있어요."
+            )
+        case .analysisMissing:
+            return .init(
+                emoji: "🎧",
+                title: "씹기 신호를 받지 못했어요",
+                message: "AirPods 연결과 센서 신호를 확인한 뒤 다시 기록해 주세요."
+            )
+        case .invalidAnalysisInput:
+            return .init(
+                emoji: "🔎",
+                title: "분석값을 확인하지 못했어요",
+                message: "이번 식사의 분석값이 올바르지 않아 리포트를 만들지 않았어요."
+            )
+        case .unsupportedModelVersion:
+            return .init(
+                emoji: "⬆️",
+                title: "아직 지원하지 않는 분석이에요",
+                message: "앱을 최신 버전으로 업데이트한 뒤 다시 확인해 주세요."
+            )
+        case .unknown, .none:
+            return .init(
+                emoji: "🐿️",
+                title: "리포트를 준비하고 있어요",
+                message: "알 수 없는 사유로 리포트를 표시할 수 없어요. 잠시 후 다시 확인해 주세요."
+            )
+        }
     }
 }

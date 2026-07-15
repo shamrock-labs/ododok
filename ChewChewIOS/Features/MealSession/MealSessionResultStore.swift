@@ -47,22 +47,31 @@ final class MealSessionResultStore {
         self.refreshHome = refreshHome
     }
 
-    var localTodayRealChewCount: Int {
-        todaySessions.reduce(0) { $0 + ($1.estimatedTotalChews ?? 0) }
+    /// 홈 API를 아직 받지 못한 짧은 구간에만 쓰는 저장 리포트 기반 fallback.
+    /// raw 분석값이나 rewardEligible을 홈 진행도와 결합하지 않는다.
+    var serverReportTodayChewCount: Int {
+        todaySessions.reduce(0) { partial, session in
+            guard let report = MealSessionReportability.completeGeneratedReport(
+                session.mealReport,
+                sessionId: session.id
+            ) else { return partial }
+            return partial + (report.metrics?.totalChewCount ?? 0)
+        }
     }
 
     func uploadSession(_ output: IMUSessionRecorder.Output, stats: SessionStats?) async {
         sessionUploadStatus = .uploading
         do {
             let upload = try await repository.uploadSession(output: output, stats: stats, appVersion: appVersion)
-            let dto = upload.session
             let result = upload.result
+            let dto = result.chewingSession
             sessionUploadStatus = .success
             sessionUploadErrorMessage = nil
             pendingUpload = nil
             onHomeReceived(result.userStats)
 
-            let isReportable = ReportCardModel.from(dto) != nil
+            lastCompletedSession = dto
+            let isReportable = MealSessionReportability.isReportable(dto)
             analytics.track(.mealSessionCompleted(
                 durationSec: Int(dto.durationSec),
                 sampleCount: dto.sampleCount,
@@ -70,11 +79,11 @@ final class MealSessionResultStore {
                 estimatedTotalChews: dto.estimatedTotalChews,
                 reportable: isReportable
             ))
-            guard isReportable else { return }
-
-            todaySessions.append(dto)
-            lastCompletedSession = dto
             onSessionRewardReceived(result)
+
+            if isReportable {
+                todaySessions.append(dto)
+            }
         } catch {
             onRemoteError(error)
             if case RemoteStoreError.authExpired = error { return }
@@ -89,7 +98,7 @@ final class MealSessionResultStore {
         let startOfDay = Calendar.current.startOfDay(for: Date())
         do {
             let rows = try await repository.fetchTodaySessions(startOfDay: startOfDay)
-            todaySessions = rows.filter { ReportCardModel.from($0) != nil }
+            todaySessions = rows.filter(MealSessionReportability.isReportable)
             await refreshHome()
         } catch {
             onRemoteError(error)

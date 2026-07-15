@@ -196,8 +196,9 @@ final class RecordsStoreTests: XCTestCase {
     }
 
     private func makeRecord(startedAt: Date) -> MealSessionRecord {
+        let sessionId = UUID()
         let dto = ChewingSessionDTO(
-            id: UUID(),
+            id: sessionId,
             deviceId: "test-device",
             startedAt: startedAt,
             endedAt: startedAt.addingTimeInterval(600),
@@ -211,7 +212,34 @@ final class RecordsStoreTests: XCTestCase {
             restSeconds: 168,
             chewingFraction: 0.7,
             estimatedTotalChews: 300,
-            modelVersion: "test"
+            modelVersion: "test",
+            mealReport: MealReportDTO(
+                status: .generated,
+                sessionId: sessionId,
+                scorePolicyVersion: "legacy-ios-v1",
+                analysisModelVersion: "test",
+                totalScore: 80,
+                axisScores: MealReportAxisScoresDTO(
+                    chewingRate: 80,
+                    chewingTimeRatio: 80,
+                    totalChewCount: 80,
+                    mealDuration: 80
+                ),
+                metrics: MealReportMetricsDTO(
+                    chewingRatePerMin: nil,
+                    legacyMealRatePerMin: 30,
+                    chewingTimeRatio: 0.7,
+                    totalChewCount: 300,
+                    mealDurationSec: 600
+                ),
+                grade: .good,
+                recommendedBaseline: MealReportRecommendedBaselineDTO(
+                    chewingRatePerMin: MealReportTargetDTO(target: 28),
+                    chewingTimeRatio: 0.5,
+                    totalChewCount: 200,
+                    mealDurationSec: 720
+                )
+            )
         )
         guard let record = MealSessionRecordMapper.map(dto) else {
             XCTFail("Test record must be reportable")
@@ -241,6 +269,10 @@ final class RecordsStoreTests: XCTestCase {
             lengthScore: 80,
             caption: nil,
             mood: .happy,
+            recommendedChewsPerMinute: 28,
+            recommendedChewingFraction: 0.5,
+            recommendedChewCount: 200,
+            recommendedDurationSec: 720,
             endedAt: endedAt
         )
     }

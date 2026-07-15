@@ -48,7 +48,22 @@ struct RemoteStoreMealSessionUploadRepository: MealSessionUploadRepository {
             appVersion: appVersion
         )
         let result = try await remoteStore.createChewingSession(session)
-        return MealSessionUploadResult(session: session, result: result)
+        guard result.chewingSession.id == session.id else {
+            throw RemoteStoreError.malformed("chewingSession id does not match uploaded session")
+        }
+        guard let topLevelReport = result.mealReport else {
+            throw RemoteStoreError.malformed("missing top-level mealReport")
+        }
+        guard let embeddedReport = result.chewingSession.mealReport else {
+            throw RemoteStoreError.malformed("missing chewingSession.mealReport")
+        }
+        guard topLevelReport == embeddedReport else {
+            throw RemoteStoreError.malformed("mealReport does not match chewingSession.mealReport")
+        }
+        guard MealSessionReportability.isValidServerReport(topLevelReport, sessionId: session.id) else {
+            throw RemoteStoreError.malformed("mealReport contract violation")
+        }
+        return MealSessionUploadResult(session: result.chewingSession, result: result)
     }
 
     func fetchTodaySessions(startOfDay: Date) async throws -> [ChewingSessionDTO] {

@@ -7,10 +7,19 @@ final class ReportCardModelTests: XCTestCase {
         chews: Int? = 300,
         fraction: Double? = 0.7,
         durationSec: Double = 600,
-        chewingTimeline: String? = nil
+        chewingSeconds: Double? = 432,
+        restSeconds: Double? = 168,
+        chewingTimeline: String? = nil,
+        mealReport: MealReportDTO? = nil,
+        includesDefaultReport: Bool = true
     ) -> ChewingSessionDTO {
-        ChewingSessionDTO(
-            id: UUID(),
+        let id = UUID()
+        var report = mealReport ?? (includesDefaultReport ? makeGeneratedReport() : nil)
+        if report?.status == .generated, report?.sessionId == nil {
+            report?.sessionId = id
+        }
+        return ChewingSessionDTO(
+            id: id,
             deviceId: "test",
             startedAt: Date(),
             endedAt: Date(),
@@ -20,44 +29,151 @@ final class ReportCardModelTests: XCTestCase {
             sampleRateHz: 50,
             storagePath: nil,
             appVersion: nil,
-            chewingSeconds: 432,
-            restSeconds: 168,
+            chewingSeconds: chewingSeconds,
+            restSeconds: restSeconds,
             chewingFraction: fraction,
             estimatedTotalChews: chews,
             modelVersion: "test",
-            chewingTimeline: chewingTimeline
+            chewingTimeline: chewingTimeline,
+            mealReport: report
+        )
+    }
+
+    private func makeGeneratedReport(
+        status: MealReportStatusDTO = .generated,
+        totalScore: Int? = 71,
+        axisScores: MealReportAxisScoresDTO? = .init(
+            chewingRate: 0,
+            chewingTimeRatio: 100,
+            totalChewCount: 100,
+            mealDuration: 85
+        ),
+        metrics: MealReportMetricsDTO? = .init(
+            chewingRatePerMin: nil,
+            legacyMealRatePerMin: 43.6,
+            chewingTimeRatio: 0.97,
+            totalChewCount: 589,
+            mealDurationSec: 811
+        ),
+        grade: MealReportGradeDTO? = .soso,
+        recommendedBaseline: MealReportRecommendedBaselineDTO? = .init(
+            chewingRatePerMin: .init(target: 31.5),
+            chewingTimeRatio: 0.63,
+            totalChewCount: 257,
+            mealDurationSec: 845
+        ),
+        reason: MealReportReasonDTO? = nil
+    ) -> MealReportDTO {
+        MealReportDTO(
+            status: status,
+            reason: reason,
+            scorePolicyVersion: "legacy-ios-v1",
+            analysisModelVersion: "test",
+            totalScore: totalScore,
+            axisScores: axisScores,
+            metrics: metrics,
+            grade: grade,
+            recommendedBaseline: recommendedBaseline
         )
     }
 
     // MARK: - from(_:)
 
-    func testFrom_nil_for_unanalyzed() {
-        // All analysis fields nil → from(dto) should be nil
-        let dto = makeDTO(chews: nil, fraction: nil)
+    func testFrom_nil_when_mealReport_is_missing() {
+        let dto = makeDTO(chews: 300, fraction: 0.7, includesDefaultReport: false)
         XCTAssertNil(ReportCardModel.from(dto))
     }
 
-    func testFrom_validDTO_returnsModel() {
-        let dto = makeDTO(chews: 300, fraction: 0.7, durationSec: 600)
+    func testFrom_generatedReport_usesServerSnapshot_asSourceOfTruth() {
+        // Raw session values deliberately disagree with the stored server snapshot.
+        let dto = makeDTO(
+            chews: 12,
+            fraction: 0.1,
+            durationSec: 40,
+            chewingSeconds: 1,
+            restSeconds: 39,
+            chewingTimeline: "111001"
+        )
         let model = ReportCardModel.from(dto)
-        XCTAssertNotNil(model)
-        if let model = model {
-            XCTAssertEqual(model.chewCount, 300)
-            XCTAssertEqual(model.totalDurationSec, 600, accuracy: 0.001)
-            XCTAssertGreaterThanOrEqual(model.score, 0)
-            XCTAssertLessThanOrEqual(model.score, 100)
-        }
+
+        XCTAssertEqual(model?.score, 71)
+        XCTAssertEqual(model?.speedScore, 0)
+        XCTAssertEqual(model?.rhythmScore, 100)
+        XCTAssertEqual(model?.continuityScore, 100)
+        XCTAssertEqual(model?.lengthScore, 85)
+        XCTAssertEqual(model?.grade, .soso)
+        XCTAssertEqual(model?.chewsPerMinute ?? -1, 43.6, accuracy: 0.001)
+        XCTAssertEqual(model?.chewingFraction ?? -1, 0.97, accuracy: 0.001)
+        XCTAssertEqual(model?.chewCount, 589)
+        XCTAssertEqual(model?.totalDurationSec ?? -1, 811, accuracy: 0.001)
+        XCTAssertEqual(model?.recommendedChewsPerMinute ?? -1, 31.5, accuracy: 0.001)
+        XCTAssertEqual(model?.recommendedChewingFraction ?? -1, 0.63, accuracy: 0.001)
+        XCTAssertEqual(model?.recommendedChewCount, 257)
+        XCTAssertEqual(model?.recommendedDurationSec ?? -1, 845, accuracy: 0.001)
+        XCTAssertEqual(model?.chewingSeconds ?? -1, 811 * 0.97, accuracy: 0.001)
+        XCTAssertEqual(model?.restSeconds ?? -1, 811 * 0.03, accuracy: 0.001)
+        XCTAssertEqual(model?.chewRestSegments, [])
     }
 
-    func testFrom_chewingTimeline_mapsToCompressedSegments() {
+    func testFrom_unreportableReport_returnsNil() {
+        let report = makeGeneratedReport(status: .unreportable, reason: .sessionTooShort)
+        XCTAssertNil(ReportCardModel.from(makeDTO(mealReport: report)))
+    }
+
+    func testFrom_unknownStatusOrGrade_returnsNil() {
+        XCTAssertNil(ReportCardModel.from(makeDTO(mealReport: makeGeneratedReport(status: .unknown("FUTURE")))))
+        XCTAssertNil(ReportCardModel.from(makeDTO(mealReport: makeGeneratedReport(grade: .unknown("excellent")))))
+    }
+
+    func testFrom_generatedReport_withIncompletePayload_returnsNil() {
+        XCTAssertNil(ReportCardModel.from(makeDTO(mealReport: makeGeneratedReport(totalScore: nil))))
+        XCTAssertNil(ReportCardModel.from(makeDTO(mealReport: makeGeneratedReport(recommendedBaseline: nil))))
+    }
+
+    func testFrom_bothRawDurationsMissing_derivesMeaningfulDurationsFromReportMetrics() {
+        let model = ReportCardModel.from(makeDTO(chewingSeconds: nil, restSeconds: nil))
+
+        XCTAssertEqual(model?.chewingSeconds ?? -1, 811 * 0.97, accuracy: 0.001)
+        XCTAssertEqual(model?.restSeconds ?? -1, 811 * 0.03, accuracy: 0.001)
+        XCTAssertEqual((model?.chewingSeconds ?? 0) + (model?.restSeconds ?? 0), 811, accuracy: 0.001)
+    }
+
+    func testFrom_onlyRawChewingDurationPresent_ignoresItAndUsesReportMetrics() {
+        let model = ReportCardModel.from(makeDTO(chewingSeconds: 123, restSeconds: nil))
+
+        XCTAssertEqual(model?.chewingSeconds ?? -1, 811 * 0.97, accuracy: 0.001)
+        XCTAssertEqual(model?.restSeconds ?? -1, 811 * 0.03, accuracy: 0.001)
+    }
+
+    func testFrom_onlyRawRestDurationPresent_ignoresItAndUsesReportMetrics() {
+        let model = ReportCardModel.from(makeDTO(chewingSeconds: nil, restSeconds: 45))
+
+        XCTAssertEqual(model?.chewingSeconds ?? -1, 811 * 0.97, accuracy: 0.001)
+        XCTAssertEqual(model?.restSeconds ?? -1, 811 * 0.03, accuracy: 0.001)
+    }
+
+    func testFrom_rejectsServerReportWithOutOfRangeRatio() {
+        let metrics = MealReportMetricsDTO(
+            chewingRatePerMin: nil,
+            legacyMealRatePerMin: 43.6,
+            chewingTimeRatio: 1.4,
+            totalChewCount: 589,
+            mealDurationSec: 811
+        )
+        let model = ReportCardModel.from(makeDTO(
+            chewingSeconds: nil,
+            restSeconds: nil,
+            mealReport: makeGeneratedReport(metrics: metrics)
+        ))
+
+        XCTAssertNil(model)
+    }
+
+    func testFrom_rawChewingTimeline_omitsSegmentsUntilServerSnapshotsTimeline() {
         let dto = makeDTO(chewingTimeline: "111001")
         let model = ReportCardModel.from(dto)
 
-        XCTAssertEqual(model?.chewRestSegments, [
-            ReportCardModel.ChewRestSegment(isChewing: true, durationSec: 3),
-            ReportCardModel.ChewRestSegment(isChewing: false, durationSec: 2),
-            ReportCardModel.ChewRestSegment(isChewing: true, durationSec: 1),
-        ])
+        XCTAssertEqual(model?.chewRestSegments, [])
     }
 
     func testFrom_score_in_0to100() {
@@ -81,25 +197,16 @@ final class ReportCardModelTests: XCTestCase {
         }
     }
 
-    // MARK: - 30초 가드
-
-    func testFrom_nil_when_durationSec_29() {
-        // 29초 세션 — 분석 필드가 있어도 nil 반환해야 함
-        let dto = makeDTO(chews: 300, fraction: 0.7, durationSec: 29)
-        XCTAssertNil(ReportCardModel.from(dto))
-    }
-
-    func testFrom_nonNil_when_durationSec_30() {
-        // 경계: 30초 세션 — non-nil이어야 함
-        let dto = makeDTO(chews: 300, fraction: 0.7, durationSec: 30)
-        XCTAssertNotNil(ReportCardModel.from(dto))
+    func testFrom_generatedReport_doesNotReapplyLocalDurationGuard() {
+        XCTAssertNotNil(ReportCardModel.from(makeDTO(durationSec: 29)))
     }
 
     // MARK: - mood 매핑
 
     func testFrom_mood_good_isChampOrHappy() {
         // good 등급(score ≥ 80) → .champ 또는 .happy
-        let dto = makeDTO(chews: 300, fraction: 0.7, durationSec: 720)
+        let report = makeGeneratedReport(totalScore: 92, grade: .good)
+        let dto = makeDTO(mealReport: report)
         // 여러 번 반복해 두 값 모두 허용됨을 확인 (결정론적으로 둘 중 하나)
         for _ in 0..<20 {
             if let model = ReportCardModel.from(dto), model.grade == .good {
@@ -111,8 +218,7 @@ final class ReportCardModelTests: XCTestCase {
 
     func testFrom_mood_bad_isSleepy() {
         // bad 등급(score < 60) → .sleepy
-        // 분당 0회에 가까운 값으로 bad 유도: chews 0, fraction 0.0
-        let dto = makeDTO(chews: 0, fraction: 0.0, durationSec: 60)
+        let dto = makeDTO(mealReport: makeGeneratedReport(totalScore: 42, grade: .bad))
         if let model = ReportCardModel.from(dto) {
             if model.grade == .bad {
                 XCTAssertEqual(model.mood, .sleepy)
@@ -122,8 +228,7 @@ final class ReportCardModelTests: XCTestCase {
 
     func testFrom_mood_soso_isPuffy() {
         // soso 등급(60 ≤ score < 80) → .puffy
-        // fraction=0.5, chews=150 → 점수 중간대 유도
-        let dto = makeDTO(chews: 150, fraction: 0.5, durationSec: 600)
+        let dto = makeDTO(mealReport: makeGeneratedReport(totalScore: 71, grade: .soso))
         if let model = ReportCardModel.from(dto) {
             if model.grade == .soso {
                 XCTAssertEqual(model.mood, .puffy)
@@ -159,6 +264,11 @@ final class ReportCardModelTests: XCTestCase {
     }
 
     // MARK: - scoreCountUpValue
+
+    func testRecommendedChewsPerMinuteFormatter_preservesFractionAndOmitsZeroDecimal() {
+        XCTAssertEqual(formatRecommendedChewsPerMinute(31.5), "31.5")
+        XCTAssertEqual(formatRecommendedChewsPerMinute(28), "28")
+    }
 
     func testScoreCountUp_progress0_returns0() {
         XCTAssertEqual(scoreCountUpValue(progress: 0, target: 85), 0)

@@ -19,18 +19,43 @@ final class MealSessionRecordMapperTests: XCTestCase {
             chewingSeconds: nil,
             restSeconds: nil,
             chewingFraction: nil,
-            estimatedTotalChews: nil
+            estimatedTotalChews: nil,
+            mealReport: MealReportDTO(status: .unreportable, reason: .analysisMissing)
         )
 
         XCTAssertNil(MealSessionRecordMapper.map(dto))
         XCTAssertFalse(MealSessionReportability.isReportable(dto))
     }
 
-    func testShortDurationDTOReturnsNil() {
-        let dto = makeDTO(durationSec: 29.9)
+    func testRawAnalysisWithoutServerReportReturnsNil() {
+        let dto = makeDTO(mealReport: .some(nil))
 
         XCTAssertNil(MealSessionRecordMapper.map(dto))
         XCTAssertFalse(MealSessionReportability.isReportable(dto))
+    }
+
+    func testRecordPreservesServerSnapshotWhenRawAnalysisDisagrees() throws {
+        let dto = makeDTO(
+            durationSec: 30,
+            chewingSeconds: 1,
+            restSeconds: 29,
+            chewingFraction: 0.01,
+            estimatedTotalChews: 1,
+            mealReport: makeGeneratedReport(totalScore: 71, totalChews: 589, durationSec: 811)
+        )
+
+        let record = try XCTUnwrap(MealSessionRecordMapper.map(dto))
+
+        XCTAssertEqual(record.reportCard.score, 71)
+        XCTAssertEqual(record.reportCard.chewCount, 589)
+        XCTAssertEqual(record.reportCard.totalDurationSec, 811)
+    }
+
+    func testGeneratedReportDoesNotReapplyLocalShortDurationRule() {
+        let dto = makeDTO(durationSec: 29.9)
+
+        XCTAssertNotNil(MealSessionRecordMapper.map(dto))
+        XCTAssertTrue(MealSessionReportability.isReportable(dto))
     }
 
     func testThirtySecondBoundaryCreatesRecord() {
@@ -46,10 +71,16 @@ final class MealSessionRecordMapperTests: XCTestCase {
         chewingSeconds: Double? = 420,
         restSeconds: Double? = 180,
         chewingFraction: Double? = 0.7,
-        estimatedTotalChews: Int? = 300
+        estimatedTotalChews: Int? = 300,
+        mealReport: MealReportDTO?? = nil
     ) -> ChewingSessionDTO {
-        ChewingSessionDTO(
-            id: UUID(),
+        let id = UUID()
+        var report = mealReport ?? makeGeneratedReport(durationSec: durationSec)
+        if report?.status == .generated, report?.sessionId == nil {
+            report?.sessionId = id
+        }
+        return ChewingSessionDTO(
+            id: id,
             deviceId: "test-device",
             startedAt: startedAt,
             endedAt: startedAt.addingTimeInterval(durationSec),
@@ -63,7 +94,41 @@ final class MealSessionRecordMapperTests: XCTestCase {
             restSeconds: restSeconds,
             chewingFraction: chewingFraction,
             estimatedTotalChews: estimatedTotalChews,
-            modelVersion: "test"
+            modelVersion: "test",
+            mealReport: report
+        )
+    }
+
+    private func makeGeneratedReport(
+        totalScore: Int = 80,
+        totalChews: Int = 300,
+        durationSec: Double = 600
+    ) -> MealReportDTO {
+        MealReportDTO(
+            status: .generated,
+            scorePolicyVersion: "legacy-ios-v1",
+            analysisModelVersion: "test",
+            totalScore: totalScore,
+            axisScores: MealReportAxisScoresDTO(
+                chewingRate: 80,
+                chewingTimeRatio: 80,
+                totalChewCount: 80,
+                mealDuration: 80
+            ),
+            metrics: MealReportMetricsDTO(
+                chewingRatePerMin: nil,
+                legacyMealRatePerMin: 30,
+                chewingTimeRatio: 0.7,
+                totalChewCount: totalChews,
+                mealDurationSec: durationSec
+            ),
+            grade: .good,
+            recommendedBaseline: MealReportRecommendedBaselineDTO(
+                chewingRatePerMin: MealReportTargetDTO(target: 28),
+                chewingTimeRatio: 0.5,
+                totalChewCount: 200,
+                mealDurationSec: 720
+            )
         )
     }
 }

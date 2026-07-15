@@ -1,5 +1,136 @@
 import Foundation
 
+protocol ForwardCompatibleStringDTO: Codable {
+    init(rawValue: String)
+    var rawValue: String { get }
+}
+
+extension ForwardCompatibleStringDTO {
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        self.init(rawValue: try container.decode(String.self))
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+}
+
+enum MealReportStatusDTO: Equatable, ForwardCompatibleStringDTO {
+    case generated
+    case unreportable
+    case unknown(String)
+
+    init(rawValue: String) {
+        switch rawValue {
+        case "GENERATED": self = .generated
+        case "UNREPORTABLE": self = .unreportable
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    var rawValue: String {
+        switch self {
+        case .generated: "GENERATED"
+        case .unreportable: "UNREPORTABLE"
+        case .unknown(let value): value
+        }
+    }
+}
+
+enum MealReportReasonDTO: Equatable, ForwardCompatibleStringDTO {
+    case sessionTooShort
+    case analysisMissing
+    case invalidAnalysisInput
+    case unsupportedModelVersion
+    case unknown(String)
+
+    init(rawValue: String) {
+        switch rawValue {
+        case "SESSION_TOO_SHORT": self = .sessionTooShort
+        case "ANALYSIS_MISSING": self = .analysisMissing
+        case "INVALID_ANALYSIS_INPUT": self = .invalidAnalysisInput
+        case "UNSUPPORTED_MODEL_VERSION": self = .unsupportedModelVersion
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    var rawValue: String {
+        switch self {
+        case .sessionTooShort: "SESSION_TOO_SHORT"
+        case .analysisMissing: "ANALYSIS_MISSING"
+        case .invalidAnalysisInput: "INVALID_ANALYSIS_INPUT"
+        case .unsupportedModelVersion: "UNSUPPORTED_MODEL_VERSION"
+        case .unknown(let value): value
+        }
+    }
+}
+
+enum MealReportGradeDTO: Equatable, ForwardCompatibleStringDTO {
+    case good
+    case soso
+    case bad
+    case unknown(String)
+
+    init(rawValue: String) {
+        switch rawValue {
+        case "good": self = .good
+        case "soso": self = .soso
+        case "bad": self = .bad
+        default: self = .unknown(rawValue)
+        }
+    }
+
+    var rawValue: String {
+        switch self {
+        case .good: "good"
+        case .soso: "soso"
+        case .bad: "bad"
+        case .unknown(let value): value
+        }
+    }
+}
+
+struct MealReportAxisScoresDTO: Codable, Equatable {
+    var chewingRate: Int
+    var chewingTimeRatio: Int
+    var totalChewCount: Int
+    var mealDuration: Int
+}
+
+struct MealReportMetricsDTO: Codable, Equatable {
+    var chewingRatePerMin: Double?
+    var legacyMealRatePerMin: Double
+    var chewingTimeRatio: Double
+    var totalChewCount: Int
+    var mealDurationSec: Double
+}
+
+struct MealReportTargetDTO: Codable, Equatable {
+    var target: Double
+}
+
+struct MealReportRecommendedBaselineDTO: Codable, Equatable {
+    var chewingRatePerMin: MealReportTargetDTO
+    var chewingTimeRatio: Double
+    var totalChewCount: Int
+    var mealDurationSec: Double
+}
+
+struct MealReportDTO: Codable, Equatable {
+    var status: MealReportStatusDTO
+    var reason: MealReportReasonDTO? = nil
+    var sessionId: UUID? = nil
+    var scorePolicyVersion: String? = nil
+    var analysisModelVersion: String? = nil
+    var totalScore: Int? = nil
+    var axisScores: MealReportAxisScoresDTO? = nil
+    var metrics: MealReportMetricsDTO? = nil
+    var grade: MealReportGradeDTO? = nil
+    var recommendedBaseline: MealReportRecommendedBaselineDTO? = nil
+}
+
 /// `chewing_session` row와 1:1 DTO. 클라이언트가 한 끼 식사 종료 시 INSERT.
 /// raw IMU는 별도로 imu-sessions 버킷에 gzip CSV로 올리고 `storagePath`에 경로만 보관.
 ///
@@ -24,6 +155,7 @@ struct ChewingSessionDTO: Codable, Equatable, Identifiable {
     var estimatedTotalChews: Int?
     var modelVersion: String?
     var chewingTimeline: String?
+    var mealReport: MealReportDTO?
 
     private enum CodingKeys: String, CodingKey {
         case id
@@ -43,6 +175,7 @@ struct ChewingSessionDTO: Codable, Equatable, Identifiable {
         case estimatedTotalChews
         case modelVersion
         case chewingTimeline
+        case mealReport
     }
 
     init(
@@ -62,6 +195,7 @@ struct ChewingSessionDTO: Codable, Equatable, Identifiable {
         estimatedTotalChews: Int?,
         modelVersion: String?,
         chewingTimeline: String? = nil,
+        mealReport: MealReportDTO? = nil,
         userId: String? = nil
     ) {
         self.id = id
@@ -81,6 +215,7 @@ struct ChewingSessionDTO: Codable, Equatable, Identifiable {
         self.estimatedTotalChews = estimatedTotalChews
         self.modelVersion = modelVersion
         self.chewingTimeline = chewingTimeline
+        self.mealReport = mealReport
     }
 
     init(from decoder: Decoder) throws {
@@ -102,6 +237,7 @@ struct ChewingSessionDTO: Codable, Equatable, Identifiable {
         estimatedTotalChews = try container.decodeIfPresent(Int.self, forKey: .estimatedTotalChews)
         modelVersion = try container.decodeIfPresent(String.self, forKey: .modelVersion)
         chewingTimeline = try container.decodeIfPresent(String.self, forKey: .chewingTimeline)
+        mealReport = try container.decodeIfPresent(MealReportDTO.self, forKey: .mealReport)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -188,6 +324,7 @@ struct SessionTodayDTO: Codable, Equatable {
 /// 정책 세션 저장 응답(`POST /v1/me/chewing-sessions`). 저장된 세션 + 적립/스트릭/오늘/홈을 한 번에.
 struct CreateSessionResultDTO: Codable, Equatable {
     var chewingSession: ChewingSessionDTO
+    var mealReport: MealReportDTO?
     var chewingSessionAccepted: Bool
     var rewardEligible: Bool
     var ineligibleReason: String?
@@ -195,4 +332,32 @@ struct CreateSessionResultDTO: Codable, Equatable {
     var streak: SessionStreakDTO
     var today: SessionTodayDTO
     var userStats: HomeStateDTO
+
+    /// 서버 생성 응답은 같은 리포트를 최상위와 세션 안에 함께 싣는다.
+    /// 테스트·프리뷰 fixture도 이 불변식을 어기지 않도록 한쪽 값으로 두 위치를 동기화한다.
+    init(
+        chewingSession: ChewingSessionDTO,
+        mealReport: MealReportDTO?,
+        chewingSessionAccepted: Bool,
+        rewardEligible: Bool,
+        ineligibleReason: String?,
+        reward: SessionRewardDTO,
+        streak: SessionStreakDTO,
+        today: SessionTodayDTO,
+        userStats: HomeStateDTO
+    ) {
+        let resolvedReport = mealReport ?? chewingSession.mealReport
+        var responseSession = chewingSession
+        responseSession.mealReport = resolvedReport
+
+        self.chewingSession = responseSession
+        self.mealReport = resolvedReport
+        self.chewingSessionAccepted = chewingSessionAccepted
+        self.rewardEligible = rewardEligible
+        self.ineligibleReason = ineligibleReason
+        self.reward = reward
+        self.streak = streak
+        self.today = today
+        self.userStats = userStats
+    }
 }

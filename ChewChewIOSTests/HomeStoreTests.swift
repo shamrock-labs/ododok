@@ -70,22 +70,22 @@ final class HomeStoreTests: XCTestCase {
         XCTAssertEqual(store.freezeInventory, 1)
     }
 
-    func testFallbackUsesLocalTodayRealChewCountWhenServerHomeIsMissing() {
+    func testFallbackUsesStoredServerReportChewCountWhenServerHomeIsMissing() {
         let store = HomeStore(
             repository: FakeHomeRepository(result: .success(makeHome())),
-            localTodayRealChewCount: { 30 }
+            serverReportTodayChewCount: { 30 }
         )
 
         XCTAssertEqual(store.todayRealChewCount, 30)
         XCTAssertEqual(store.todayProgress, Double(30) / Double(Constants.dailyGoal), accuracy: 0.0001)
     }
 
-    func testFallbackUsesLocalTodayRealChewCountWhenServerGoalIsZero() {
+    func testFallbackUsesStoredServerReportChewCountWhenServerGoalIsZero() {
         let legacyHome = makeHome(points: 1, streak: 1, freeze: 0, chew: 0, goal: 0, progress: 0)
         let store = HomeStore(
             repository: FakeHomeRepository(result: .success(makeHome())),
             initialHome: legacyHome,
-            localTodayRealChewCount: { 45 }
+            serverReportTodayChewCount: { 45 }
         )
 
         XCTAssertEqual(store.todayRealChewCount, 45)
@@ -316,6 +316,33 @@ final class HomeStoreTests: XCTestCase {
         )
         return CreateSessionResultDTO(
             chewingSession: session,
+            mealReport: MealReportDTO(
+                status: .generated,
+                sessionId: session.id,
+                scorePolicyVersion: "legacy-ios-v1",
+                analysisModelVersion: session.modelVersion,
+                totalScore: 71,
+                axisScores: MealReportAxisScoresDTO(
+                    chewingRate: 0,
+                    chewingTimeRatio: 100,
+                    totalChewCount: 100,
+                    mealDuration: 85
+                ),
+                metrics: MealReportMetricsDTO(
+                    chewingRatePerMin: nil,
+                    legacyMealRatePerMin: 25,
+                    chewingTimeRatio: 0.5,
+                    totalChewCount: 50,
+                    mealDurationSec: 120
+                ),
+                grade: .soso,
+                recommendedBaseline: MealReportRecommendedBaselineDTO(
+                    chewingRatePerMin: MealReportTargetDTO(target: 28),
+                    chewingTimeRatio: 0.6,
+                    totalChewCount: 300,
+                    mealDurationSec: 720
+                )
+            ),
             chewingSessionAccepted: true,
             rewardEligible: rewardPoints > 0,
             ineligibleReason: nil,
