@@ -124,14 +124,13 @@ final class SpringRemoteStoreDailyReportTests: XCTestCase {
         }
     }
 
-    func testIOSCIExecutesUnitTests() throws {
+    func testIOSCIBuildsAppAndExecutesUnitTestsInSingleCommand() throws {
         let root = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
             .deletingLastPathComponent()
         let workflow = try String(contentsOf: root.appendingPathComponent(".github/workflows/ios-ci.yml"))
 
-        XCTAssertTrue(workflow.contains("-scheme ChewChewIOSTests"))
-        XCTAssertTrue(workflow.contains("-only-testing:ChewChewIOSTests"))
+        XCTAssertTrue(workflow.contains("-scheme ChewChewIOSUnitTests"))
         XCTAssertTrue(workflow.contains(" test"))
         XCTAssertTrue(workflow.contains("platform=iOS Simulator,name=iPhone"))
     }

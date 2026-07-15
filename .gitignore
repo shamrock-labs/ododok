@@ -9,6 +9,7 @@ build/
 
 # SPM
 .swiftpm/
+.spm-source-packages/
 Packages/
 Package.resolved
 

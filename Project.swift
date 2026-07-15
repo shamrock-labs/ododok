@@ -410,6 +410,16 @@ let project = Project(
             archiveAction: .archiveAction(configuration: "TestFlight"),
             profileAction: .profileAction(configuration: "TestFlight")
         ),
+        // PR CI는 빠른 유닛 테스트만 실행한다. 테스트 타깃이 앱을 의존하므로 앱과 확장도 함께 빌드된다.
+        .scheme(
+            name: "ChewChewIOSUnitTests",
+            shared: true,
+            buildAction: .buildAction(targets: ["ChewChewIOSTests"]),
+            testAction: .targets(
+                ["ChewChewIOSTests"],
+                configuration: "Debug"
+            )
+        ),
         // 테스트 전용 스킴. 앱 스킴에서 떼어내 실기기 서명과 얽히지 않게 한다(시뮬레이터에서 실행).
         .scheme(
             name: "ChewChewIOSTests",
