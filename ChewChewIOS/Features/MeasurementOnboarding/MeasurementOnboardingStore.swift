@@ -30,6 +30,7 @@ final class MeasurementOnboardingStore {
     private let gateCalibrator: any ChewingGateCalibrating
     private let gateAdjustmentSearcher: any GateAdjustmentSearching
     private let artifactUploader: any MeasurementCalibrationArtifactUploading
+    private let cuePlayer: (any MeasurementCuePlaying)?
     private var measurementTask: Task<Void, Never>?
     private var samplerStopTask: Task<MeasurementCalibrationCapture?, Never>?
     private var calibrationId = UUID()
@@ -49,7 +50,7 @@ final class MeasurementOnboardingStore {
         gateCalibrator: (any ChewingGateCalibrating)? = nil,
         gateAdjustmentSearcher: (any GateAdjustmentSearching)? = nil,
         artifactUploader: (any MeasurementCalibrationArtifactUploading)? = nil,
-        cuePlayer _: (any MeasurementCuePlaying)? = nil
+        cuePlayer: (any MeasurementCuePlaying)? = nil
     ) {
         self.stage = stage
         self.isAirPodsConnected = isAirPodsConnected
@@ -59,6 +60,7 @@ final class MeasurementOnboardingStore {
         self.gateAdjustmentSearcher = gateAdjustmentSearcher
             ?? CaptureBasedGateAdjustmentSearcher()
         self.artifactUploader = artifactUploader ?? NoopCalibrationArtifactUploader()
+        self.cuePlayer = cuePlayer
     }
 
     var cueCount: Int { timing.cueCount }
@@ -273,6 +275,7 @@ final class MeasurementOnboardingStore {
             cueIndex = index
             cuePulseID += 1
             guard await wait(for: activeAdjustmentCueInterval) else { return false }
+            cuePlayer?.playCalibrationCue()
             cueHitID += 1
         }
         return true
