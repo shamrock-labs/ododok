@@ -145,10 +145,6 @@ final class AppState {
         }
     )
 
-    @MainActor @ObservationIgnored lazy var records: RecordsStore = RecordsStore(
-        repository: RemoteStoreMealSessionRepository(remoteStore: remoteStore)
-    )
-
     @MainActor @ObservationIgnored lazy var auth: AuthStore = AuthStore(
         repository: authRepository,
         isLoggedIn: isLoggedIn,
@@ -726,15 +722,20 @@ final class AppState {
 
     @MainActor
     func saveDisplayName(_ rawName: String) async {
-        let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        displayName = trimmed
+        guard let displayName = Self.normalizedDisplayName(rawName) else { return }
+        self.displayName = displayName
         let deviceId = DeviceIdentity.shared
         do {
-            try await remoteStore.upsertProfile(ProfileDTO(deviceId: deviceId, displayName: trimmed))
+            try await remoteStore.upsertProfile(ProfileDTO(deviceId: deviceId, displayName: displayName))
         } catch {
             handleRemoteError(error)
         }
+    }
+
+    static func normalizedDisplayName(_ rawName: String) -> String? {
+        let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return String(trimmed.prefix(8))
     }
 
     static func generatedNickname(number: Int) -> String {
