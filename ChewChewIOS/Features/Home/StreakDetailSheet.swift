@@ -118,7 +118,6 @@ struct StreakDetailPresentation: Equatable {
 struct StreakDetailSheet: View {
     @Environment(AppState.self) private var state
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var home: HomeStore { state.home }
 
@@ -140,66 +139,50 @@ struct StreakDetailSheet: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: AppSpacing.five) {
-                header
-                summaryCard
-                recentDays
-                if !presentation.showsRetry {
-                    legend
+        VStack(spacing: AppSpacing.five) {
+            header
+
+            ScrollView {
+                VStack(alignment: .leading, spacing: AppSpacing.five) {
+                    Text(presentation.startedOnText)
+                        .font(.appFont(.semiboldBody))
+                        .foregroundStyle(Color.textMuted)
+
+                    summarySection
+                    recentDays
+                    if !presentation.showsRetry {
+                        legend
+                    }
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, AppSpacing.sheetContent)
-            .padding(.top, AppSpacing.two)
-            .padding(.bottom, AppSpacing.six)
+            .scrollBounceBehavior(.basedOnSize)
         }
-        .scrollBounceBehavior(.basedOnSize)
+        .padding(.horizontal, AppSpacing.sheetContent)
+        .padding(.top, AppSpacing.four)
+        .padding(.bottom, AppSpacing.cardOuterBottom)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color.bgPage.ignoresSafeArea())
         .accessibilityIdentifier("StreakDetailSheet")
         .task {
             await home.fetchStreakDetail()
         }
-        .presentationDragIndicator(.visible)
-        .presentationDetents(dynamicTypeSize.isAccessibilitySize ? [.large] : [.height(Metrics.compactHeight), .large])
-        .presentationCornerRadius(AppRadius.page)
     }
 
     private var header: some View {
-        HStack(alignment: .center, spacing: AppSpacing.gap) {
-            VStack(alignment: .leading, spacing: AppSpacing.one) {
-                Text("나의 스트릭")
-                    .font(.appFont(.heavyTitleLarge))
-                    .foregroundStyle(Color.textDefault)
-                Text(presentation.startedOnText)
-                    .font(.appFont(.semiboldBody))
-                    .foregroundStyle(Color.textMuted)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.appFont(.boldHeadline))
-                    .foregroundStyle(Color.textMuted)
-                    .frame(width: AppSize.controlXXLarge, height: AppSize.controlXXLarge)
-                    .background(Color.bgSunken, in: Circle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("닫기")
-            .accessibilityIdentifier("StreakDetailCloseButton")
+        AppSheetHeader(title: "나의 스트릭") {
+            AppSheetTextActionButton(title: "닫기") { dismiss() }
+                .accessibilityIdentifier("StreakDetailCloseButton")
         }
     }
 
-    private var summaryCard: some View {
+    private var summarySection: some View {
         HStack(spacing: AppSpacing.four) {
-            Color.statusDangerMuted
-                .frame(width: AppSize.visualSmall, height: AppSize.visualSmall)
-                .clipShape(RoundedRectangle(cornerRadius: AppRadius.elementLarge))
-                .overlay {
-                    OpenIconView(icon: .flame, color: .statusDanger, lineWidth: 2.5)
-                        .frame(width: AppSize.iconXXLarge, height: AppSize.iconXXLarge)
-                }
+            AppMetricIconBadge(
+                icon: .flame,
+                foreground: .statusDanger,
+                background: .statusDangerMuted
+            )
 
             VStack(alignment: .leading, spacing: AppSpacing.one) {
                 Text("\(presentation.current)일째")
@@ -229,13 +212,7 @@ struct StreakDetailSheet: View {
             .background(Color.bgSurface, in: Capsule())
             .accessibilityLabel("보유 프리즈 \(presentation.freezeInventory)개")
         }
-        .padding(.horizontal, AppSpacing.four)
-        .padding(.vertical, AppSpacing.five)
-        .background(Color.butter50, in: RoundedRectangle(cornerRadius: AppRadius.containerLoose))
-        .overlay {
-            RoundedRectangle(cornerRadius: AppRadius.containerLoose)
-                .stroke(Color.butter400.opacity(0.72), lineWidth: AppSize.border)
-        }
+        .padding(.vertical, AppSpacing.two)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("StreakSummaryCard")
     }
@@ -382,7 +359,6 @@ private struct StreakLegendItem: View {
 }
 
 private enum Metrics {
-    static let compactHeight: CGFloat = 540
     static let dayCircle: CGFloat = 44
     static let todayBorder: CGFloat = 4
     static let retryHeight: CGFloat = 88

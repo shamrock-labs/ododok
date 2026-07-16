@@ -15,6 +15,23 @@ final class StreakDetailUITests: XCTestCase {
         super.tearDown()
     }
 
+    func testHomeStreakButtonOpensDetailSheetWithStandardHeader() {
+        launch()
+
+        let streakButton = app.buttons["StreakDetailButton"]
+        XCTAssertTrue(streakButton.waitForExistence(timeout: 10))
+        streakButton.tap()
+
+        XCTAssertTrue(app.otherElements["StreakDetailSheet"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["나의 스트릭"].exists)
+        XCTAssertTrue(app.buttons["StreakDetailCloseButton"].exists)
+        XCTAssertTrue(app.otherElements["StreakSummaryCard"].exists)
+        XCTAssertTrue(app.otherElements["StreakRecentDaysGrid"].exists)
+
+        app.buttons["StreakDetailCloseButton"].tap()
+        XCTAssertTrue(app.otherElements["StreakDetailSheet"].waitForNonExistence(timeout: 3))
+    }
+
     func testFreezeRecoveryAvailableRequiresExplicitUse() {
         launch(recoveryArgument: "-showFreezeRecoveryAvailable")
 
@@ -78,11 +95,10 @@ final class StreakDetailUITests: XCTestCase {
         )
     }
 
-    private func launch(recoveryArgument: String, additionalArguments: [String] = []) {
+    private func launch(recoveryArgument: String? = nil, additionalArguments: [String] = []) {
         app.launchArguments = [
             "-resetState", "-skipOnboarding", "-forceLogin", "-useNoopRemote",
-            recoveryArgument,
-        ] + additionalArguments
+        ] + recoveryArgument.map { [$0] } + additionalArguments
         app.launch()
     }
 
