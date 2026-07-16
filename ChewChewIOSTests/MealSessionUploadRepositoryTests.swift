@@ -2,6 +2,30 @@ import XCTest
 @testable import ChewChewIOS
 
 final class MealSessionUploadRepositoryTests: XCTestCase {
+    func testUploadIncludesTheProfileFrozenIntoTheRecorderOutput() async throws {
+        let sessionId = UUID()
+        let profileId = UUID()
+        let report = makeReport(status: .generated, sessionId: sessionId)
+        let response = try makeNetworkResponse(
+            sessionId: sessionId,
+            topLevelReport: report,
+            embeddedReport: report
+        )
+        let remoteStore = MealSessionRepositoryRemoteStore(response: response)
+        let repository = RemoteStoreMealSessionUploadRepository(
+            remoteStore: remoteStore,
+            deviceIdProvider: { "test-device" }
+        )
+
+        _ = try await repository.uploadSession(
+            output: makeOutput(sessionId: sessionId, profileId: profileId),
+            stats: nil,
+            appVersion: nil
+        )
+
+        XCTAssertEqual(remoteStore.createdSession?.chewDetectionProfileId, profileId)
+    }
+
     func testUploadReturnsDecodedServerSessionWhenBothReportsAreEqual() async throws {
         let sessionId = UUID()
         let report = makeReport(status: .generated, sessionId: sessionId)
@@ -391,7 +415,7 @@ final class MealSessionUploadRepositoryTests: XCTestCase {
         )
     }
 
-    private func makeOutput(sessionId: UUID) -> IMUSessionRecorder.Output {
+    private func makeOutput(sessionId: UUID, profileId: UUID? = nil) -> IMUSessionRecorder.Output {
         let startedAt = Date(timeIntervalSince1970: 1_000)
         return IMUSessionRecorder.Output(
             sessionId: sessionId,
@@ -401,6 +425,7 @@ final class MealSessionUploadRepositoryTests: XCTestCase {
             sampleCount: 9_000,
             sensorLocation: "headphone_left",
             csvData: Data("csv".utf8),
+            chewDetectionProfileId: profileId,
             interruptionGaps: []
         )
     }
@@ -408,6 +433,7 @@ final class MealSessionUploadRepositoryTests: XCTestCase {
 
 private final class MealSessionRepositoryRemoteStore: RemoteStore {
     let response: CreateSessionResultDTO
+    private(set) var createdSession: ChewingSessionDTO?
 
     init(response: CreateSessionResultDTO) {
         self.response = response
@@ -417,7 +443,10 @@ private final class MealSessionRepositoryRemoteStore: RemoteStore {
     func fetchProfile() async throws -> ProfileDTO? { nil }
     func fetchUserStats() async throws -> UserStatsDTO? { nil }
     func deleteUserData() async throws {}
-    func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO { response }
+    func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO {
+        createdSession = session
+        return response
+    }
     func fetchHome(deviceId: String) async throws -> HomeStateDTO { .empty(deviceId: deviceId) }
     func earnAttendance(deviceId: String, idempotencyKey: String) async throws -> AttendanceResultDTO {
         AttendanceResultDTO(

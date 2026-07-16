@@ -101,6 +101,7 @@ struct RemoteStoreMealSessionUploadRepository: MealSessionUploadRepository {
             chewingFraction: stats?.chewingFraction,
             estimatedTotalChews: stats?.estimatedTotalChews,
             modelVersion: stats?.modelVersion,
+            chewDetectionProfileId: output.chewDetectionProfileId,
             chewingTimeline: stats?.chewingTimeline
         )
     }

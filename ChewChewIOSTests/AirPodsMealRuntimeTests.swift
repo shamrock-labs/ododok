@@ -150,6 +150,34 @@ final class AirPodsMealRuntimeTests: XCTestCase {
         XCTAssertEqual(uploadedStats?.modelVersion, ChewDetectionEngine.modelVersion)
     }
 
+    func testMealStartFreezesProfileIdEvenIfTheCacheContextChangesLater() async {
+        let runtime = FakeAirPodsMealRuntimeServices()
+        let firstProfileId = UUID()
+        let secondProfileId = UUID()
+        var context = MealChewDetectionContext(configuration: .standard, profileId: firstProfileId)
+        let uploadFinished = expectation(description: "session output uploaded")
+        var uploadedProfileId: UUID?
+        let store = MealSessionRuntimeStore(
+            analytics: NoopAnalytics(),
+            onChewPulse: {},
+            onPersistSnapshot: {},
+            onSessionReadyForUpload: { output, _ in
+                uploadedProfileId = output.chewDetectionProfileId
+                uploadFinished.fulfill()
+            },
+            chewDetectionContext: { context },
+            runtimeServices: runtime.services
+        )
+
+        store.startEating()
+        context = MealChewDetectionContext(configuration: .standard, profileId: secondProfileId)
+        emitChewingMotionSamples(runtime.motion)
+        store.stopEating()
+
+        await fulfillment(of: [uploadFinished], timeout: 3)
+        XCTAssertEqual(uploadedProfileId, firstProfileId)
+    }
+
     private func makeStore(
         runtime: FakeAirPodsMealRuntimeServices,
         configuration: ChewDetectionConfiguration = .standard,

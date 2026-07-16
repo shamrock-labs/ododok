@@ -381,6 +381,24 @@ final class EraseAllUserDataTests: XCTestCase {
     }
 
     func testLogoutClearsLocalAccountCacheWithoutDeletingRemoteData() {
+        let userId = "logout-cache-\(UUID().uuidString)"
+        let analyticsUserIdKey = "ChewChewIOS.AppState.analyticsUserId"
+        let profileCache = UserDefaultsChewDetectionProfileCache()
+        UserDefaults.standard.set(userId, forKey: analyticsUserIdKey)
+        profileCache.storeResolved(
+            nil,
+            userId: userId,
+            modelVersion: ChewDetectionEngine.modelVersion,
+            at: Date()
+        )
+        defer {
+            profileCache.clear(userId: userId)
+            UserDefaults.standard.removeObject(forKey: analyticsUserIdKey)
+        }
+        XCTAssertFalse(profileCache.needsRefresh(
+            userId: userId,
+            modelVersion: ChewDetectionEngine.modelVersion
+        ))
         TokenManager.save(access: "access-token", refresh: "refresh-token")
         let spy = SpyRemoteStore()
         let state = AppState(remoteStore: spy, startStartupTasks: false)
@@ -403,6 +421,10 @@ final class EraseAllUserDataTests: XCTestCase {
         XCTAssertEqual(state.streak, 0)
         XCTAssertEqual(state.freezeInventory, 0)
         XCTAssertTrue(state.owned.isEmpty)
+        XCTAssertTrue(profileCache.needsRefresh(
+            userId: userId,
+            modelVersion: ChewDetectionEngine.modelVersion
+        ))
         XCTAssertEqual(spy.deleteUserDataCallCount, 0, "로그아웃은 원격 데이터를 삭제하면 안 된다")
     }
 

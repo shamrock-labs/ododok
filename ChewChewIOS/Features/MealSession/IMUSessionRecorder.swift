@@ -9,6 +9,7 @@ import Foundation
 final class IMUSessionRecorder {
     let sessionId: UUID
     let startedAt: Date
+    let chewDetectionProfileId: UUID?
 
     private(set) var rows: [IMURow] = []
     private(set) var sensorLocation: String = "default"
@@ -17,9 +18,14 @@ final class IMUSessionRecorder {
     /// 각 원소는 `(began: Date, ended: Date)`. finalize된 Output에 그대로 포함된다.
     private(set) var interruptionGaps: [(began: Date, ended: Date)] = []
 
-    init(sessionId: UUID = UUID(), startedAt: Date = Date()) {
+    init(
+        sessionId: UUID = UUID(),
+        startedAt: Date = Date(),
+        chewDetectionProfileId: UUID? = nil
+    ) {
         self.sessionId = sessionId
         self.startedAt = startedAt
+        self.chewDetectionProfileId = chewDetectionProfileId
     }
 
     func append(_ row: IMURow) {
@@ -54,6 +60,7 @@ final class IMUSessionRecorder {
             sampleCount: rows.count,
             sensorLocation: sensorLocation,
             csvData: Data(csv.utf8),
+            chewDetectionProfileId: chewDetectionProfileId,
             interruptionGaps: interruptionGaps
         )
     }
@@ -66,7 +73,30 @@ final class IMUSessionRecorder {
         let sampleCount: Int
         let sensorLocation: String
         let csvData: Data
+        let chewDetectionProfileId: UUID?
         /// 전화 등 인터럽트로 IMU 수집이 중단된 구간 목록.
         let interruptionGaps: [(began: Date, ended: Date)]
+
+        init(
+            sessionId: UUID,
+            startedAt: Date,
+            endedAt: Date,
+            durationSec: Double,
+            sampleCount: Int,
+            sensorLocation: String,
+            csvData: Data,
+            chewDetectionProfileId: UUID? = nil,
+            interruptionGaps: [(began: Date, ended: Date)]
+        ) {
+            self.sessionId = sessionId
+            self.startedAt = startedAt
+            self.endedAt = endedAt
+            self.durationSec = durationSec
+            self.sampleCount = sampleCount
+            self.sensorLocation = sensorLocation
+            self.csvData = csvData
+            self.chewDetectionProfileId = chewDetectionProfileId
+            self.interruptionGaps = interruptionGaps
+        }
     }
 }

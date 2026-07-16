@@ -60,7 +60,7 @@ final class MealSessionRuntimeStore {
     private let onChewPulse: @MainActor () -> Void
     private let onPersistSnapshot: @MainActor () -> Void
     private let onSessionReadyForUpload: @MainActor (IMUSessionRecorder.Output, SessionStats?) async -> Void
-    private let chewDetectionConfiguration: () -> ChewDetectionConfiguration
+    private let chewDetectionContext: () -> MealChewDetectionContext
     @ObservationIgnored private let runtimeServices: MealSessionRuntimeServices
 
     @ObservationIgnored private lazy var headphoneMotionService = runtimeServices.makeMotionService()
@@ -99,13 +99,16 @@ final class MealSessionRuntimeStore {
         chewDetectionConfiguration: @escaping () -> ChewDetectionConfiguration = {
             UserDefaultsChewProfileStore().load()?.configuration ?? .standard
         },
+        chewDetectionContext: (() -> MealChewDetectionContext)? = nil,
         runtimeServices: MealSessionRuntimeServices = .live
     ) {
         self.analytics = analytics
         self.onChewPulse = onChewPulse
         self.onPersistSnapshot = onPersistSnapshot
         self.onSessionReadyForUpload = onSessionReadyForUpload
-        self.chewDetectionConfiguration = chewDetectionConfiguration
+        self.chewDetectionContext = chewDetectionContext ?? {
+            MealChewDetectionContext(configuration: chewDetectionConfiguration(), profileId: nil)
+        }
         self.runtimeServices = runtimeServices
     }
 
@@ -128,8 +131,9 @@ final class MealSessionRuntimeStore {
         let now = runtimeServices.now()
         phase = .measuring(MealSessionMeasurementContext(startedAt: now))
 
-        prepareEatingSession(startedAt: now)
-        let engine = ChewDetectionEngine(configuration: chewDetectionConfiguration())
+        let detectionContext = chewDetectionContext()
+        prepareEatingSession(startedAt: now, detectionContext: detectionContext)
+        let engine = ChewDetectionEngine(configuration: detectionContext.configuration)
         chewDetectionEngine = engine
         sampleProcessingTailTask = nil
         chewPulseDeliveryGate.reset()
@@ -364,10 +368,13 @@ private extension MealSessionRuntimeStore {
         MealSessionRuntimeRules.shouldConfirmShortSessionStop(startedAt: eatingStartedAt, now: runtimeServices.now())
     }
 
-    func prepareEatingSession(startedAt: Date) {
+    func prepareEatingSession(startedAt: Date, detectionContext: MealChewDetectionContext) {
         imuSampleCount = 0
         lastIMUSampleAt = nil
-        imuSessionRecorder = IMUSessionRecorder(startedAt: startedAt)
+        imuSessionRecorder = IMUSessionRecorder(
+            startedAt: startedAt,
+            chewDetectionProfileId: detectionContext.profileId
+        )
         interruptionWasCall = false
         interruptionBeganAt = nil
     }
