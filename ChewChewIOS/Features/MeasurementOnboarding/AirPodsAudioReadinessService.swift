@@ -34,7 +34,7 @@ final class AirPodsAudioReadinessService: AirPodsAudioReadinessServicing {
         stopEngine(deactivateSession: false)
         guard let format,
               let transferCue = makeTransferCue(format: format),
-              let readyCue = makeReadyCue(format: format) else {
+              let readyCue = AirPodsReadyCueBufferFactory.make(format: format) else {
             return false
         }
 
@@ -101,14 +101,6 @@ final class AirPodsAudioReadinessService: AirPodsAudioReadinessServicing {
     private func makeTransferCue(format: AVAudioFormat) -> AVAudioPCMBuffer? {
         makeCue(format: format, segments: [
             .tone(frequency: 392, duration: 0.14, amplitude: 0.07),
-        ])
-    }
-
-    private func makeReadyCue(format: AVAudioFormat) -> AVAudioPCMBuffer? {
-        makeCue(format: format, segments: [
-            .tone(frequency: 523.25, duration: 0.14, amplitude: 0.22),
-            .silence(duration: 0.04),
-            .tone(frequency: 659.25, duration: 0.16, amplitude: 0.22),
         ])
     }
 

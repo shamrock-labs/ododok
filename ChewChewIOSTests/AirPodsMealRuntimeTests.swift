@@ -205,12 +205,14 @@ final class AirPodsMealRuntimeTests: XCTestCase {
     }
 }
 
+@MainActor
 private final class FakeAirPodsMealRuntimeServices {
     let motion = FakeAirPodsMotionService()
     let audio = FakeAirPodsAudioFeedbackService()
     let callMonitor = FakeAirPodsCallInterruptionMonitor()
     let activity = FakeAirPodsMealActivityController()
     let airPodsMonitor = FakeAirPodsConnectionMonitor()
+    let readiness = FakeAirPodsMealReadinessService()
     let notification = FakeAirPodsInterruptionNotifier()
     var now: Date
 
@@ -225,11 +227,19 @@ private final class FakeAirPodsMealRuntimeServices {
             makeCallInterruptionMonitor: { self.callMonitor },
             makeActivityController: { self.activity },
             makeAirPodsConnectionMonitor: { self.airPodsMonitor },
+            makeAirPodsAudioReadinessService: { self.readiness },
             makeStartCountdownController: { StartCountdownController() },
             notificationScheduler: notification,
             now: { self.now }
         )
     }
+}
+
+@MainActor
+private final class FakeAirPodsMealReadinessService: AirPodsAudioReadinessServicing {
+    func prepareAirPods() async -> Bool { true }
+    func playCalibrationCue() {}
+    func stop() {}
 }
 
 private final class FakeAirPodsMotionService: MealMotionServicing {

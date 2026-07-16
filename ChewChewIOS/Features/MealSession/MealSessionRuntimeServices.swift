@@ -53,6 +53,7 @@ struct MealSessionRuntimeServices {
     let makeCallInterruptionMonitor: () -> any MealCallInterruptionMonitoring
     let makeActivityController: () -> any MealActivityControlling
     let makeAirPodsConnectionMonitor: () -> any AirPodsConnectionMonitoring
+    let makeAirPodsAudioReadinessService: @MainActor () -> any AirPodsAudioReadinessServicing
     let makeStartCountdownController: () -> StartCountdownController
     let notificationScheduler: any MealInterruptionNotificationScheduling
     let now: () -> Date
@@ -63,6 +64,7 @@ struct MealSessionRuntimeServices {
         makeCallInterruptionMonitor: { CallInterruptionMonitor() },
         makeActivityController: { MealActivityController() },
         makeAirPodsConnectionMonitor: { AirPodsConnectionMonitor() },
+        makeAirPodsAudioReadinessService: { AirPodsAudioReadinessService() },
         makeStartCountdownController: { StartCountdownController() },
         notificationScheduler: LiveInterruptionNotifier(),
         now: Date.init

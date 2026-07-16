@@ -20,29 +20,8 @@ struct AppHeaderView<Accessory: View>: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: AppSpacing.gap) {
-            VStack(alignment: .leading, spacing: AppSpacing.one) {
-                if let eyebrow {
-                    Text(eyebrow)
-                        .font(.appFont(.boldCallout))
-                        .foregroundStyle(Color.textActionStrong)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                }
-                Text(title)
-                    .font(.appFont(.heavyDisplaySmall))
-                    .foregroundStyle(Color.textDefault)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
-                if let subtitle {
-                    Text(subtitle)
-                        .font(.appFont(.semiboldCallout))
-                        .foregroundStyle(Color.textMuted)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.82)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
+            headerText
+                .frame(maxWidth: .infinity, alignment: .leading)
             accessory
                 .fixedSize(horizontal: true, vertical: false)
         }
@@ -54,6 +33,31 @@ struct AppHeaderView<Accessory: View>: View {
                 .stroke(Color.bgSurface.opacity(0.85), lineWidth: AppSize.border)
         )
         .appElevation(.flat)
+    }
+
+    private var headerText: some View {
+        VStack(alignment: .leading, spacing: AppSpacing.one) {
+            if let eyebrow {
+                Text(eyebrow)
+                    .font(.appFont(.boldCallout))
+                    .foregroundStyle(Color.textActionStrong)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            Text(title)
+                .font(.appFont(.heavyDisplaySmall))
+                .foregroundStyle(Color.textDefault)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
+                .truncationMode(.tail)
+            if let subtitle {
+                Text(subtitle)
+                    .font(.appFont(.semiboldCallout))
+                    .foregroundStyle(Color.textMuted)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.82)
+            }
+        }
     }
 }
 
@@ -112,7 +116,6 @@ struct HeaderMetricPill: View {
 
 struct HeaderIconButton: View {
     let systemName: String
-    var showsBadge = false
     let action: () -> Void
 
     var body: some View {
@@ -124,22 +127,12 @@ struct HeaderIconButton: View {
                 .background(Color.bgSurface, in: Circle())
         }
         .buttonStyle(.plain)
-        .overlay(alignment: .topTrailing) {
-            if showsBadge {
-                Circle()
-                    .fill(Color.statusDanger)
-                    .frame(width: Metrics.badge, height: Metrics.badge)
-                    .overlay(Circle().stroke(Color.cream, lineWidth: 1.4))
-                    .offset(x: -3, y: 4)
-            }
-        }
     }
 }
 
 private enum Metrics {
     static let iconButton = AppSize.controlLarge
     static let icon = AppSize.iconMedium
-    static let badge = AppSize.indicatorMedium
     static let pillIcon = AppSize.iconCompact
     static let pillHeight = AppSize.iconContainerCompact
 }

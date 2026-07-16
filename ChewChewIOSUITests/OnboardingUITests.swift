@@ -51,6 +51,25 @@ final class OnboardingUITests: XCTestCase {
         XCTAssertTrue(skip.waitForExistence(timeout: 10), "Name entry should advance to the tutorial step")
     }
 
+    func testNameInput_limitsInputToEightCharacters() {
+        app.launchArguments = freshMemberLaunchArguments
+        app.launch()
+
+        XCTAssert(app.staticTexts["처음 오셨네요!"].waitForExistence(timeout: 10))
+        let nameField = app.textFields["OnboardingNameField"]
+        XCTAssert(nameField.waitForExistence(timeout: 5))
+        nameField.tap()
+        nameField.typeText("가나다라마바사아자")
+
+        expectation(
+            for: NSPredicate(format: "value == %@", "가나다라마바사아"),
+            evaluatedWith: nameField
+        )
+        waitForExpectations(timeout: 2)
+        XCTAssertEqual(nameField.value as? String, "가나다라마바사아")
+        XCTAssertEqual(app.staticTexts["OnboardingNameCount"].value as? String, "8자, 최대 8자")
+    }
+
     func testTutorialSkip_offersCalibrationOnHomeBeforeReward() {
         app.launchArguments = freshMemberLaunchArguments + ["-grantAttendanceReward"]
         app.launch()

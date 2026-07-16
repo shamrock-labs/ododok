@@ -2,6 +2,8 @@ import SwiftUI
 
 /// AirPods 미연결 시 표시하는 커스텀 팝업.
 struct AirPodsPromptDialogView: View {
+    let isPreparing: Bool
+    let showsDismissAction: Bool
     let onDismissTapped: () -> Void
 
     var body: some View {
@@ -13,12 +15,12 @@ struct AirPodsPromptDialogView: View {
                     .frame(width: Metrics.image, height: Metrics.image)
                     .scaleEffect(AppArtwork.daramContentScale)
 
-                Text("에어팟을 착용해주세요!")
+                Text(title)
                     .font(.appFont(.heavyHeadlineLarge))
                     .foregroundStyle(Color.textDefault)
                     .multilineTextAlignment(.center)
 
-                Text("AirPods Pro 또는 AirPods 3, 4세대를 연결하면 자동으로 측정이 시작돼요")
+                Text(message)
                     .font(.appFont(.semiboldLabel))
                     .foregroundStyle(Color.textMuted)
                     .multilineTextAlignment(.center)
@@ -31,8 +33,21 @@ struct AirPodsPromptDialogView: View {
             .background(Color.bgPopover, in: RoundedRectangle(cornerRadius: AppRadius.page))
             .appElevation(.floating)
 
-            skipButton
+            if showsDismissAction {
+                skipButton
+            }
         }
+    }
+
+    private var title: String {
+        isPreparing ? "AirPods를 준비하고 있어요" : "에어팟을 착용해주세요!"
+    }
+
+    private var message: String {
+        if isPreparing {
+            return "준비음이 들리면 자동으로 식사가 시작돼요"
+        }
+        return "AirPods Pro 또는 AirPods 3, 4세대를 연결하면 자동으로 측정이 시작돼요"
     }
 
     private var skipButton: some View {
@@ -52,7 +67,7 @@ struct AirPodsPromptDialogView: View {
 #Preview {
     ZStack {
         Color.black.opacity(0.28).ignoresSafeArea()
-        AirPodsPromptDialogView(onDismissTapped: {})
+        AirPodsPromptDialogView(isPreparing: false, showsDismissAction: true, onDismissTapped: {})
             .padding(.horizontal, AppSpacing.overlayH)
     }
 }

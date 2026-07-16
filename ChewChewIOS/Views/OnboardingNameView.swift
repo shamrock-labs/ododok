@@ -3,6 +3,8 @@ import SwiftUI
 /// 앱 첫 실행 시 표시용 닉네임을 정하는 온보딩 화면.
 /// 직접 입력과 건너뛰기 모두 `AppState.saveDisplayName` 계열 경로로 저장한다.
 struct OnboardingNameView: View {
+    private static let maxNameLength = 8
+
     @Environment(AppState.self) private var state
     let onComplete: () -> Void
 
@@ -11,14 +13,15 @@ struct OnboardingNameView: View {
     @FocusState private var isFocused: Bool
 
     var body: some View {
-        VStack(spacing: 24) {
-            Spacer()
+        VStack(spacing: AppSpacing.none) {
+            Spacer(minLength: AppSpacing.ten)
 
             Image("RealDaram")
                 .resizable()
                 .scaledToFit()
                 .frame(width: Metrics.heroImage, height: Metrics.heroImage)
                 .scaleEffect(AppArtwork.daramContentScale)
+                .padding(.bottom, AppSpacing.six)
 
             VStack(spacing: 8) {
                 Text("처음 오셨네요!")
@@ -28,13 +31,30 @@ struct OnboardingNameView: View {
                     .font(.appFont(.regularLabel))
                     .foregroundStyle(Color.textMuted)
             }
+            .padding(.bottom, AppSpacing.six)
 
-            AppTextField(placeholder: "닉네임", text: $name) {
-                submit()
-            }
+            VStack(alignment: .trailing, spacing: AppSpacing.oneHalf) {
+                AppTextField(placeholder: "닉네임", text: $name) {
+                    submit()
+                }
                 .focused($isFocused)
-                .padding(.horizontal, AppSpacing.overlayH)
                 .accessibilityIdentifier("OnboardingNameField")
+                .onChange(of: name) { _, newValue in
+                    guard newValue.count > Self.maxNameLength else { return }
+                    name = String(newValue.prefix(Self.maxNameLength))
+                }
+
+                Text("\(name.count) / \(Self.maxNameLength)")
+                    .font(.appFont(.semiboldLabel))
+                    .foregroundStyle(Color.textMuted)
+                    .monospacedDigit()
+                    .accessibilityLabel("닉네임 글자 수")
+                    .accessibilityValue("\(name.count)자, 최대 \(Self.maxNameLength)자")
+                    .accessibilityIdentifier("OnboardingNameCount")
+            }
+            .padding(.horizontal, AppSpacing.overlayH)
+
+            Spacer(minLength: Metrics.actionTopSpacing)
 
             AppTextActionButton(
                 title: "시작하기",
@@ -47,9 +67,8 @@ struct OnboardingNameView: View {
             }
             .disabled(!canSubmit || isSaving)
             .padding(.horizontal, AppSpacing.overlayH)
+            .padding(.bottom, AppSpacing.ten)
             .accessibilityIdentifier("OnboardingSubmit")
-
-            Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Color.bgPage.ignoresSafeArea())
@@ -120,4 +139,5 @@ struct OnboardingNameView: View {
 
 private enum Metrics {
     static let heroImage = AppSize.visualXLarge
+    static let actionTopSpacing: CGFloat = 48
 }

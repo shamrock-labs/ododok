@@ -208,7 +208,10 @@ struct ContentView: View {
         if mealSession.showAirPodsConnectionPrompt {
             ZStack {
                 Color.black.opacity(0.28).ignoresSafeArea()
-                AirPodsPromptDialogView {
+                AirPodsPromptDialogView(
+                    isPreparing: mealSession.isPreparingAirPodsRoute,
+                    showsDismissAction: !mealSession.isPreparingAirPodsRoute
+                ) {
                     mealSession.dismissAirPodsConnectionPrompt()
                 }
                 .padding(.horizontal, AppSpacing.overlayH)
