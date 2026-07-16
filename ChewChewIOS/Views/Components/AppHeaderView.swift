@@ -114,6 +114,28 @@ struct HeaderMetricPill: View {
     }
 }
 
+struct AppMetricIconBadge: View {
+    let icon: OpenIcon
+    let foreground: Color
+    let background: Color
+    var lineWidth: CGFloat = 2.2
+
+    var body: some View {
+        background
+            .frame(width: Metrics.container, height: Metrics.container)
+            .clipShape(RoundedRectangle(cornerRadius: Metrics.radius))
+            .overlay {
+                OpenIconView(icon: icon, color: foreground, lineWidth: lineWidth)
+                    .frame(width: AppSize.iconXXLarge, height: AppSize.iconXXLarge)
+            }
+    }
+
+    private enum Metrics {
+        static let container: CGFloat = 42
+        static let radius: CGFloat = 13
+    }
+}
+
 struct HeaderIconButton: View {
     let systemName: String
     let action: () -> Void

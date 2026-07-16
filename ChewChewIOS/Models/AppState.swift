@@ -89,6 +89,13 @@ final class AppState {
     /// 서버 OAuth 로그인 여부. false면 ContentView가 로그인 화면을 띄운다.
     var isLoggedIn: Bool = false
 
+    #if DEBUG
+    /// OAuth 없이 목 데이터를 확인하는 개발용 계정. 명시적 로그아웃·초기화 전까지 복원한다.
+    private(set) var isDebugProfileActive: Bool = false
+    #else
+    var isDebugProfileActive: Bool { false }
+    #endif
+
     /// 온보딩 완료 여부. false면 ContentView가 온보딩 sheet를 띄운다.
     var hasCompletedOnboarding: Bool = false {
         didSet {
@@ -101,6 +108,9 @@ final class AppState {
     private static let analyticsUserIdKey = "ChewChewIOS.AppState.analyticsUserId"
     private static let onboardingCompleteKey = "ChewChewIOS.AppState.hasCompletedOnboarding"
     private static let pendingInviteCodeKey = "ChewChewIOS.AppState.pendingInviteCode"
+    #if DEBUG
+    private static let debugProfileActiveKey = "ChewChewIOS.AppState.debugProfileActive"
+    #endif
 
     // MARK: - Wardrobe (다람쥐 꾸미기)
 
@@ -125,7 +135,10 @@ final class AppState {
     @ObservationIgnored private let localAccountDataCleaner: any LocalAccountDataClearing
 
     @MainActor @ObservationIgnored lazy var home: HomeStore = HomeStore(
-        repository: RemoteStoreHomeRepository(remoteStore: remoteStore),
+        repository: RemoteStoreHomeRepository(
+            remoteStore: remoteStore,
+            debugProfileIsActive: { [weak self] in self?.isDebugProfileActive == true }
+        ),
         initialPoints: points,
         initialStreak: streak,
         initialFreezeInventory: freezeInventory,
@@ -157,7 +170,7 @@ final class AppState {
             self?.expireSession(trackLogoutEvent: true)
         },
         onSessionExpired: { [weak self] in
-            self?.expireSession(trackLogoutEvent: false)
+            self?.handleSessionExpired()
         }
     )
 
@@ -281,6 +294,18 @@ final class AppState {
         }
         // 서버 응답 전 화면을 위한 로컬 fallback 캐시.
         loadPersistedSnapshot()
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: Self.debugProfileActiveKey) {
+            isDebugProfileActive = true
+            isLoggedIn = true
+            hasCompletedOnboarding = true
+            didLoadProfile = true
+            displayName = StreakDemoFixture.home.displayName
+            points = StreakDemoFixture.home.points
+            streak = StreakDemoFixture.home.streak
+            freezeInventory = StreakDemoFixture.home.freezeInventory
+        }
+        #endif
         if startStartupTasks {
             Task { [weak self] in
                 await self?.startStartupTasks()
@@ -292,6 +317,9 @@ final class AppState {
     func startStartupTasks() async {
         guard !didStartStartupTasks else { return }
         didStartStartupTasks = true
+        #if DEBUG
+        guard !isDebugProfileActive else { return }
+        #endif
 
         await mealPushCoordinator.setAuthExpiredHandler { [weak self] in
             Task { @MainActor in self?.handleRemoteError(RemoteStoreError.authExpired) }
@@ -418,6 +446,10 @@ final class AppState {
         mealSession.resetRuntimeState()
         clearTransientRuntimeState()
         clearPendingInviteCode()
+        #if DEBUG
+        isDebugProfileActive = false
+        UserDefaults.standard.removeObject(forKey: Self.debugProfileActiveKey)
+        #endif
         streak = 0
         points = 0
         animKey = 0
@@ -478,6 +510,10 @@ final class AppState {
         mealSession.resetRuntimeState()
         clearTransientRuntimeState()
         clearPendingInviteCode()
+        #if DEBUG
+        isDebugProfileActive = false
+        UserDefaults.standard.removeObject(forKey: Self.debugProfileActiveKey)
+        #endif
         streak = 0
         points = 0
         animKey = 0
@@ -523,6 +559,22 @@ final class AppState {
         }
     }
 
+    #if DEBUG
+    /// Debug 로그인 화면에서 OAuth와 서버 프로필 조회를 건너뛰고 목 홈 세션을 시작한다.
+    @MainActor
+    func activateDebugProfile() {
+        clearLocalSessionCache()
+        isDebugProfileActive = true
+        UserDefaults.standard.set(true, forKey: Self.debugProfileActiveKey)
+        displayName = StreakDemoFixture.home.displayName
+        hasCompletedOnboarding = true
+        didLoadProfile = true
+        isLoggedIn = true
+        auth.markLoggedIn(onboardingCompleted: true)
+        applyHome(StreakDemoFixture.home)
+    }
+    #endif
+
     @MainActor
     private func syncAnalyticsUserProperties() {
         analytics.setUserProperty("current_streak", home.currentStreak)
@@ -562,7 +614,21 @@ final class AppState {
     }
 
     @MainActor
+    private func handleSessionExpired() {
+        #if DEBUG
+        if isDebugProfileActive {
+            auth.markLoggedIn(onboardingCompleted: true)
+            return
+        }
+        #endif
+        expireSession(trackLogoutEvent: false)
+    }
+
+    @MainActor
     private func handleRemoteError(_ error: Error) {
+        #if DEBUG
+        guard !isDebugProfileActive else { return }
+        #endif
         if case RemoteStoreError.authExpired = error {
             auth.expireSession()
         }
@@ -624,6 +690,10 @@ final class AppState {
     @MainActor
     private func clearLocalSessionCache() {
         clearTransientRuntimeState()
+        #if DEBUG
+        isDebugProfileActive = false
+        UserDefaults.standard.removeObject(forKey: Self.debugProfileActiveKey)
+        #endif
         streak = 0
         points = 0
         freezeInventory = 0

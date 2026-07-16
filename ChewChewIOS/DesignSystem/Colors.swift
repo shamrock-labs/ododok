@@ -146,6 +146,11 @@ extension Color {
     static let statusSuccessMuted = sage50
     static let statusSuccessBorder = sage100
 
+    // Streak freeze
+    static let freezeSurface    = Color(light: 0xEAF3FA, dark: 0x1C2B36)
+    static let freezeBorder     = Color(light: 0xA9C5DA, dark: 0x688CA6)
+    static let freezeForeground = Color(light: 0x668FB0, dark: 0xA9CBE3)
+
     // Data / product feedback
     static let dataChew = accentChew
     static let dataTime = accentTime

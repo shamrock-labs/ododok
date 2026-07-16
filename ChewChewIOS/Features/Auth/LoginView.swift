@@ -57,6 +57,7 @@ private enum Metrics {
 /// 일반적인 앱의 소셜 로그인 UI(브랜드 컬러 풀폭 버튼)를 따른다. 온보딩 앞 게이트로 표시.
 struct LoginView: View {
     var store: AuthStore
+    var onDebugLogin: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 0) {
@@ -75,6 +76,10 @@ struct LoginView: View {
                 ForEach(LoginProviderOption.allCases, id: \.self) { option in
                     socialButton(option)
                 }
+
+                #if DEBUG
+                debugProfileButton
+                #endif
             }
 
             if let errorMessage = store.errorMessage {
@@ -105,6 +110,29 @@ struct LoginView: View {
             }
         }
     }
+
+    #if DEBUG
+    private var debugProfileButton: some View {
+        Button(action: onDebugLogin) {
+            HStack(spacing: AppSpacing.two) {
+                Image(systemName: "hammer.fill")
+                Text("개발용 계정으로 시작하기")
+            }
+            .font(.appFont(.dialogAction))
+            .foregroundStyle(Color.textAction)
+            .frame(maxWidth: .infinity)
+            .frame(height: Metrics.buttonHeight)
+            .background(Color.bgSunken)
+            .clipShape(RoundedRectangle(cornerRadius: AppSpacing.three, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: AppSpacing.three, style: .continuous)
+                    .strokeBorder(Color.borderEmphasized, lineWidth: AppSize.border)
+            )
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("DebugProfileLoginButton")
+    }
+    #endif
 
     // MARK: - 브랜드 버튼
 

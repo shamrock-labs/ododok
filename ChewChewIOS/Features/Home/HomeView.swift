@@ -12,6 +12,7 @@ struct HomeView: View {
     // MARK: - 끼니 알림 설정 sheet
     @State private var showMealReminderSettings = false
     @State private var showRewardHistory = false
+    @State private var showStreakDetail = false
 
     // MARK: - 설정 sheet (REQ-05)
     @State private var showSettings = false
@@ -64,6 +65,13 @@ struct HomeView: View {
             RewardHistorySheet()
                 .presentationDetents([.medium, .large])
         }
+        .sheet(isPresented: $showStreakDetail) {
+            StreakDetailSheet()
+                .presentationDetents([
+                    .fraction(StreakDetailSheetPolicy.defaultDetentFraction),
+                    .large,
+                ])
+        }
         .sheet(isPresented: $showSettings) {
             SettingsView()
         }
@@ -103,7 +111,14 @@ struct HomeView: View {
             title: greetingTitle
         ) {
             HStack(spacing: 7) {
-                HeaderMetricPill(icon: .flame, value: "\(home.currentStreak)", tint: .statusWarning)
+                Button {
+                    showStreakDetail = true
+                } label: {
+                    HeaderMetricPill(icon: .flame, value: "\(home.currentStreak)", tint: .statusWarning)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("스트릭 \(home.currentStreak)일, 자세히 보기")
+                .accessibilityIdentifier("StreakDetailButton")
                 Button {
                     showRewardHistory = true
                 } label: {
@@ -154,20 +169,25 @@ struct HomeView: View {
         HStack(spacing: 14) {
             statCard(
                 label: home.freezeInventory > 0 ? "연속 출석 · 🛡️\(home.freezeInventory)" : "연속 출석",
-                value: "\(home.currentStreak)일째",
-                iconBG: Color.statusDangerMuted
+                value: "\(home.currentStreak)일째"
             ) {
-                OpenIconView(icon: .flame, color: .statusDanger, lineWidth: 2.2)
-                    .frame(width: Metrics.statIcon, height: Metrics.statIcon)
+                AppMetricIconBadge(
+                    icon: .flame,
+                    foreground: .statusDanger,
+                    background: .statusDangerMuted
+                )
             }
 
             statCard(
                 label: "보유 도토리",
-                value: home.points.koLocale,
-                iconBG: Color.statusWarningMuted
+                value: home.points.koLocale
             ) {
-                OpenIconView(icon: .acorn, color: .rewardAcorn, lineWidth: 2.1)
-                    .frame(width: Metrics.statIcon, height: Metrics.statIcon)
+                AppMetricIconBadge(
+                    icon: .acorn,
+                    foreground: .rewardAcorn,
+                    background: .statusWarningMuted,
+                    lineWidth: 2.1
+                )
             }
         }
     }
@@ -175,14 +195,10 @@ struct HomeView: View {
     private func statCard<I: View>(
         label: String,
         value: String,
-        iconBG: Color,
         @ViewBuilder icon: () -> I
     ) -> some View {
         HStack(spacing: AppSpacing.inner) {
-            iconBG
-                .frame(width: Metrics.statIconBg, height: Metrics.statIconBg)
-                .clipShape(RoundedRectangle(cornerRadius: Metrics.statIconRadius))
-                .overlay { icon() }
+            icon()
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(label)
@@ -436,9 +452,6 @@ private struct RewardHistoryRow: View {
 private enum Metrics {
     static let headerAccessoryTitleOffset: CGFloat = 10
     static let circleButton = AppSize.controlXXLarge
-    static let statIcon = AppSize.iconXXLarge
-    static let statIconBg: CGFloat = 42
-    static let statIconRadius: CGFloat = 13
     static let progressRing: CGFloat = 220
     static let squirrelAreaHeight: CGFloat = 246
     static let squirrelCardMinHeight: CGFloat = 310

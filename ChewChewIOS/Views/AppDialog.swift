@@ -9,6 +9,8 @@ struct AppDialog: View {
     let primary: Action
     let secondary: Action?
     let onDismiss: () -> Void
+    let contentMaxHeight: CGFloat?
+    let contentScrollAccessibilityIdentifier: String?
 
     struct Action {
         let label: String
@@ -28,7 +30,9 @@ struct AppDialog: View {
         supportingText: String? = nil,
         primary: Action,
         secondary: Action?,
-        onDismiss: @escaping () -> Void
+        onDismiss: @escaping () -> Void,
+        contentMaxHeight: CGFloat? = nil,
+        contentScrollAccessibilityIdentifier: String? = nil
     ) {
         self.title = title
         self.message = message
@@ -36,17 +40,32 @@ struct AppDialog: View {
         self.primary = primary
         self.secondary = secondary
         self.onDismiss = onDismiss
+        self.contentMaxHeight = contentMaxHeight
+        self.contentScrollAccessibilityIdentifier = contentScrollAccessibilityIdentifier
     }
 
     var body: some View {
         VStack(spacing: AppSpacing.none) {
-            header
+            contentRegion
             divider
             buttonRow
         }
         .frame(maxWidth: AppSize.dialogMaxWidth)
         .background(Color.bgPopover, in: RoundedRectangle(cornerRadius: AppRadius.element))
         .appElevation(.floating)
+    }
+
+    @ViewBuilder
+    private var contentRegion: some View {
+        if let contentMaxHeight {
+            ScrollView(.vertical) {
+                header
+            }
+            .frame(maxHeight: contentMaxHeight)
+            .accessibilityIdentifier(contentScrollAccessibilityIdentifier ?? "AppDialogContentScroll")
+        } else {
+            header
+        }
     }
 
     private var header: some View {

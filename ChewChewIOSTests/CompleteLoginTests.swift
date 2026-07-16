@@ -5,14 +5,18 @@ import XCTest
 /// 로그아웃 → 재로그인 시 온보딩이 다시 뜨던 버그(ODO-47)가 재발하지 않음을 보장한다.
 @MainActor
 final class CompleteLoginTests: XCTestCase {
+    private let debugProfileKey = "ChewChewIOS.AppState.debugProfileActive"
+
     override func setUp() {
         super.setUp()
         UserDefaults.standard.removeObject(forKey: "ChewChewIOS.AppState.analyticsUserId")
+        UserDefaults.standard.removeObject(forKey: debugProfileKey)
     }
 
     override func tearDown() {
         TokenManager.clear()
         UserDefaults.standard.removeObject(forKey: "ChewChewIOS.AppState.analyticsUserId")
+        UserDefaults.standard.removeObject(forKey: debugProfileKey)
         super.tearDown()
     }
 
@@ -106,6 +110,62 @@ final class CompleteLoginTests: XCTestCase {
 
         XCTAssertEqual(analytics.userProperties["anonymous_device_id"] as? String, DeviceIdentity.shared)
     }
+
+    #if DEBUG
+    func testActivateDebugProfileEntersHomeWithDemoDataWithoutOAuth() async {
+        let state = AppState(remoteStore: SpyRemoteStore(), startStartupTasks: false)
+
+        state.activateDebugProfile()
+        await state.home.fetchStreakDetail()
+
+        XCTAssertTrue(state.isLoggedIn)
+        XCTAssertTrue(state.hasCompletedOnboarding)
+        XCTAssertTrue(state.didLoadProfile)
+        XCTAssertEqual(state.displayName, "개발자 다람이")
+        XCTAssertEqual(state.home.currentStreak, 18)
+        XCTAssertEqual(state.home.freezeInventory, 2)
+        XCTAssertEqual(state.home.streakDetail?.resolvedMonth, "2026-07")
+        XCTAssertEqual(state.home.streakDetail?.days.count, 16)
+    }
+
+    func testDebugProfileRestoresLoginAndDemoDataAfterRelaunch() async {
+        let firstState = AppState(remoteStore: SpyRemoteStore(), startStartupTasks: false)
+        firstState.activateDebugProfile()
+
+        let restoredState = AppState(remoteStore: SpyRemoteStore(), startStartupTasks: false)
+        await restoredState.home.fetchStreakDetail()
+
+        XCTAssertTrue(restoredState.isDebugProfileActive)
+        XCTAssertTrue(restoredState.isLoggedIn)
+        XCTAssertTrue(restoredState.hasCompletedOnboarding)
+        XCTAssertTrue(restoredState.didLoadProfile)
+        XCTAssertEqual(restoredState.home.currentStreak, 18)
+        XCTAssertEqual(restoredState.home.freezeInventory, 2)
+        XCTAssertEqual(restoredState.home.streakDetail?.days.count, 16)
+    }
+
+    func testLogoutClearsPersistedDebugProfile() {
+        let state = AppState(remoteStore: SpyRemoteStore(), startStartupTasks: false)
+        state.activateDebugProfile()
+
+        state.logout()
+
+        XCTAssertFalse(UserDefaults.standard.bool(forKey: debugProfileKey))
+        XCTAssertFalse(state.isDebugProfileActive)
+        XCTAssertFalse(state.isLoggedIn)
+    }
+
+    func testServerAuthExpiryDoesNotLogOutDebugProfile() {
+        let state = AppState(remoteStore: SpyRemoteStore(), startStartupTasks: false)
+        state.activateDebugProfile()
+
+        state.auth.expireSession()
+
+        XCTAssertTrue(state.isDebugProfileActive)
+        XCTAssertTrue(state.isLoggedIn)
+        XCTAssertTrue(state.auth.isLoggedIn)
+    }
+    #endif
 }
 
 private final class SpyAnalytics: AnalyticsService {

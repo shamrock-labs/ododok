@@ -45,6 +45,35 @@ final class ServerAvailabilityStoreTests: XCTestCase {
 
         XCTAssertEqual(store.status, .preparing)
     }
+
+    #if DEBUG
+    func testDebugBuildShowsLoginWhileDevServerIsUnavailable() {
+        XCTAssertTrue(
+            ChewChewIOSApp.shouldPresentContent(
+                serverStatus: .preparing,
+                isLoggedIn: false,
+                isDebugProfileActive: false
+            )
+        )
+    }
+
+    func testDebugProfileKeepsContentVisibleWhileDevServerIsUnavailable() {
+        XCTAssertTrue(
+            ChewChewIOSApp.shouldPresentContent(
+                serverStatus: .preparing,
+                isLoggedIn: true,
+                isDebugProfileActive: true
+            )
+        )
+        XCTAssertFalse(
+            ChewChewIOSApp.shouldPresentContent(
+                serverStatus: .preparing,
+                isLoggedIn: true,
+                isDebugProfileActive: false
+            )
+        )
+    }
+    #endif
 }
 
 private actor SequenceServerHealthChecker: ServerHealthChecking {

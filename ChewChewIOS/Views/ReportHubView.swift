@@ -1055,21 +1055,12 @@ private struct MealCompletionRing: View {
     let selected: Bool
 
     var body: some View {
-        ZStack {
-            Circle()
-                .fill(selected ? Color.acorn500 : Color.clear)
-            Circle()
-                .stroke(Color.hairline, lineWidth: 3)
-            ForEach(0..<3, id: \.self) { i in
-                Circle()
-                    .trim(from: CGFloat(i) / 3 + 0.018, to: CGFloat(i + 1) / 3 - 0.018)
-                    .stroke(
-                        i < meals ? (selected ? Color.white : Color.acorn500) : Color.clear,
-                        style: StrokeStyle(lineWidth: 3.2, lineCap: .round)
-                    )
-                    .rotationEffect(.degrees(-90))
-            }
-        }
+        CalendarStatusRing(
+            completedSegments: meals,
+            totalSegments: 3,
+            accent: selected ? Color.white : Color.acorn500,
+            fill: selected ? Color.acorn500 : Color.clear
+        )
     }
 }
 
