@@ -1,5 +1,21 @@
 import SwiftUI
 
+enum StreakDetailSheetPolicy {
+    static let defaultDetentFraction: CGFloat = 0.72
+}
+
+struct FreezeAwardGuidePresentation: Equatable {
+    let title: String
+    let message: String
+    let supportingText: String
+
+    static let `default` = Self(
+        title: "프리즈는 이렇게 받아요",
+        message: "스트릭 7일, 30일, 100일을 처음 달성할 때마다 프리즈 1개를 받아요.",
+        supportingText: "프리즈는 최대 3개까지 보유할 수 있어요."
+    )
+}
+
 enum StreakDayPresentationState: Equatable {
     case missing
     case attended
@@ -178,6 +194,7 @@ struct StreakDetailPresentation: Equatable {
 struct StreakDetailSheet: View {
     @Environment(AppState.self) private var state
     @Environment(\.dismiss) private var dismiss
+    @State private var showsFreezeAwardGuide = false
 
     private var home: HomeStore { state.home }
 
@@ -206,15 +223,19 @@ struct StreakDetailSheet: View {
             }
 
             ScrollView {
-                VStack(alignment: .leading, spacing: AppSpacing.five) {
+                VStack(alignment: .leading, spacing: 0) {
                     summarySection
+                    sectionDivider
+                        .padding(.vertical, AppSpacing.three)
                     calendarSection
                     if !presentation.showsRetry {
                         legend
+                            .padding(.top, AppSpacing.two)
                         if let historyStartText = presentation.historyStartText {
                             Text(historyStartText)
                                 .font(.appFont(.semiboldCaption))
                                 .foregroundStyle(Color.textTertiary)
+                                .padding(.top, AppSpacing.two)
                         }
                     }
                 }
@@ -228,6 +249,13 @@ struct StreakDetailSheet: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color.bgPage.ignoresSafeArea())
         .task { await home.fetchStreakDetail() }
+        .appDialog(
+            isPresented: $showsFreezeAwardGuide,
+            title: FreezeAwardGuidePresentation.default.title,
+            message: FreezeAwardGuidePresentation.default.message,
+            supportingText: FreezeAwardGuidePresentation.default.supportingText,
+            primary: .init("확인") {}
+        )
     }
 
     private var summarySection: some View {
@@ -252,22 +280,51 @@ struct StreakDetailSheet: View {
 
             Spacer(minLength: AppSpacing.one)
 
-            HStack(spacing: AppSpacing.one) {
-                Image(systemName: "shield.fill")
-                    .foregroundStyle(Color.freezeForeground)
-                Text("\(presentation.freezeInventory)개")
-                    .font(.appFont(.heavyHeadline))
-                    .foregroundStyle(Color.freezeForeground)
-                    .monospacedDigit()
+            VStack(spacing: AppSpacing.half) {
+                HStack(spacing: AppSpacing.one) {
+                    Image(systemName: "shield.fill")
+                        .foregroundStyle(Color.freezeForeground)
+                    Text("\(presentation.freezeInventory)개")
+                        .font(.appFont(.heavyHeadline))
+                        .foregroundStyle(Color.freezeForeground)
+                        .monospacedDigit()
+                }
+                .padding(.horizontal, AppSpacing.three)
+                .frame(minHeight: AppSize.controlXLarge)
+                .background(Color.bgSurface, in: Capsule())
+                .accessibilityLabel("보유 프리즈 \(presentation.freezeInventory)개")
+
+                Button {
+                    showsFreezeAwardGuide = true
+                } label: {
+                    HStack(spacing: AppSpacing.one) {
+                        Image(systemName: "info.circle")
+                        Text("지급 기준")
+                    }
+                    .font(.appFont(.boldMicro))
+                    .foregroundStyle(Color.textTertiary)
+                    .padding(.top, AppSpacing.one)
+                    .frame(
+                        minWidth: AppSize.dialogActionHeight,
+                        minHeight: AppSize.dialogActionHeight,
+                        alignment: .top
+                    )
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("프리즈 지급 기준 보기")
+                .accessibilityIdentifier("FreezeAwardGuideButton")
             }
-            .padding(.horizontal, AppSpacing.three)
-            .frame(minHeight: AppSize.controlXLarge)
-            .background(Color.bgSurface, in: Capsule())
-            .accessibilityLabel("보유 프리즈 \(presentation.freezeInventory)개")
         }
         .padding(.vertical, AppSpacing.two)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("StreakSummaryCard")
+    }
+
+    private var sectionDivider: some View {
+        Color.borderDefault
+            .frame(maxWidth: .infinity)
+            .frame(height: AppSize.hairline)
     }
 
     private var calendarSection: some View {

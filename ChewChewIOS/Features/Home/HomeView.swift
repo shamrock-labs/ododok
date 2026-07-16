@@ -67,7 +67,10 @@ struct HomeView: View {
         }
         .sheet(isPresented: $showStreakDetail) {
             StreakDetailSheet()
-                .presentationDetents([.medium, .large])
+                .presentationDetents([
+                    .fraction(StreakDetailSheetPolicy.defaultDetentFraction),
+                    .large,
+                ])
         }
         .sheet(isPresented: $showSettings) {
             SettingsView()

@@ -35,6 +35,23 @@ final class StreakDetailUITests: XCTestCase {
         XCTAssertTrue(app.otherElements["StreakMonthGrid"].exists)
         XCTAssertTrue(app.otherElements["StreakDay-2026-07-03"].exists)
         XCTAssertTrue(app.otherElements["StreakDay-2026-07-16"].exists)
+
+        let legend = app.otherElements["StreakLegend"]
+        XCTAssertTrue(legend.exists)
+        XCTAssertTrue(
+            app.windows.firstMatch.frame.intersects(legend.frame),
+            "기본 시트 높이에서 캘린더 범례까지 보여야 한다"
+        )
+
+        let guideButton = app.buttons["FreezeAwardGuideButton"]
+        XCTAssertTrue(guideButton.exists)
+        tapWhenHittable(guideButton)
+        XCTAssertTrue(app.staticTexts["프리즈는 이렇게 받아요"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["스트릭 7일, 30일, 100일을 처음 달성할 때마다 프리즈 1개를 받아요."].exists)
+        XCTAssertTrue(app.staticTexts["프리즈는 최대 3개까지 보유할 수 있어요."].exists)
+
+        app.buttons["확인"].tap()
+        XCTAssertTrue(app.staticTexts["프리즈는 이렇게 받아요"].waitForNonExistence(timeout: 3))
     }
 
     func testFreezeRecoveryAvailableRequiresExplicitUse() {

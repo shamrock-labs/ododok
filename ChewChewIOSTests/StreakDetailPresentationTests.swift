@@ -12,6 +12,19 @@ final class StreakDetailPresentationTests: XCTestCase {
         XCTAssertEqual(CalendarStatusRingStyle.streak.progressLineWidth, 2)
     }
 
+    func testStreakSheetDefaultsShowLegendAndExplainFreezeAwards() {
+        XCTAssertEqual(StreakDetailSheetPolicy.defaultDetentFraction, 0.72)
+        XCTAssertEqual(FreezeAwardGuidePresentation.default.title, "프리즈는 이렇게 받아요")
+        XCTAssertEqual(
+            FreezeAwardGuidePresentation.default.message,
+            "스트릭 7일, 30일, 100일을 처음 달성할 때마다 프리즈 1개를 받아요."
+        )
+        XCTAssertEqual(
+            FreezeAwardGuidePresentation.default.supportingText,
+            "프리즈는 최대 3개까지 보유할 수 있어요."
+        )
+    }
+
     func testLegacyDetailWithoutMonthUsesServerAsOfMonth() throws {
         let detail = try JSONDecoder().decode(
             StreakDetailDTO.self,
