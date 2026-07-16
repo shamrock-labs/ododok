@@ -9,10 +9,14 @@ final class DailyReportSelectionLoader {
     private(set) var errorMessage: String?
     private var activeSelectionID = 0
 
-    func beginSelection() -> Int {
+    /// `clearingCurrent: false`는 sheet 열기 직전 재시도처럼 기존 리포트를 화면에서
+    /// 지우면 안 되는 경로용 — 로드 중에도 기록 지면 레이아웃이 무너지지 않는다.
+    func beginSelection(clearingCurrent: Bool = true) -> Int {
         activeSelectionID += 1
-        currentReport = nil
-        previousReport = nil
+        if clearingCurrent {
+            currentReport = nil
+            previousReport = nil
+        }
         errorMessage = nil
         return activeSelectionID
     }
@@ -63,7 +67,8 @@ struct ReportHubView: View {
     @State private var selectedDate: Date = mealCalendarCalendar.startOfDay(for: Date())
     @State private var pivotDate: Date = mealCalendarCalendar.startOfDay(for: Date())
     @State private var detailSession: ChewingSessionDTO?
-    @State private var showDailyReport = false
+    @State private var dailyReportPresentation: DailyReportPresentation?
+    @State private var isLoadingDailyReport = false
     @State private var showCalendar = false
     @State private var calendarMonth: Date = mealCalendarCalendar.startOfDay(for: Date())
     @State private var hasTrackedReportTabView = false
@@ -95,15 +100,13 @@ struct ReportHubView: View {
                 SessionReportDetailView(dto: session)
             }
         }
-        .sheet(isPresented: $showDailyReport) {
-            if let selectedDailyReport {
-                DailyReportView(
-                    date: selectedDate,
-                    report: selectedDailyReport,
-                    previousReport: previousDailyReport,
-                    unavailableSessions: selectedUnavailableSessions
-                )
-            }
+        .sheet(item: $dailyReportPresentation) { presentation in
+            DailyReportView(
+                date: presentation.date,
+                report: presentation.report,
+                previousReport: presentation.previousReport,
+                unavailableSessions: presentation.unavailableSessions
+            )
         }
         .sheet(isPresented: $showCalendar) {
             ReportCalendarDialog(
@@ -118,7 +121,6 @@ struct ReportHubView: View {
                     showCalendar = false
                 }
             )
-            .presentationDetents([.medium, .large])
         }
         .appToast($dailyReportErrorToast)
     }
@@ -162,8 +164,10 @@ struct ReportHubView: View {
         return ReportDay(date: selectedDate, report: selectedDailyReport)
     }
 
+    /// 끼니 리스트는 타임라인 링과 같은 로컬 세션에서 파생한다. 일간 리포트 fetch에서
+    /// 파생하면 날짜 전환마다 로더 초기화 → 리스트 전체 삭제 → 응답 후 재생성으로 깜빡인다.
     private var selectedSessions: [ChewingSessionDTO] {
-        (selectedDailyReport?.meals.map(\.session) ?? []).sorted { $0.startedAt < $1.startedAt }
+        sessions(on: selectedDate).sorted { $0.startedAt < $1.startedAt }
     }
 
     private var selectedUnavailableSessions: [ChewingSessionDTO] {
@@ -177,10 +181,15 @@ struct ReportHubView: View {
         let bandSpacing: CGFloat = 8      // 날짜행↔차트 간격(축 스페이서와 동일값)
 
         return VStack(alignment: .leading, spacing: AppSpacing.three) {
-            HStack(spacing: AppSpacing.inner) {
-                Text(monthRangeLabel)
-                    .font(.appFont(.heavyHeadline))
-                    .foregroundStyle(Color.textDefault)
+            HStack(alignment: .top, spacing: AppSpacing.inner) {
+                VStack(alignment: .leading, spacing: AppSpacing.half) {
+                    Text(monthTitleLabel)
+                        .font(.appFont(.heavyHeadline))
+                        .foregroundStyle(Color.textDefault)
+                    Text("하루 평균 씹기 횟수를 확인할 수 있어요")
+                        .font(.appFont(.semiboldCallout))
+                        .foregroundStyle(Color.textSecondary)
+                }
                 Spacer(minLength: 0)
                 Button { openCalendar() } label: {
                     Image(systemName: "calendar")
@@ -192,6 +201,8 @@ struct ReportHubView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("달력 열기")
             }
+            // 안내 문구와 날짜 스트립 사이 숨 고르기 간격.
+            .padding(.bottom, AppSpacing.two)
 
             // 좌측 고정 Y축 + 스크롤(날짜+차트). 축은 ScrollView 밖이라 가로 스크롤에 안 흘러가고,
             // HStack 좌측 컬럼이라 데이터 점을 가리지 않는다.
@@ -236,14 +247,7 @@ struct ReportHubView: View {
                 }
             }
 
-            // 날짜만 — 평균/시간/끼니 요약·횟수 뱃지는 제거.
-            Text(selectedDay.shortDateLabel)
-                .font(.appFont(.heavyHeadline))
-                .foregroundStyle(Color.textPrimary)
-                .monospacedDigit()
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.top, AppSpacing.half)
-
+            // 선택 날짜는 스트립 강조가 이미 알려주므로 별도 날짜 헤딩은 두지 않는다.
             if !selectedSessions.isEmpty {
                 Rectangle()
                     .fill(Color.hairline)
@@ -270,9 +274,18 @@ struct ReportHubView: View {
         let unavailable = selectedUnavailableSessions.first?.mealReport
         let reason = MealReportUnavailableContent.from(unavailable)
         return HStack(spacing: AppSpacing.three) {
-            Text(unavailable == nil ? "🍽️" : reason.emoji)
-                .font(.appFont(.regularDisplaySmall))
-                .frame(width: Metrics.emptyIcon, height: Metrics.emptyIcon)
+            Group {
+                if unavailable == nil {
+                    Image(systemName: "fork.knife")
+                        .font(.appFont(.boldTitle))
+                        .foregroundStyle(Color.textMuted)
+                } else {
+                    Text(reason.emoji)
+                        .font(.appFont(.regularDisplaySmall))
+                }
+            }
+            .frame(width: Metrics.emptyIcon, height: Metrics.emptyIcon)
+            .background(Color.bgSunken, in: Circle())
             VStack(alignment: .leading, spacing: AppSpacing.microGap) {
                 Text(unavailable == nil
                      ? (mealCalendarCalendar.isDateInToday(selectedDate) ? "오늘은 아직 식사 전이에요" : "이 날은 식사 리포트가 없어요")
@@ -300,7 +313,7 @@ struct ReportHubView: View {
                 ZStack {
                     MealCompletionRing(meals: day.mealCount, selected: selected)
                     Text(day.dayLabel)
-                        .font(.appFont(day.dayLabel.contains("/") ? .heavyCaption : .heavyLabel))
+                        .font(.appFont(.heavyLabel))
                         .foregroundStyle(selected ? Color.white : Color.textPrimary)
                         .monospacedDigit()
                         .minimumScaleFactor(0.75)
@@ -309,7 +322,7 @@ struct ReportHubView: View {
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(day.shortDateLabel), \(day.mealCount)끼 기록")
+        .accessibilityLabel("\(day.fullDateLabel), \(day.mealCount)끼 기록")
     }
 
     private func sessionRow(_ session: ChewingSessionDTO) -> some View {
@@ -429,10 +442,7 @@ struct ReportHubView: View {
 
     private var dailyReportRow: some View {
         Button {
-            Task {
-                await loadSelectedDailyReports()
-                showDailyReport = selectedDailyReport != nil
-            }
+            presentDailyReport()
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
@@ -452,6 +462,34 @@ struct ReportHubView: View {
             .background(Color.bgSunken, in: RoundedRectangle(cornerRadius: AppRadius.md))
         }
         .buttonStyle(.plain)
+        .disabled(isLoadingDailyReport)
+        .opacity(isLoadingDailyReport ? 0.6 : 1)
+    }
+
+    /// 일간 리포트 sheet 진입. 연타 가드 + 이미 로드된 리포트는 즉시 표시, 없을 때만
+    /// 재로드하되 기존 리포트를 지우지 않아 기록 지면이 먼저 밀리지 않는다.
+    private func presentDailyReport() {
+        guard dailyReportPresentation == nil, !isLoadingDailyReport else { return }
+        if presentLoadedDailyReport() { return }
+        isLoadingDailyReport = true
+        Task {
+            let selectionID = dailyReportLoader.beginSelection(clearingCurrent: false)
+            await loadSelectedDailyReports(selectionID: selectionID)
+            isLoadingDailyReport = false
+            presentLoadedDailyReport()
+        }
+    }
+
+    @discardableResult
+    private func presentLoadedDailyReport() -> Bool {
+        guard let report = selectedDailyReport else { return false }
+        dailyReportPresentation = DailyReportPresentation(
+            date: selectedDate,
+            report: report,
+            previousReport: previousDailyReport,
+            unavailableSessions: selectedUnavailableSessions
+        )
+        return true
     }
 
     private var weeklyComparisonCard: some View {
@@ -900,10 +938,9 @@ struct ReportHubView: View {
         return mealCalendarCalendar.dateComponents([.day], from: today, to: normalizedDate).day ?? 0
     }
 
-    private var monthRangeLabel: String {
-        let startMonth = mealCalendarCalendar.component(.month, from: windowStart)
-        let endMonth = mealCalendarCalendar.component(.month, from: windowEnd)
-        return startMonth == endMonth ? "\(endMonth)월" : "\(startMonth)–\(endMonth)월"
+    /// 월 범위(`N–N+1월`) 대신 선택 날짜가 속한 달 하나만 년도와 함께 표시한다.
+    private var monthTitleLabel: String {
+        KoDate.string(selectedDate, "yyyy년 M월")
     }
 
     private func timeLabel(_ date: Date) -> String {
@@ -982,25 +1019,28 @@ struct ReportHubDaySnapshot: Identifiable {
         return KoDate.string(date, "E")
     }
 
+    /// 월이 바뀌는 1일도 `N/1` 없이 날짜 숫자만 — 월 맥락은 상단 월 제목이 담당한다.
     var dayLabel: String {
-        let day = mealCalendarCalendar.component(.day, from: date)
-        if day == 1 {
-            let month = mealCalendarCalendar.component(.month, from: date)
-            return "\(month)/1"
-        }
-        return "\(day)"
+        "\(mealCalendarCalendar.component(.day, from: date))"
     }
 
-    var shortDateLabel: String {
-        return KoDate.string(date, "M/d (E)")
-    }
-
-    var summaryLabel: String {
-        "\(avgChewCount.koLocale)회 · 씹은 시간 \(minutes)분 · \(mealCount)/3끼"
+    /// 접근성처럼 월 맥락이 함께 필요한 곳에 쓴다.
+    var fullDateLabel: String {
+        return KoDate.string(date, "M월 d일 (E)")
     }
 }
 
 private typealias ReportDay = ReportHubDaySnapshot
+
+/// 일간 리포트 sheet에 스냅샷으로 넘기는 payload. 로더 상태가 바뀌어도 열려 있는
+/// sheet 내용이 사라지거나 흔들리지 않고, item 기반이라 중복 presentation도 없다.
+private struct DailyReportPresentation: Identifiable {
+    let id = UUID()
+    let date: Date
+    let report: DailyReportDTO
+    let previousReport: DailyReportDTO?
+    let unavailableSessions: [ChewingSessionDTO]
+}
 
 private struct WeeklyMetric: Identifiable {
     let id = UUID()
@@ -1234,29 +1274,37 @@ private struct ReportCalendarDialog: View {
     let onPick: (Date) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    /// sheet를 콘텐츠에 딱 맞는 높이로 열기 위한 실측값. 첫 레이아웃 전 fallback으로 시작한다.
+    @State private var contentHeight: CGFloat = Metrics.calendarSheetFallbackHeight
     private var cal: Calendar { mealCalendarCalendar }
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: AppSpacing.three) {
-                monthHeader
-                weekdayLabels
-                grid
-                Spacer(minLength: 0)
-            }
-            .padding(AppSpacing.page)
-            .background(LinearGradient.appBackground.ignoresSafeArea())
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    AppSheetTitleText(title: "날짜 선택")
-                }
-                ToolbarItem(placement: .topBarTrailing) {
+            VStack(spacing: AppSpacing.none) {
+                AppSheetHeader(title: "날짜 선택") {
                     AppSheetTextActionButton(title: "닫기") { dismiss() }
                 }
+                .padding(.horizontal, AppSpacing.page)
+                .padding(.top, AppSpacing.four)
+
+                VStack(spacing: AppSpacing.three) {
+                    monthHeader
+                    weekdayLabels
+                    grid
+                }
+                .padding(AppSpacing.page)
             }
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.height
+            } action: { newValue in
+                contentHeight = newValue
+            }
+            .frame(maxHeight: .infinity, alignment: .top)
+            .background(LinearGradient.appBackground.ignoresSafeArea())
+            .toolbar(.hidden, for: .navigationBar)
         }
+        // 뒤 기록 지면이 보이도록 전체 높이가 아니라 콘텐츠 높이만큼만 올라온다.
+        .presentationDetents([.height(contentHeight)])
         .task { await loadMonth(month) }
         .onChange(of: month) { _, newMonth in
             Task { await loadMonth(newMonth) }
@@ -1310,6 +1358,17 @@ private struct ReportCalendarDialog: View {
                 }
             }
         }
+        .contentShape(Rectangle())
+        .gesture(monthSwipeGesture)
+    }
+
+    /// 좌우 스와이프 월 이동. 세로 성분이 더 크면 sheet 드래그로 넘긴다.
+    private var monthSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 24)
+            .onEnded { value in
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                shiftMonth(value.translation.width < 0 ? 1 : -1)
+            }
     }
 
     private func dayCell(_ date: Date) -> some View {
@@ -1344,6 +1403,8 @@ private struct ReportCalendarDialog: View {
         for d in 0..<daysInMonth {
             cells.append(cal.date(byAdding: .day, value: d, to: interval.start))
         }
+        // 4주/5주/6주 달이 섞여도 grid 높이가 흔들리지 않게 항상 6주(42칸)로 고정한다.
+        while cells.count < 42 { cells.append(nil) }
         return cells
     }
 
@@ -1395,4 +1456,6 @@ private enum Metrics {
     static let calendarButton = AppSize.controlLarge
     static let calendarCellHeight: CGFloat = 46
     static let calendarRing = AppSize.iconContainerLarge
+    /// 날짜 선택 sheet 첫 프레임용 근사 높이(헤더+월 이동+요일+6주 grid). 실측으로 곧 대체된다.
+    static let calendarSheetFallbackHeight: CGFloat = 540
 }
