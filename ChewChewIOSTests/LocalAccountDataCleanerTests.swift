@@ -1,6 +1,19 @@
 import XCTest
 @testable import ChewChewIOS
 
+private final class FailingRemoveFileManager: FileManager, @unchecked Sendable {
+    private(set) var removeItemCallCount = 0
+
+    override func fileExists(atPath path: String) -> Bool {
+        true
+    }
+
+    override func removeItem(at URL: URL) throws {
+        removeItemCallCount += 1
+        throw CocoaError(.fileWriteUnknown)
+    }
+}
+
 @MainActor
 final class LocalAccountDataCleanerTests: XCTestCase {
     private var suiteName: String!
@@ -24,7 +37,7 @@ final class LocalAccountDataCleanerTests: XCTestCase {
         super.tearDown()
     }
 
-    func testClearRemovesPersonalizationReminderCacheAndPendingIMUArtifacts() async {
+    func testClearRemovesPersonalizationReminderCacheAndPendingIMUArtifacts() async throws {
         let bundle = makeArtifactBundle()
         let failedUploader = SpyRemoteStore()
         failedUploader.uploadCalibrationArtifactsError = RemoteStoreError.offline
@@ -38,7 +51,7 @@ final class LocalAccountDataCleanerTests: XCTestCase {
         XCTAssertNotNil(UserDefaultsChewProfileStore(defaults: defaults).load())
         XCTAssertNotEqual(MealReminderSettings.load(from: defaults), .default)
 
-        LocalAccountDataCleaner(
+        try LocalAccountDataCleaner(
             defaults: defaults,
             calibrationUploadsDirectory: rootDirectory
         ).clear()
@@ -48,7 +61,7 @@ final class LocalAccountDataCleanerTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: rootDirectory.path))
     }
 
-    func testDeletedAccountPendingArtifactsAreNotUploadedForNextAccount() async {
+    func testDeletedAccountPendingArtifactsAreNotUploadedForNextAccount() async throws {
         let failedUploader = SpyRemoteStore()
         failedUploader.uploadCalibrationArtifactsError = RemoteStoreError.offline
         let oldAccountQueue = CalibrationArtifactUploadQueue(
@@ -58,7 +71,7 @@ final class LocalAccountDataCleanerTests: XCTestCase {
         await oldAccountQueue.enqueue(makeArtifactBundle())
         XCTAssertTrue(FileManager.default.fileExists(atPath: rootDirectory.path))
 
-        LocalAccountDataCleaner(
+        try LocalAccountDataCleaner(
             defaults: defaults,
             calibrationUploadsDirectory: rootDirectory
         ).clear()
@@ -71,6 +84,23 @@ final class LocalAccountDataCleanerTests: XCTestCase {
         await nextAccountQueue.retryPending()
 
         XCTAssertTrue(nextAccountRemote.uploadedCalibrationBundles.isEmpty)
+    }
+
+    func testClearPropagatesArtifactRemovalFailureWithoutPartiallyClearingDefaults() {
+        let fileManager = FailingRemoveFileManager()
+        saveAccountScopedDefaults()
+
+        XCTAssertThrowsError(
+            try LocalAccountDataCleaner(
+                defaults: defaults,
+                fileManager: fileManager,
+                calibrationUploadsDirectory: rootDirectory
+            ).clear()
+        )
+
+        XCTAssertEqual(fileManager.removeItemCallCount, 1)
+        XCTAssertNotNil(UserDefaultsChewProfileStore(defaults: defaults).load())
+        XCTAssertNotEqual(MealReminderSettings.load(from: defaults), .default)
     }
 
     private func saveAccountScopedDefaults() {

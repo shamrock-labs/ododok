@@ -402,7 +402,7 @@ final class AppState {
             refreshToken: deletionRefreshToken
         )
 
-        localAccountDataCleaner.clear()
+        try localAccountDataCleaner.clear()
         analytics.track(.accountDeleted(source: "settings"))
         mealSession.resetRuntimeState()
         clearTransientRuntimeState()

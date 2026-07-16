@@ -120,10 +120,16 @@ private final class UserFlowSpyAnalytics: AnalyticsService {
 
 private final class SpyLocalAccountDataCleaner: LocalAccountDataClearing {
     private(set) var clearCallCount = 0
+    var clearError: Error?
 
-    func clear() {
+    func clear() throws {
         clearCallCount += 1
+        if let clearError { throw clearError }
     }
+}
+
+private enum LocalAccountDataCleanerTestError: Error {
+    case removalFailed
 }
 
 @MainActor
@@ -334,6 +340,43 @@ final class EraseAllUserDataTests: XCTestCase {
         XCTAssertFalse(
             analytics.trackedEvents.contains { $0.name == "account_deleted" },
             "서버가 거부한 탈퇴를 완료 이벤트로 기록하면 안 된다"
+        )
+    }
+
+    func testEraseAllUserDataPreservesSessionWhenLocalCleanupFails() async {
+        let tokens = FakeAuthTokenStorage(accessToken: "access-token", refreshToken: "refresh-token")
+        let remote = SpyRemoteStore()
+        let analytics = UserFlowSpyAnalytics()
+        let cleaner = SpyLocalAccountDataCleaner()
+        cleaner.clearError = LocalAccountDataCleanerTestError.removalFailed
+        let state = AppState(
+            remoteStore: remote,
+            analytics: analytics,
+            authTokenStorage: tokens,
+            localAccountDataCleaner: cleaner,
+            startStartupTasks: false
+        )
+        state.isLoggedIn = true
+        state.displayName = "기존계정"
+
+        do {
+            try await state.eraseAllUserData()
+            XCTFail("로컬 개인정보 삭제 실패가 호출자에게 전달되어야 한다")
+        } catch LocalAccountDataCleanerTestError.removalFailed {
+            // expected
+        } catch {
+            XCTFail("예상하지 못한 오류: \(error)")
+        }
+
+        XCTAssertEqual(remote.deleteUserDataCallCount, 1)
+        XCTAssertEqual(cleaner.clearCallCount, 1)
+        XCTAssertEqual(tokens.accessToken, "access-token")
+        XCTAssertEqual(tokens.refreshToken, "refresh-token")
+        XCTAssertTrue(state.isLoggedIn)
+        XCTAssertEqual(state.displayName, "기존계정")
+        XCTAssertFalse(
+            analytics.trackedEvents.contains { $0.name == "account_deleted" },
+            "로컬 개인정보 삭제 실패를 탈퇴 완료로 기록하면 안 된다"
         )
     }
 
