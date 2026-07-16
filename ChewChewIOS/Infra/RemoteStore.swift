@@ -8,7 +8,7 @@ import Foundation
 /// 신원 보장과 레거시 읽기용이다.
 ///   profiles: 디바이스 신원 — `upsertProfile`로 최초 1회 보장.
 ///   user_stats: 도토리/스트릭 정본은 서버. iOS는 푸시하지 않고 `fetchUserStats`로 읽기만 한다.
-/// 삭제는 `deleteUserData` 한 번 (profiles → user_stats FK ON DELETE CASCADE).
+/// 계정 탈퇴는 `deleteUserData` 한 번으로 요청하며, 실제 보관·파기 범위는 서버 정책을 따른다.
 protocol RemoteStore {
     func upsertProfile(_ profile: ProfileDTO) async throws
     /// 로그인 계정(JWT)에 매칭되는 profile 행 1개 조회. 신규 사용자면 nil.
@@ -262,7 +262,7 @@ final class InsForgeRemoteStore: RemoteStore {
         return rows.first
     }
 
-    /// profiles 삭제 → FK ON DELETE CASCADE로 user_stats도 함께 제거.
+    /// 계정 탈퇴 요청. 실제 보관·파기 범위는 서버 정책을 따른다.
     func deleteUserData() async throws {
         let deviceId = DeviceIdentity.shared
         let escaped = deviceId.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? deviceId

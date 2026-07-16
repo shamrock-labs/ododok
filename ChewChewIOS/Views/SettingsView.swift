@@ -14,6 +14,9 @@ struct SettingsView: View {
     @State private var showPersonalizationResetConfirmation = false
     @State private var showAirPodsPicker = false
     @State private var showFeedback = false
+    @State private var isDeletingAccount = false
+    @State private var showDeleteFailure = false
+    @State private var deleteFailureMessage = ""
     @State private var personalizationSettings = UserDefaultsChewProfileStore().load()
 
     private static let feedbackFormURL = URL(string: "https://forms.gle/6AsoDPHhywVpV9Qb6")!
@@ -96,10 +99,18 @@ struct SettingsView: View {
         .appDialog(
             isPresented: $showDeleteConfirmation,
             title: "계정을 삭제할까요?",
-            message: "오도독 계정과 씹기 기록, 도토리, 스트릭이 모두 삭제돼요. 이 작업은 되돌릴 수 없어요.",
+            message: "계정이 탈퇴 처리되고 로그인이 해제돼요. "
+                + "프로필과 서비스 이용 기록 일부는 보관 정책에 따라 남을 수 있으며, 이 작업은 되돌릴 수 없어요.",
             primary: .init("계정 삭제", role: .destructive) {
-                Task { await state.eraseAllUserData() }
+                deleteAccount()
             },
+            secondary: .init("취소", role: .cancel) {}
+        )
+        .appDialog(
+            isPresented: $showDeleteFailure,
+            title: "계정을 삭제하지 못했어요",
+            message: deleteFailureMessage,
+            primary: .init("다시 시도") { deleteAccount() },
             secondary: .init("취소", role: .cancel) {}
         )
         .appDialog(
@@ -121,6 +132,39 @@ struct SettingsView: View {
         )
         .sheet(isPresented: $showFeedback) {
             SafariView(url: Self.feedbackFormURL)
+        }
+        .overlay {
+            if isDeletingAccount {
+                ZStack {
+                    Color.bgOverlayScrim.ignoresSafeArea()
+                    VStack(spacing: AppSpacing.two) {
+                        ProgressView()
+                        Text("계정을 삭제하고 있어요")
+                            .font(.appFont(.semiboldLabel))
+                            .foregroundStyle(Color.textDefault)
+                    }
+                    .padding(AppSpacing.four)
+                    .background(Color.bgPopover, in: RoundedRectangle(cornerRadius: AppRadius.element))
+                    .appElevation(.floating)
+                }
+            }
+        }
+        .interactiveDismissDisabled(isDeletingAccount)
+    }
+
+    private func deleteAccount() {
+        guard !isDeletingAccount else { return }
+        isDeletingAccount = true
+        Task { @MainActor in
+            defer { isDeletingAccount = false }
+            do {
+                try await state.eraseAllUserData()
+                dismiss()
+            } catch {
+                deleteFailureMessage = (error as? RemoteStoreError)?.userMessage
+                    ?? "잠시 후 다시 시도해 주세요."
+                showDeleteFailure = true
+            }
         }
     }
 
@@ -491,7 +535,7 @@ private extension LegalDocumentView {
 
 ## 6. 보유 및 파기
 
-이용자가 회원 탈퇴(계정 삭제)를 하면 해당 계정의 서버·기기 내 데이터를 지체 없이 파기합니다. 계정 삭제는 앱 내 **설정 > 계정 삭제**에서 직접 할 수 있습니다. 관련 법령에 따라 보존 의무가 있는 경우에는 해당 기간 동안만 보관 후 파기합니다.
+이용자가 회원 탈퇴(계정 삭제)를 하면 계정을 비활성화하고 소셜 인증 연결, 로그인 토큰, 등록 기기·푸시 토큰 및 알림 설정을 삭제합니다. 프로필, 저작 세션, 통계, 도토리 적립 및 친구 관계 기록 등은 서비스 기록의 무결성 유지와 관계 법령상 의무 이행을 위해 보관될 수 있으며, 보유 목적 달성 또는 의무 보존 기간 종료 후 파기합니다. 계정 삭제는 앱 내 **설정 > 계정 삭제**에서 직접 할 수 있습니다.
 
 ## 7. 이용자의 권리
 

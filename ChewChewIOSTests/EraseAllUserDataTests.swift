@@ -7,6 +7,7 @@ final class SpyRemoteStore: RemoteStore {
     private(set) var deleteUserDataAccessToken: String?
     private(set) var deleteUserDataRefreshToken: String?
     private(set) var acceptedInviteCodes: [String] = []
+    var deleteUserDataError: Error?
     var fetchHomeError: Error?
     var acceptFriendInviteError: Error?
     var home: HomeStateDTO?
@@ -14,7 +15,10 @@ final class SpyRemoteStore: RemoteStore {
     func upsertProfile(_ profile: ProfileDTO) async throws {}
     func fetchProfile() async throws -> ProfileDTO? { nil }
     func fetchUserStats() async throws -> UserStatsDTO? { nil }
-    func deleteUserData() async throws { deleteUserDataCallCount += 1 }
+    func deleteUserData() async throws {
+        deleteUserDataCallCount += 1
+        if let deleteUserDataError { throw deleteUserDataError }
+    }
     func deleteUserData(accessToken: String?) async throws {
         deleteUserDataAccessToken = accessToken
         try await deleteUserData()
@@ -133,31 +137,26 @@ final class EraseAllUserDataTests: XCTestCase {
         }
     }
 
-    func testEraseAllUserData_callsDeleteUserDataOnce() async {
+    func testEraseAllUserData_callsDeleteUserDataOnce() async throws {
         let spy = SpyRemoteStore()
         let state = AppState(remoteStore: spy, startStartupTasks: false)
 
-        // 초기 상태에서 직렬화 체인이 drain되도록 짧게 yield
-        await Task.yield()
-
-        await state.eraseAllUserData()
-
-        await waitFor(spy.deleteUserDataCallCount == 1)
+        try await state.eraseAllUserData()
 
         XCTAssertEqual(spy.deleteUserDataCallCount, 1, "eraseAllUserData 호출 시 deleteUserData가 정확히 1회 호출되어야 한다")
     }
 
-    func testEraseAllUserData_resetsPointsToZero() async {
+    func testEraseAllUserData_resetsPointsToZero() async throws {
         let spy = SpyRemoteStore()
         let state = AppState(remoteStore: spy, startStartupTasks: false)
         state.points = 500
 
-        await state.eraseAllUserData()
+        try await state.eraseAllUserData()
 
         XCTAssertEqual(state.points, 0, "삭제 후 points는 0이어야 한다")
     }
 
-    func testEraseAllUserData_resetsTodaySessionsToEmpty() async {
+    func testEraseAllUserData_resetsTodaySessionsToEmpty() async throws {
         let spy = SpyRemoteStore()
         let state = AppState(remoteStore: spy, startStartupTasks: false)
         state.mealResults.todaySessions = [
@@ -180,12 +179,12 @@ final class EraseAllUserDataTests: XCTestCase {
             )
         ]
 
-        await state.eraseAllUserData()
+        try await state.eraseAllUserData()
 
         XCTAssertTrue(state.mealResults.todaySessions.isEmpty, "삭제 후 todaySessions는 빈 배열이어야 한다")
     }
 
-    func testEraseAllUserDataClearsPendingRuntimeState() async {
+    func testEraseAllUserDataClearsPendingRuntimeState() async throws {
         let spy = SpyRemoteStore()
         let state = AppState(remoteStore: spy, startStartupTasks: false)
         state.mealSession.pendingMealStartRequest = true
@@ -193,7 +192,7 @@ final class EraseAllUserDataTests: XCTestCase {
         state.mealResults.sessionUploadErrorMessage = "offline"
         state.receiveInviteCode("FRIEND-123")
 
-        await state.eraseAllUserData()
+        try await state.eraseAllUserData()
 
         XCTAssertFalse(state.mealSession.pendingMealStartRequest)
         XCTAssertEqual(state.mealResults.sessionUploadStatus, .idle)
@@ -201,17 +200,17 @@ final class EraseAllUserDataTests: XCTestCase {
         XCTAssertNil(state.friends.pendingInviteCode)
     }
 
-    func testEraseAllUserData_resetsStreakToZero() async {
+    func testEraseAllUserData_resetsStreakToZero() async throws {
         let spy = SpyRemoteStore()
         let state = AppState(remoteStore: spy, startStartupTasks: false)
         state.streak = 7
 
-        await state.eraseAllUserData()
+        try await state.eraseAllUserData()
 
         XCTAssertEqual(state.streak, 0, "삭제 후 streak은 0이어야 한다")
     }
 
-    func testEraseAllUserDataReturnsToLoginGate() async {
+    func testEraseAllUserDataReturnsToLoginGate() async throws {
         TokenManager.save(access: "access-token", refresh: "refresh-token")
         let spy = SpyRemoteStore()
         let state = AppState(remoteStore: spy, startStartupTasks: false)
@@ -219,28 +218,28 @@ final class EraseAllUserDataTests: XCTestCase {
 
         XCTAssertTrue(state.isLoggedIn)
 
-        await state.eraseAllUserData()
+        try await state.eraseAllUserData()
 
         XCTAssertFalse(state.isLoggedIn, "계정 삭제 후 ContentView가 로그인 게이트로 돌아가야 스피너 오버레이에 갇히지 않는다")
     }
 
-    func testEraseAllUserDataTracksAccountDeletedBeforeClearingSession() async {
+    func testEraseAllUserDataTracksAccountDeletedBeforeClearingSession() async throws {
         let analytics = UserFlowSpyAnalytics()
         let state = AppState(remoteStore: SpyRemoteStore(), analytics: analytics, startStartupTasks: false)
 
-        await state.eraseAllUserData()
+        try await state.eraseAllUserData()
 
         let event = analytics.trackedEvents.first
         XCTAssertEqual(event?.name, "account_deleted")
         XCTAssertEqual(event?.properties["source"] as? String, "settings")
     }
 
-    func testEraseAllUserDataClearsTokensImmediatelyAndUsesTokenSnapshotForDelete() async {
+    func testEraseAllUserDataClearsTokensAfterServerSuccessAndUsesTokenSnapshotForDelete() async throws {
         let tokens = FakeAuthTokenStorage(accessToken: "access-token", refreshToken: "refresh-token")
         let spy = SpyRemoteStore()
         let state = AppState(remoteStore: spy, authTokenStorage: tokens, startStartupTasks: false)
 
-        await state.eraseAllUserData()
+        try await state.eraseAllUserData()
 
         XCTAssertNil(tokens.accessToken)
         XCTAssertNil(tokens.refreshToken)
@@ -250,14 +249,61 @@ final class EraseAllUserDataTests: XCTestCase {
             authTokenStorage: tokens,
             startStartupTasks: false
         )
-        XCTAssertFalse(restoredState.isLoggedIn, "계정 삭제 직후 재실행되어도 Keychain 토큰으로 로그인 상태가 복원되면 안 된다")
+        XCTAssertFalse(
+            restoredState.isLoggedIn,
+            "계정 삭제 직후 재실행되어도 Keychain 토큰으로 로그인 상태가 복원되면 안 된다"
+        )
 
         await waitFor(spy.deleteUserDataAccessToken != nil)
-        XCTAssertEqual(spy.deleteUserDataAccessToken, "access-token", "서버 삭제 요청은 Keychain이 아니라 삭제 시점 token snapshot으로 인증해야 한다")
+        XCTAssertEqual(
+            spy.deleteUserDataAccessToken,
+            "access-token",
+            "서버 삭제 요청은 Keychain이 아니라 삭제 시점 token snapshot으로 인증해야 한다"
+        )
         XCTAssertEqual(
             spy.deleteUserDataRefreshToken,
             "refresh-token",
             "삭제 요청 중 access token 만료 시에도 Keychain 없이 refresh snapshot으로 재시도해야 한다"
+        )
+    }
+
+    func testEraseAllUserDataPreservesLocalSessionWhenServerDeleteFails() async {
+        let tokens = FakeAuthTokenStorage(accessToken: "access-token", refreshToken: "refresh-token")
+        let spy = SpyRemoteStore()
+        spy.deleteUserDataError = RemoteStoreError.offline
+        let analytics = UserFlowSpyAnalytics()
+        let state = AppState(
+            remoteStore: spy,
+            analytics: analytics,
+            authTokenStorage: tokens,
+            startStartupTasks: false
+        )
+        state.isLoggedIn = true
+        state.displayName = "기존계정"
+        state.hasCompletedOnboarding = true
+        state.points = 42
+        state.streak = 3
+
+        do {
+            try await state.eraseAllUserData()
+            XCTFail("서버 삭제 실패가 호출자에게 전달되어야 한다")
+        } catch RemoteStoreError.offline {
+            // expected
+        } catch {
+            XCTFail("예상하지 못한 오류: \(error)")
+        }
+
+        XCTAssertEqual(spy.deleteUserDataCallCount, 1)
+        XCTAssertEqual(tokens.accessToken, "access-token")
+        XCTAssertEqual(tokens.refreshToken, "refresh-token")
+        XCTAssertTrue(state.isLoggedIn)
+        XCTAssertEqual(state.displayName, "기존계정")
+        XCTAssertTrue(state.hasCompletedOnboarding)
+        XCTAssertEqual(state.points, 42)
+        XCTAssertEqual(state.streak, 3)
+        XCTAssertFalse(
+            analytics.trackedEvents.contains { $0.name == "account_deleted" },
+            "서버가 거부한 탈퇴를 완료 이벤트로 기록하면 안 된다"
         )
     }
 

@@ -184,7 +184,8 @@ extension View {
         Color.bgOverlayScrim.ignoresSafeArea()
         AppDialog(
             title: "계정을 삭제할까요?",
-            message: "오도독 계정과 씹기 기록, 도토리, 스트릭이 모두 삭제돼요. 이 작업은 되돌릴 수 없어요.",
+            message: "계정이 탈퇴 처리되고 로그인이 해제돼요. "
+                + "프로필과 서비스 이용 기록 일부는 보관 정책에 따라 남을 수 있으며, 이 작업은 되돌릴 수 없어요.",
             primary: .init("계정 삭제", role: .destructive) {},
             secondary: .init("취소", role: .cancel) {},
             onDismiss: {}

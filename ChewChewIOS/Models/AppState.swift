@@ -240,11 +240,6 @@ final class AppState {
     @ObservationIgnored private let authRepository: AuthRepository
     @ObservationIgnored private var didStartStartupTasks = false
 
-    /// 게임 상태 원격 동기화(upsert/delete) 직렬화 큐.
-    /// 짧은 시간에 여러 mutate가 일어나면 detached Task들의 네트워크 도착 순서가 뒤집혀
-    /// 중간 상태가 winner로 굳을 수 있어, 각 작업이 이전 작업 종료를 await하는 체인으로 직렬화한다.
-    @ObservationIgnored private var remoteSyncChain: Task<Void, Never> = Task {}
-
     // MARK: - Init
 
     init(
@@ -393,9 +388,16 @@ final class AppState {
     // MARK: - Erase all user data
 
     @MainActor
-    func eraseAllUserData() async {
+    func eraseAllUserData() async throws {
         let deletionAccessToken = authTokenStorage.accessToken
         let deletionRefreshToken = authTokenStorage.refreshToken
+
+        // 로컬 세션을 먼저 비우면 서버 실패를 복구하거나 재시도할 인증 수단이 사라진다.
+        // DELETE /v1/me의 2xx 응답을 확인한 뒤에만 사용자에게 탈퇴 완료 상태를 보여준다.
+        try await remoteStore.deleteUserData(
+            accessToken: deletionAccessToken,
+            refreshToken: deletionRefreshToken
+        )
 
         analytics.track(.accountDeleted(source: "settings"))
         mealSession.resetRuntimeState()
@@ -417,7 +419,7 @@ final class AppState {
         analytics.setUserId(nil)
         SentryService.setUser(id: nil)
         MealNotificationService.cancelMealReminders()
-        Task { await mealPushCoordinator.clearRegistration() }
+        await mealPushCoordinator.clearRegistration()
 
         authTokenStorage.clear()
 
@@ -425,7 +427,6 @@ final class AppState {
             home.reset()
         }
         clearPersistedSnapshot()
-        scheduleRemoteUserDataDeletion(accessToken: deletionAccessToken, refreshToken: deletionRefreshToken)
     }
 
     // MARK: - Reset
@@ -616,15 +617,6 @@ final class AppState {
 
     private func clearAnalyticsUserId() {
         UserDefaults.standard.removeObject(forKey: Self.analyticsUserIdKey)
-    }
-
-    private func scheduleRemoteUserDataDeletion(accessToken: String?, refreshToken: String?) {
-        let store = remoteStore
-        let previous = remoteSyncChain
-        remoteSyncChain = Task.detached {
-            _ = await previous.value
-            try? await store.deleteUserData(accessToken: accessToken, refreshToken: refreshToken)
-        }
     }
 
     // MARK: - Server home sync
