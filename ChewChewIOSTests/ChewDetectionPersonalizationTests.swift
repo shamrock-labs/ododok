@@ -133,6 +133,34 @@ final class ChewDetectionPersonalizationTests: XCTestCase {
     }
 
     @MainActor
+    func testLateNoProfileResponseDoesNotClearTheActiveAccountsProfile() async throws {
+        let suiteName = "ChewDetectionProfileManagerTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let userBProfile = makeRemoteProfile(id: UUID(), amplitude: 0.009)
+        let remote = ControlledAccountSwitchRemoteStore(secondProfile: userBProfile)
+        let manager = ChewDetectionProfileManager(
+            remoteStore: remote,
+            cache: UserDefaultsChewDetectionProfileCache(defaults: defaults),
+            legacyStore: UserDefaultsChewProfileStore(defaults: defaults)
+        )
+
+        let userAActivation = Task {
+            await manager.activate(userId: "user-a", forceRefresh: true)
+        }
+        await remote.waitUntilFirstFetchStarts()
+
+        await manager.activate(userId: "user-b", forceRefresh: true)
+        XCTAssertEqual(manager.currentProfile?.id, userBProfile.id)
+
+        await remote.completeFirstFetch(with: nil)
+        await userAActivation.value
+
+        XCTAssertEqual(manager.activeUserId, "user-b")
+        XCTAssertEqual(manager.currentProfile?.id, userBProfile.id)
+    }
+
+    @MainActor
     func testClearingLocalAccountDataRemovesProfileCacheAndOwnedLegacySettings() throws {
         let suiteName = "ChewDetectionProfileManagerTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
@@ -318,6 +346,66 @@ private final class ChewProfileRemoteStoreStub: RemoteStore {
     }
 
     func resetCurrentChewDetectionProfile(modelVersion: String) async throws { serverProfile = nil }
+    func upsertProfile(_ profile: ProfileDTO) async throws {}
+    func fetchProfile() async throws -> ProfileDTO? { nil }
+    func fetchUserStats() async throws -> UserStatsDTO? { nil }
+    func deleteUserData() async throws {}
+    func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO {
+        throw StubError.unused
+    }
+    func fetchHome(deviceId: String) async throws -> HomeStateDTO { .empty(deviceId: deviceId) }
+    func earnAttendance(deviceId: String, idempotencyKey: String) async throws -> AttendanceResultDTO {
+        throw StubError.unused
+    }
+    func fetchChewingSessions(
+        deviceId: String,
+        since: Date,
+        until: Date?
+    ) async throws -> [ChewingSessionDTO] { [] }
+    func deleteChewingSession(id: UUID, deviceId: String) async throws {}
+    func deleteAllChewingSessions(deviceId: String) async throws {}
+    func uploadIMUCSV(sessionId: UUID, deviceId: String, csvData: Data) async throws -> String { "" }
+}
+
+private actor ControlledAccountSwitchRemoteStore: RemoteStore {
+    enum StubError: Error { case unused }
+
+    private let secondProfile: ChewDetectionProfileDTO
+    private var fetchCount = 0
+    private var firstFetchStarted = false
+    private var firstFetchWaiters: [CheckedContinuation<Void, Never>] = []
+    private var firstFetchContinuation: CheckedContinuation<ChewDetectionProfileDTO?, Never>?
+
+    init(secondProfile: ChewDetectionProfileDTO) {
+        self.secondProfile = secondProfile
+    }
+
+    func waitUntilFirstFetchStarts() async {
+        if firstFetchStarted { return }
+        await withCheckedContinuation { firstFetchWaiters.append($0) }
+    }
+
+    func completeFirstFetch(with profile: ChewDetectionProfileDTO?) {
+        firstFetchContinuation?.resume(returning: profile)
+        firstFetchContinuation = nil
+    }
+
+    func fetchCurrentChewDetectionProfile(modelVersion: String) async throws -> ChewDetectionProfileDTO? {
+        fetchCount += 1
+        if fetchCount == 1 {
+            firstFetchStarted = true
+            firstFetchWaiters.forEach { $0.resume() }
+            firstFetchWaiters.removeAll()
+            return await withCheckedContinuation { firstFetchContinuation = $0 }
+        }
+        return secondProfile
+    }
+
+    func createChewDetectionProfile(
+        _ profile: ChewDetectionProfileRequestDTO,
+        idempotencyKey: String
+    ) async throws -> ChewDetectionProfileDTO { throw StubError.unused }
+    func resetCurrentChewDetectionProfile(modelVersion: String) async throws { throw StubError.unused }
     func upsertProfile(_ profile: ProfileDTO) async throws {}
     func fetchProfile() async throws -> ProfileDTO? { nil }
     func fetchUserStats() async throws -> UserStatsDTO? { nil }

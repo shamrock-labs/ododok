@@ -232,7 +232,7 @@ final class ChewDetectionProfileManager {
                 return
             }
             cache.storeResolved(nil, userId: userId, modelVersion: ChewDetectionEngine.modelVersion, at: now())
-            currentProfile = nil
+            if activeUserId == userId { currentProfile = nil }
         } catch {
             // 동기화 실패 시 식사 시작을 막지 않고 마지막 캐시(없으면 기본 DSP)를 유지한다.
         }
