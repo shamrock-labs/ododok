@@ -178,10 +178,16 @@ struct ContentView: View {
             primary: .init("지금 바로 하기") {
                 presentCalibrationFlowAfterDialogDismissal()
             },
-            secondary: .init("다음에 할게요", role: .cancel) {}
+            secondary: .init("다음에 할게요", role: .cancel) {
+                state.analytics.track(.chewProfileSetupDismissed(source: .onboarding, step: .intro))
+            }
         )
         .fullScreenCover(isPresented: $isCalibrationFlowPresented) {
-            MeasurementPersonalizationFlow(remoteStore: state.remoteStore) { settings in
+            MeasurementPersonalizationFlow(
+                source: .onboarding,
+                analytics: state.analytics,
+                remoteStore: state.remoteStore
+            ) { settings in
                 try await state.saveChewDetectionSettings(settings)
             }
         }
@@ -328,6 +334,7 @@ struct ContentView: View {
         guard isCalibrationOfferQueued else { return }
         Task { @MainActor in
             await Task.yield()
+            state.analytics.track(.chewProfileSetupOffered(source: .onboarding))
             isCalibrationPromptPresented = true
             isCalibrationOfferQueued = false
         }

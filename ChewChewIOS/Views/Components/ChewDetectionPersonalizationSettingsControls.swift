@@ -25,6 +25,8 @@ struct ChewPersonalizationSettingsControls: View {
         }
         .fullScreenCover(isPresented: $isPersonalizationPresented) {
             MeasurementPersonalizationFlow(
+                source: .settings,
+                analytics: state.analytics,
                 remoteStore: state.remoteStore
             ) { updatedSettings in
                 try await state.saveChewDetectionSettings(updatedSettings)
