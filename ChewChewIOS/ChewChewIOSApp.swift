@@ -8,6 +8,7 @@ import KakaoSDKCommon
 struct ChewChewIOSApp: App {
     @State private var appState: AppState
     @State private var serverAvailability: ServerAvailabilityStore
+    @State private var appOpenAnalyticsTracker = AppOpenAnalyticsTracker()
     @Environment(\.scenePhase) private var scenePhase
 
     @UIApplicationDelegateAdaptor private var notifDelegate: NotificationDelegate
@@ -185,6 +186,19 @@ struct ChewChewIOSApp: App {
         // 기본 onChange는 변경 시에만 호출돼, 앱 launch 직후 phase가 .active로
         // 세팅되는 순간을 놓쳐 일일 출석 보너스 트리거가 누락됐다.
         .onChange(of: scenePhase, initial: true) { _, newPhase in
+            let analyticsPhase: AppLifecyclePhase = switch newPhase {
+            case .active: .active
+            case .background: .background
+            default: .inactive
+            }
+            if let event = appOpenAnalyticsTracker.event(
+                for: analyticsPhase,
+                isLoggedIn: appState.isLoggedIn,
+                onboardingCompleted: appState.hasCompletedOnboarding,
+                chewProfileConfigured: appState.chewProfileManager.currentSettings != nil
+            ) {
+                appState.analytics.track(event)
+            }
             guard serverAvailability.status == .available else { return }
             appState.sceneDidChange(toForeground: newPhase == .active)
         }

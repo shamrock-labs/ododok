@@ -192,6 +192,7 @@ struct SettingsView: View {
             do {
                 try await state.resetChewDetectionSettings()
                 personalizationSettings = nil
+                state.analytics.track(.chewProfileReset(source: .settings))
             } catch {
                 personalizationFailureMessage = (error as? RemoteStoreError)?.userMessage
                     ?? "잠시 후 다시 시도해 주세요."

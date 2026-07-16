@@ -14,9 +14,116 @@ struct AnalyticsEvent {
     }
 }
 
+enum AppOpenLaunchType: String {
+    case coldStart = "cold_start"
+    case foreground
+}
+
+enum AnalyticsAuthenticationState: String {
+    case loggedIn = "logged_in"
+    case loggedOut = "logged_out"
+}
+
+enum ChewProfileSetupSource: String {
+    case onboarding
+    case settings
+}
+
+enum ChewProfileSetupStep: String {
+    case intro
+    case connection
+    case restingSignal = "resting_signal"
+    case chewingSignal = "chewing_signal"
+    case verification
+    case ready
+}
+
+enum ChewProfileSetupFailureReason: String {
+    case motionUnavailable = "motion_unavailable"
+    case insufficientChewingSignal = "insufficient_chewing_signal"
+    case insufficientSignalSeparation = "insufficient_signal_separation"
+    case verificationOutOfRange = "verification_out_of_range"
+    case sensorError = "sensor_error"
+    case profileSaveFailed = "profile_save_failed"
+}
+
 // MARK: - 표준 이벤트 팩토리 (v1 트래킹 플랜)
 
 extension AnalyticsEvent {
+    static func appOpened(
+        launchType: AppOpenLaunchType,
+        authenticationState: AnalyticsAuthenticationState,
+        onboardingCompleted: Bool,
+        chewProfileConfigured: Bool
+    ) -> AnalyticsEvent {
+        .init("app_opened", [
+            "launch_type": launchType.rawValue,
+            "authentication_state": authenticationState.rawValue,
+            "onboarding_completed": onboardingCompleted,
+            "chew_profile_configured": chewProfileConfigured
+        ])
+    }
+
+    static func chewProfileSetupOffered(source: ChewProfileSetupSource) -> AnalyticsEvent {
+        .init("chew_profile_setup_offered", ["source": source.rawValue])
+    }
+
+    static func chewProfileSetupStarted(source: ChewProfileSetupSource) -> AnalyticsEvent {
+        .init("chew_profile_setup_started", ["source": source.rawValue])
+    }
+
+    static func chewProfileSetupStepCompleted(
+        source: ChewProfileSetupSource,
+        step: ChewProfileSetupStep,
+        durationSec: Int
+    ) -> AnalyticsEvent {
+        .init("chew_profile_setup_step_completed", [
+            "source": source.rawValue,
+            "step": step.rawValue,
+            "duration_sec": durationSec
+        ])
+    }
+
+    static func chewProfileSetupCompleted(
+        source: ChewProfileSetupSource,
+        durationSec: Int,
+        retryCount: Int
+    ) -> AnalyticsEvent {
+        .init("chew_profile_setup_completed", [
+            "source": source.rawValue,
+            "duration_sec": durationSec,
+            "retry_count": retryCount
+        ])
+    }
+
+    static func chewProfileSetupFailed(
+        source: ChewProfileSetupSource,
+        step: ChewProfileSetupStep,
+        reason: ChewProfileSetupFailureReason,
+        retryCount: Int
+    ) -> AnalyticsEvent {
+        .init("chew_profile_setup_failed", [
+            "source": source.rawValue,
+            "step": step.rawValue,
+            "reason": reason.rawValue,
+            "retry_count": retryCount
+        ])
+    }
+
+    static func chewProfileSetupDismissed(
+        source: ChewProfileSetupSource,
+        step: ChewProfileSetupStep
+    ) -> AnalyticsEvent {
+        .init("chew_profile_setup_dismissed", [
+            "source": source.rawValue,
+            "step": step.rawValue
+        ])
+    }
+
+    static func chewProfileReset(source: ChewProfileSetupSource) -> AnalyticsEvent {
+        .init("chew_profile_reset", ["source": source.rawValue])
+    }
+
     /// 온보딩(닉네임 입력 + 튜토리얼)을 끝까지 마침. 활성화 깔때기의 핵심 전환점.
     static func onboardingCompleted() -> AnalyticsEvent {
         .init("onboarding_completed")

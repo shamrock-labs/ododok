@@ -18,7 +18,7 @@
 
 | 흐름 | 주요 이벤트 | 필수 속성 | 주 식별자 | 확인할 것 |
 | -- | -- | -- | -- | -- |
-| 설치 및 앱 진입 | Amplitude SDK lifecycle/session 자동 이벤트 | `environment` | `device_id` | 설치/진입 모수, 로그인 전 이탈 |
+| 설치 및 앱 진입 | `app_opened` | `launch_type`, `authentication_state`, `onboarding_completed`, `chew_profile_configured`, `environment` | 로그인 전 `device_id`, 로그인 후 `user_id` | 환경별 진입 모수, 로그인 전 이탈 |
 | 로그인 성공 | `login` | `method`, `onboarding_completed`, `environment` | `user_id` | 소셜 로그인 방법별 전환 |
 | 온보딩 완료 | `onboarding_completed` | `environment` | `user_id` | 로그인 후 초기 세팅 완료 |
 | 권한 허용 | `permission_result` | `type`, `granted`, `environment` | `user_id` | 측정 시작 전 권한 이탈 |
@@ -32,6 +32,7 @@
 | 로그아웃 | `logout` | `source`, `environment` | 마지막 로그인 `user_id` | 계정 세션 종료 |
 | 탈퇴 | `account_deleted` | `source`, `environment` | 마지막 로그인 `user_id` | 탈퇴 발생 계정 |
 | 재가입 | `login` | `method`, `onboarding_completed`, `environment` | 새 서버 `users.id` | 같은 `anonymous_device_id`의 새 계정 로그인 |
+| 개인 씹기 프로필 설정 | `chew_profile_setup_offered`, `chew_profile_setup_started`, `chew_profile_setup_step_completed`, `chew_profile_setup_completed`, `chew_profile_setup_failed`, `chew_profile_setup_dismissed`, `chew_profile_reset` | `source`, 단계·소요 시간·실패 사유·재시도 횟수, `environment` | `user_id` | 온보딩·설정 진입별 전환과 이탈 |
 
 ## 기존 이벤트와 프로퍼티
 
@@ -48,16 +49,16 @@
 
 ## Amplitude 차트 구성
 
-### 1. 설치에서 로그인 전환
+### 1. 앱 진입에서 로그인 전환
 
 목적은 익명 설치/진입이 로그인 계정으로 얼마나 전환되는지 보는 것이다.
 
 | 단계 | 이벤트 | 기준 |
 | -- | -- | -- |
-| 1 | Amplitude SDK lifecycle 설치 또는 앱 진입 이벤트 | `device_id` |
+| 1 | `app_opened` | 로그인 전 `device_id`, 로그인 후 `user_id` |
 | 2 | `login` | `device_id`에서 `user_id`로 전환된 사용자 |
 
-필터는 `environment = prod`를 기본으로 둔다. 세그먼트는 `method`로 나눈다. 로그인 전 홈 사용은 제품 정책상 허용하지 않으므로 로그인 전 행동 퍼널은 만들지 않는다.
+필터는 `environment = prod`를 기본으로 둔다. 세그먼트는 `launch_type`, `authentication_state`, `method`로 나눈다. SDK 자동 `[Amplitude] Application Opened`는 계속 수집하지만 앱의 `environment` 속성이 없으므로 환경별 퍼널에는 사용하지 않는다.
 
 ### 2. 로그인에서 첫 핵심 기능 시도
 
@@ -118,6 +119,21 @@
 | 재가입 후보 | 같은 `anonymous_device_id`에서 `account_deleted` 이후 다른 `user_id`의 `login` | `anonymous_device_id` |
 
 서버는 탈퇴 시 기존 계정을 `WITHDRAWN`으로 소프트 딜리트하고 소셜 인증 연결을 제거한다. 같은 소셜 계정으로 다시 로그인하면 새 `users.id`가 발급되므로, Amplitude에서도 재가입 계정은 새 `user_id`로 본다.
+
+### 7. 개인 씹기 프로필 설정
+
+온보딩 직후 제안 흐름은 아래 퍼널로 본다.
+
+| 단계 | 이벤트 | 조건 |
+| -- | -- | -- |
+| 1 | `onboarding_completed` | `environment = prod` |
+| 2 | `chew_profile_setup_offered` | `source = onboarding` |
+| 3 | `chew_profile_setup_started` | `source = onboarding` |
+| 4 | `chew_profile_setup_completed` | `source = onboarding` |
+
+설정에서 최초 설정하거나 재측정하는 흐름은 `chew_profile_setup_started where source = settings`에서 `chew_profile_setup_completed`로 본다. 보조 차트는 `chew_profile_setup_failed`를 `step`, `reason`으로, `chew_profile_setup_dismissed`를 `source`, `step`으로 분해한다.
+
+분석 단계명은 내부 구현 용어와 분리한다. 정지 신호는 `resting_signal`, 자연스러운 씹기 신호는 `chewing_signal`, 최종 확인은 `verification`을 사용한다. 모든 개인 씹기 프로필 이벤트는 `CompositeAnalytics`를 통과하므로 `environment = dev|prod`가 자동 첨부된다.
 
 ## 향후 아하 모먼트/리텐션 기준 연결
 

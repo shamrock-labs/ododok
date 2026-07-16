@@ -5,6 +5,7 @@ struct MeasurementPersonalizationFlow: View {
 
     @State private var store: MeasurementOnboardingStore
     @State private var connectionMonitor: AirPodsConnectionMonitor
+    @State private var analyticsTracker: ChewProfileSetupAnalyticsTracker
     @State private var isPreparingAirPods = false
     @State private var isSavingProfile = false
     @State private var saveErrorMessage: String?
@@ -15,6 +16,8 @@ struct MeasurementPersonalizationFlow: View {
     private let onSaved: (PersonalizedChewDetectionSettings) async throws -> Void
 
     init(
+        source: ChewProfileSetupSource,
+        analytics: AnalyticsService,
         remoteStore: any RemoteStore = NoopRemoteStore(),
         readinessService: (any AirPodsAudioReadinessServicing)? = nil,
         onSaved: @escaping (PersonalizedChewDetectionSettings) async throws -> Void
@@ -34,6 +37,10 @@ struct MeasurementPersonalizationFlow: View {
         let artifactUploader = CalibrationArtifactUploadQueue(remoteStore: remoteStore)
 
         _connectionMonitor = State(initialValue: connectionMonitor)
+        _analyticsTracker = State(initialValue: ChewProfileSetupAnalyticsTracker(
+            source: source,
+            analytics: analytics
+        ))
         _store = State(initialValue: MeasurementOnboardingStore(
             isAirPodsConnected: isConnected,
             sampler: sampler,
@@ -49,12 +56,16 @@ struct MeasurementPersonalizationFlow: View {
         MeasurementOnboardingView(
             store: store,
             onComplete: saveAndDismiss,
-            onSkip: { dismiss() },
+            onSkip: {
+                analyticsTracker.dismiss(at: store.stage)
+                dismiss()
+            },
             onRetryConnection: requestAirPodsReadiness,
             skipTitle: "닫기",
             isPreparingAirPods: isPreparingAirPods
         )
         .onAppear {
+            analyticsTracker.start()
             refreshConnection()
             connectionMonitor.start { connected in
                 Task { @MainActor in store.setAirPodsConnected(connected) }
@@ -69,7 +80,8 @@ struct MeasurementPersonalizationFlow: View {
             readinessService.stop()
             connectionMonitor.stop()
         }
-        .onChange(of: store.stage) { _, stage in
+        .onChange(of: store.stage) { oldStage, stage in
+            analyticsTracker.transition(from: oldStage, to: stage, issue: store.issue)
             if stage == .connection {
                 requestAirPodsReadiness()
             }
@@ -138,8 +150,10 @@ struct MeasurementPersonalizationFlow: View {
             defer { isSavingProfile = false }
             do {
                 try await onSaved(settings)
+                analyticsTracker.complete()
                 dismiss()
             } catch {
+                analyticsTracker.failSave()
                 saveErrorMessage = (error as? RemoteStoreError)?.userMessage
                     ?? "잠시 후 다시 시도해 주세요."
             }
