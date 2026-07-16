@@ -9,6 +9,12 @@ enum StreakDayPresentationState: Equatable {
     case unknownUnavailable
 }
 
+enum StreakCalendarRingKind: Equatable {
+    case neutral
+    case attended
+    case frozen
+}
+
 struct StreakDayPresentation: Equatable, Identifiable {
     let dateID: String
     let dayOfMonth: Int
@@ -17,6 +23,17 @@ struct StreakDayPresentation: Equatable, Identifiable {
 
     var id: String { dateID }
     var accessibilityIdentifier: String { "StreakDay-\(dateID)" }
+
+    var ringKind: StreakCalendarRingKind {
+        switch state {
+        case .attended:
+            .attended
+        case .frozen:
+            .frozen
+        case .missing, .upcoming, .unknownLoading, .unknownUnavailable:
+            .neutral
+        }
+    }
 
     var accessibilityLabel: String {
         let status = switch state {
@@ -210,7 +227,6 @@ struct StreakDetailSheet: View {
         .padding(.bottom, AppSpacing.cardOuterBottom)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color.bgPage.ignoresSafeArea())
-        .accessibilityIdentifier("StreakDetailSheet")
         .task { await home.fetchStreakDetail() }
     }
 
@@ -255,12 +271,16 @@ struct StreakDetailSheet: View {
     }
 
     private var calendarSection: some View {
-        VStack(alignment: .leading, spacing: AppSpacing.three) {
+        VStack(alignment: .leading, spacing: 0) {
             monthHeader
+                .padding(.horizontal, AppSpacing.four)
+                .padding(.vertical, AppSpacing.inner)
             if presentation.showsRetry {
                 retryState
+                    .padding(.horizontal, AppSpacing.three)
             } else {
                 weekdayLabels
+                    .padding(.horizontal, AppSpacing.three)
                 LazyVGrid(
                     columns: Array(repeating: GridItem(.flexible(), spacing: AppSpacing.one), count: 7),
                     spacing: AppSpacing.one
@@ -269,10 +289,13 @@ struct StreakDetailSheet: View {
                         if let day = presentation.days[index] {
                             StreakDayCell(day: day)
                         } else {
-                            Color.clear.frame(height: Metrics.dayCircle)
+                            Color.clear.frame(height: Metrics.calendarCellHeight)
                         }
                     }
                 }
+                .padding(.horizontal, AppSpacing.three)
+                .padding(.top, AppSpacing.oneHalf)
+                .padding(.bottom, AppSpacing.three)
                 .accessibilityIdentifier("StreakMonthGrid")
             }
         }
@@ -366,53 +389,41 @@ private struct StreakDayCell: View {
 
     var body: some View {
         ZStack {
-            Circle().fill(surface)
-            Circle().stroke(border, lineWidth: borderWidth)
-            switch day.state {
-            case .frozen:
-                Image(systemName: "shield.fill")
-                    .font(.appFont(.semiboldCallout))
-                    .foregroundStyle(Color.freezeForeground)
-            case .missing, .attended, .upcoming, .unknownLoading, .unknownUnavailable:
-                Text("\(day.dayOfMonth)")
-                    .font(.appFont(.heavyCallout))
-                    .foregroundStyle(foreground)
-                    .monospacedDigit()
-            }
+            CalendarStatusRing(
+                completedSegments: day.ringKind == .neutral ? 0 : 1,
+                totalSegments: 1,
+                accent: ringAccent,
+                fill: day.isToday ? Color.borderSelected.opacity(0.7) : Color.clear
+            )
+            Text("\(day.dayOfMonth)")
+                .font(.appFont(day.isToday ? .heavyCaption : .semiboldCaption))
+                .foregroundStyle(dayNumberColor)
+                .monospacedDigit()
         }
-        .frame(width: Metrics.dayCircle, height: Metrics.dayCircle)
+        .frame(width: Metrics.dateRing, height: Metrics.dateRing)
         .frame(maxWidth: .infinity)
+        .frame(height: Metrics.calendarCellHeight)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(day.accessibilityLabel)
         .accessibilityIdentifier(day.accessibilityIdentifier)
     }
 
-    private var surface: Color {
-        switch day.state {
-        case .missing, .unknownLoading, .unknownUnavailable: Color.bgSunken
-        case .upcoming: Color.bgSurface.opacity(0.45)
-        case .attended: Color.tintPrimary
-        case .frozen: Color.freezeSurface
+    private var ringAccent: Color {
+        switch day.ringKind {
+        case .neutral, .attended:
+            Color.acorn500
+        case .frozen:
+            Color.freezeForeground
         }
     }
 
-    private var foreground: Color {
+    private var dayNumberColor: Color {
         switch day.state {
-        case .attended: Color.textActionInverse
-        case .upcoming: Color.textTertiary
-        case .missing, .frozen, .unknownLoading, .unknownUnavailable: Color.textSubtle
+        case .upcoming, .unknownLoading, .unknownUnavailable:
+            Color.textTertiary
+        case .missing, .attended, .frozen:
+            Color.textPrimary
         }
-    }
-
-    private var border: Color {
-        if day.isToday, day.state == .attended { return Color.butter400 }
-        if day.state == .frozen { return Color.freezeBorder }
-        if day.state == .attended { return Color.tintPrimary }
-        return Color.clear
-    }
-
-    private var borderWidth: CGFloat {
-        day.isToday && day.state == .attended ? Metrics.todayBorder : AppSize.border
     }
 }
 
@@ -425,8 +436,11 @@ private struct StreakLegendItem: View {
     var body: some View {
         HStack(spacing: AppSpacing.oneHalf) {
             ZStack {
-                Circle().fill(kind == .attended ? Color.tintPrimary : Color.freezeSurface)
-                Circle().stroke(kind == .attended ? Color.tintPrimary : Color.freezeBorder, lineWidth: AppSize.border)
+                CalendarStatusRing(
+                    completedSegments: 1,
+                    totalSegments: 1,
+                    accent: kind == .attended ? Color.acorn500 : Color.freezeForeground
+                )
                 if kind == .frozen {
                     Image(systemName: "shield.fill")
                         .font(.appFont(.semiboldMicro))
@@ -443,7 +457,7 @@ private struct StreakLegendItem: View {
 
 private enum Metrics {
     static let calendarButton = AppSize.controlLarge
-    static let dayCircle: CGFloat = 40
-    static let todayBorder: CGFloat = 4
+    static let calendarCellHeight = AppSize.controlXLarge
+    static let dateRing = AppSize.controlXLarge
     static let retryHeight: CGFloat = 88
 }

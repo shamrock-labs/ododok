@@ -91,7 +91,13 @@ struct ContentView: View {
             if state.isLoggedIn {
                 mainTabs
             } else {
+                #if DEBUG
+                LoginView(store: state.auth) {
+                    state.activateDebugProfile()
+                }
+                #else
                 LoginView(store: state.auth)
+                #endif
             }
         }
     }

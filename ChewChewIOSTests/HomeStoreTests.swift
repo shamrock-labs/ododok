@@ -883,6 +883,72 @@ final class HomeStoreTests: XCTestCase {
     }
 }
 
+#if DEBUG
+final class StreakDemoFixtureTests: XCTestCase {
+    func testCurrentMonthFixtureShowsLongStreakAndFreezeDays() {
+        let detail = StreakDemoFixture.detail(month: nil)
+
+        XCTAssertEqual(StreakDemoFixture.home.streak, 18)
+        XCTAssertEqual(StreakDemoFixture.home.freezeInventory, 2)
+        XCTAssertEqual(detail.resolvedMonth, "2026-07")
+        XCTAssertEqual(detail.oldestRecordedOn, "2026-04-08")
+        XCTAssertEqual(detail.current, 18)
+        XCTAssertEqual(detail.startedOn, "2026-06-29")
+        XCTAssertEqual(detail.freezeInventory, 2)
+        XCTAssertEqual(detail.days.first { $0.date == "2026-07-03" }?.state, .frozen)
+        XCTAssertEqual(detail.days.first { $0.date == "2026-07-11" }?.state, .frozen)
+        XCTAssertEqual(detail.days.first { $0.date == "2026-07-16" }?.state, .attended)
+    }
+
+    func testPreviousMonthFixtureContainsBrokenAndCurrentStreakSegments() {
+        let detail = StreakDemoFixture.detail(month: "2026-06")
+
+        XCTAssertEqual(detail.resolvedMonth, "2026-06")
+        XCTAssertEqual(detail.days.first { $0.date == "2026-06-06" }?.state, .frozen)
+        XCTAssertNil(detail.days.first { $0.date == "2026-06-13" })
+        XCTAssertEqual(detail.days.first { $0.date == "2026-06-29" }?.state, .attended)
+        XCTAssertEqual(detail.days.first { $0.date == "2026-06-30" }?.state, .attended)
+    }
+
+    func testOutOfRangeMonthFixtureKeepsContractWithNoRows() {
+        let detail = StreakDemoFixture.detail(month: "2026-03")
+
+        XCTAssertEqual(detail.resolvedMonth, "2026-03")
+        XCTAssertTrue(detail.days.isEmpty)
+        XCTAssertEqual(detail.oldestRecordedOn, "2026-04-08")
+    }
+
+    func testActiveDebugProfileRoutesHomeAndStreakAwayFromRemoteStore() async throws {
+        let repository = RemoteStoreHomeRepository(
+            remoteStore: NoopRemoteStore(),
+            debugProfileIsActive: { true }
+        )
+
+        let home = try await repository.fetchHome()
+        let detail = try await repository.fetchStreakDetail(month: "2026-06")
+
+        XCTAssertEqual(home.streak, 18)
+        XCTAssertEqual(home.freezeInventory, 2)
+        XCTAssertEqual(detail.resolvedMonth, "2026-06")
+        XCTAssertFalse(detail.days.isEmpty)
+    }
+
+    func testInactiveDebugProfileKeepsExistingRemoteStoreRoute() async throws {
+        let repository = RemoteStoreHomeRepository(
+            remoteStore: NoopRemoteStore(),
+            debugProfileIsActive: { false }
+        )
+
+        let home = try await repository.fetchHome()
+        let detail = try await repository.fetchStreakDetail(month: "2026-06")
+
+        XCTAssertEqual(home.streak, 0)
+        XCTAssertEqual(home.freezeInventory, 0)
+        XCTAssertTrue(detail.days.isEmpty)
+    }
+}
+#endif
+
 private struct AttendanceRequestSpy: Equatable {
     let decision: FreezeDecisionDTO?
     let expectedMissedDays: Int?

@@ -166,3 +166,54 @@ struct AppSheetTextActionButton: View {
         .disabled(isProcessing)
     }
 }
+
+/// 기록과 스트릭 캘린더가 공유하는 날짜 상태 링.
+/// 식사 기록은 분할 링을, 하루 단위 스트릭은 연속 링을 같은 시각 토큰으로 표현한다.
+struct CalendarStatusRing: View {
+    let completedSegments: Int
+    let totalSegments: Int
+    let accent: Color
+    var fill: Color = .clear
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(fill)
+            Circle()
+                .stroke(Color.hairline, lineWidth: RingMetrics.baseLineWidth)
+
+            if totalSegments == 1, completedSegments > 0 {
+                Circle()
+                    .stroke(
+                        accent,
+                        style: StrokeStyle(
+                            lineWidth: RingMetrics.progressLineWidth,
+                            lineCap: .round
+                        )
+                    )
+            } else if totalSegments > 1 {
+                ForEach(0..<totalSegments, id: \.self) { index in
+                    Circle()
+                        .trim(
+                            from: CGFloat(index) / CGFloat(totalSegments) + RingMetrics.segmentGap,
+                            to: CGFloat(index + 1) / CGFloat(totalSegments) - RingMetrics.segmentGap
+                        )
+                        .stroke(
+                            index < completedSegments ? accent : Color.clear,
+                            style: StrokeStyle(
+                                lineWidth: RingMetrics.progressLineWidth,
+                                lineCap: .round
+                            )
+                        )
+                        .rotationEffect(.degrees(-90))
+                }
+            }
+        }
+    }
+}
+
+private enum RingMetrics {
+    static let baseLineWidth: CGFloat = 3
+    static let progressLineWidth: CGFloat = 3.2
+    static let segmentGap: CGFloat = 0.018
+}

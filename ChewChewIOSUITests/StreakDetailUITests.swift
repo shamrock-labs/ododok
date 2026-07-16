@@ -15,21 +15,26 @@ final class StreakDetailUITests: XCTestCase {
         super.tearDown()
     }
 
-    func testHomeStreakButtonOpensDetailSheetWithStandardHeader() {
-        launch()
+    func testDebugProfileLoginOpensPopulatedStreakHistoryWithoutOAuth() {
+        app.launchArguments = ["-resetState", "-useNoopRemote", "-skipAttendanceDialog"]
+        app.launch()
+
+        let debugLogin = app.buttons["DebugProfileLoginButton"]
+        XCTAssertTrue(debugLogin.waitForExistence(timeout: 10))
+        debugLogin.tap()
 
         let streakButton = app.buttons["StreakDetailButton"]
-        XCTAssertTrue(streakButton.waitForExistence(timeout: 10))
-        streakButton.tap()
+        XCTAssertTrue(streakButton.waitForExistence(timeout: 5))
+        tapWhenHittable(streakButton)
 
-        XCTAssertTrue(app.otherElements["StreakDetailSheet"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["스트릭"].exists)
-        XCTAssertTrue(app.buttons["StreakDetailCloseButton"].exists)
+        XCTAssertTrue(app.buttons["StreakDetailCloseButton"].waitForExistence(timeout: 3))
+        XCTAssertTrue(app.staticTexts["18일째"].exists)
+        XCTAssertTrue(app.staticTexts["6월 29일부터 이어가는 중"].exists)
+        XCTAssertTrue(app.staticTexts["2026년 7월"].exists)
         XCTAssertTrue(app.otherElements["StreakSummaryCard"].exists)
         XCTAssertTrue(app.otherElements["StreakMonthGrid"].exists)
-
-        app.buttons["StreakDetailCloseButton"].tap()
-        XCTAssertTrue(app.otherElements["StreakDetailSheet"].waitForNonExistence(timeout: 3))
+        XCTAssertTrue(app.otherElements["StreakDay-2026-07-03"].exists)
+        XCTAssertTrue(app.otherElements["StreakDay-2026-07-16"].exists)
     }
 
     func testFreezeRecoveryAvailableRequiresExplicitUse() {
@@ -98,7 +103,7 @@ final class StreakDetailUITests: XCTestCase {
     private func launch(recoveryArgument: String? = nil, additionalArguments: [String] = []) {
         app.launchArguments = [
             "-resetState", "-skipOnboarding", "-forceLogin", "-useNoopRemote",
-        ] + recoveryArgument.map { [$0] } + additionalArguments
+        ] + (recoveryArgument.map { [$0] } ?? []) + additionalArguments
         app.launch()
     }
 
@@ -113,6 +118,15 @@ final class StreakDetailUITests: XCTestCase {
         XCTAssertTrue(app.buttons["프리즈 2개 사용하기"].exists)
         XCTAssertTrue(app.buttons["사용하지 않기"].exists)
         XCTAssertFalse(app.buttons["닫기"].exists)
+    }
+
+    private func tapWhenHittable(_ element: XCUIElement, timeout: TimeInterval = 5) {
+        let expectation = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "isHittable == true"),
+            object: element
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: timeout), .completed)
+        element.tap()
     }
 
 }

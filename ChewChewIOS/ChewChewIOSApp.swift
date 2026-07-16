@@ -112,12 +112,32 @@ struct ChewChewIOSApp: App {
         return !v.isEmpty && !v.contains("REPLACE") && !v.contains("$(")
     }
 
+    static func shouldPresentContent(
+        serverStatus: ServerAvailabilityStore.Status,
+        isLoggedIn: Bool,
+        isDebugProfileActive: Bool
+    ) -> Bool {
+        #if DEBUG
+        return serverStatus == .available || !isLoggedIn || isDebugProfileActive
+        #else
+        return serverStatus == .available
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
             Group {
-                if serverAvailability.status == .available {
+                if Self.shouldPresentContent(
+                    serverStatus: serverAvailability.status,
+                    isLoggedIn: appState.isLoggedIn,
+                    isDebugProfileActive: appState.isDebugProfileActive
+                ) {
                     ContentView()
                         .task {
+                            guard serverAvailability.status == .available else { return }
+                            #if DEBUG
+                            guard !appState.isDebugProfileActive else { return }
+                            #endif
                             // 서버 준비가 확인된 뒤에만 앱 API 흐름을 시작한다.
                             await appState.startStartupTasks()
                             await appState.mealResults.fetchTodaySessions()

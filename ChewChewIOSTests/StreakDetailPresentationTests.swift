@@ -69,6 +69,10 @@ final class StreakDetailPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.day(id: "2026-07-13")?.state, .attended)
         XCTAssertEqual(presentation.day(id: "2026-07-14")?.state, .frozen)
         XCTAssertEqual(presentation.day(id: "2026-07-15")?.state, .attended)
+        XCTAssertEqual(presentation.day(id: "2026-07-12")?.ringKind, .neutral)
+        XCTAssertEqual(presentation.day(id: "2026-07-13")?.ringKind, .attended)
+        XCTAssertEqual(presentation.day(id: "2026-07-14")?.ringKind, .frozen)
+        XCTAssertEqual(presentation.day(id: "2026-07-16")?.ringKind, .neutral)
         XCTAssertEqual(presentation.day(id: "2026-07-15")?.accessibilityIdentifier, "StreakDay-2026-07-15")
         XCTAssertFalse(presentation.showsRetry)
     }
