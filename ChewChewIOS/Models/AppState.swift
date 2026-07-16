@@ -673,8 +673,10 @@ final class AppState {
                 storeAnalyticsUserId(result.userId)
                 analytics.setUserId(result.userId)
                 SentryService.setUser(id: result.userId)
-                hasCompletedOnboarding = result.onboardingCompleted
-                auth.updateOnboardingCompleted(result.onboardingCompleted)
+                // 서버값은 승격만 한다. 로컬 완료 직후 서버 반영이 늦으면 false가 내려오는데,
+                // 그대로 덮으면 온보딩 sheet가 재진입해 캘리브레이션 cover를 초기화시킨다.
+                if result.onboardingCompleted { hasCompletedOnboarding = true }
+                auth.updateOnboardingCompleted(hasCompletedOnboarding)
                 if let name = result.displayName, !name.isEmpty, name != displayName {
                     displayName = name
                 }
