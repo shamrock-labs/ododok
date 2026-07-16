@@ -20,7 +20,8 @@ struct TrackingView: View {
             ReportHubView()
         }
         .padding(.horizontal, AppSpacing.page)
-        .padding(.top, AppSpacing.gap)
+        // 친구·상점 탭과 같은 상단 여백 — 헤더 시작 위치를 맞춘다.
+        .padding(.top, AppSpacing.cardOuter)
         .padding(.bottom, AppSpacing.four)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .overlay(alignment: .bottom) {
