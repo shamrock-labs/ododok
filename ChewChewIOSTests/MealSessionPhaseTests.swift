@@ -143,7 +143,8 @@ final class MealSessionPhaseTests: XCTestCase {
 
     func testMealStartShowsPreparingPromptAfterFastPathDelay() async {
         let runtime = FakeMealSessionRuntimeServices()
-        runtime.readiness.prepareDelay = .seconds(1)
+        // 프롬프트 지연(1초)보다 준비가 확실히 오래 걸려야 프롬프트가 뜬다.
+        runtime.readiness.prepareDelay = .seconds(3)
         let store = makeStore(runtime: runtime)
 
         store.beginMealStartAfterAirPodsReadiness(
@@ -152,7 +153,7 @@ final class MealSessionPhaseTests: XCTestCase {
         )
 
         XCTAssertFalse(store.showAirPodsConnectionPrompt)
-        await waitUntil { store.showAirPodsConnectionPrompt }
+        await waitUntil(timeout: .seconds(2)) { store.showAirPodsConnectionPrompt }
         XCTAssertTrue(store.isPreparingAirPodsRoute)
 
         store.dismissAirPodsConnectionPrompt()
