@@ -73,7 +73,6 @@ struct ReportHubView: View {
     @State private var calendarMonth: Date = mealCalendarCalendar.startOfDay(for: Date())
     @State private var hasTrackedReportTabView = false
     @State private var dailyReportLoader = DailyReportSelectionLoader()
-    @State private var dailyReportErrorToast: AppToastMessage?
 
     private let dayWidth: CGFloat = 52
     /// 타임라인 가로 스트립이 한 번에 보여주는 이동 윈도우 길이.
@@ -122,7 +121,6 @@ struct ReportHubView: View {
                 }
             )
         }
-        .appToast($dailyReportErrorToast)
     }
 
     private var selectedDailyReport: DailyReportDTO? { dailyReportLoader.currentReport }
@@ -900,7 +898,8 @@ struct ReportHubView: View {
             fetch: state.remoteStore.fetchDailyReport
         )
         if let errorMessage = dailyReportLoader.errorMessage {
-            dailyReportErrorToast = AppToastMessage(errorMessage, kind: .warning)
+            // 스크롤 콘텐츠 상대 로컬 토스트는 위치가 떠다닌다 — 하단 탭바 위 고정인 전역 토스트로 표시.
+            state.flashToast(errorMessage)
         }
     }
 
