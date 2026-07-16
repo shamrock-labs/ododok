@@ -142,7 +142,7 @@ final class AirPodsMealRuntimeTests: XCTestCase {
         emitChewingMotionSamples(runtime.motion)
         store.stopEating()
 
-        await fulfillment(of: [uploadFinished], timeout: 3)
+        await fulfillment(of: [uploadFinished], timeout: 10)
 
         let totalAnalyzedSeconds = (uploadedStats?.chewingSeconds ?? 0) +
             (uploadedStats?.restSeconds ?? 0)

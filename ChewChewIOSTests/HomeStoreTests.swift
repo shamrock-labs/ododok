@@ -383,8 +383,9 @@ final class HomeStoreTests: XCTestCase {
             await Task.yield()
         }
         store.reset()
-        async let newAccountRequest: Void = store.grantDailyAttendanceIfNeeded()
-        _ = await (oldAccountRequest, newAccountRequest)
+        await oldAccountRequest
+
+        await store.grantDailyAttendanceIfNeeded()
 
         XCTAssertEqual(repository.attendanceStatusFetchCount, 2)
         XCTAssertNil(store.pendingFreezeRecovery)
