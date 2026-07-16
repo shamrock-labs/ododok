@@ -31,7 +31,6 @@ struct SessionReportDetailView: View {
                     ReportCardView(model: model)
                 } else {
                     EmptyReportCardView(
-                        emoji: unavailableContent?.emoji ?? "🐿️",
                         title: unavailableContent?.title ?? "리포트를 표시할 수 없어요",
                         subtitle: unavailableContent?.message ?? "저장된 식사 리포트가 없어요."
                     )

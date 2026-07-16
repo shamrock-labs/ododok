@@ -272,18 +272,11 @@ struct ReportHubView: View {
         let unavailable = selectedUnavailableSessions.first?.mealReport
         let reason = MealReportUnavailableContent.from(unavailable)
         return HStack(spacing: AppSpacing.three) {
-            Group {
-                if unavailable == nil {
-                    Image(systemName: "fork.knife")
-                        .font(.appFont(.boldTitle))
-                        .foregroundStyle(Color.textMuted)
-                } else {
-                    Text(reason.emoji)
-                        .font(.appFont(.regularDisplaySmall))
-                }
-            }
-            .frame(width: Metrics.emptyIcon, height: Metrics.emptyIcon)
-            .background(Color.bgSunken, in: Circle())
+            Image(systemName: "fork.knife")
+                .font(.appFont(.boldTitle))
+                .foregroundStyle(Color.textMuted)
+                .frame(width: Metrics.emptyIcon, height: Metrics.emptyIcon)
+                .background(Color.bgSunken, in: Circle())
             VStack(alignment: .leading, spacing: AppSpacing.microGap) {
                 Text(unavailable == nil
                      ? (mealCalendarCalendar.isDateInToday(selectedDate) ? "오늘은 아직 식사 전이에요" : "이 날은 식사 리포트가 없어요")
