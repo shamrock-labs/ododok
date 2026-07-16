@@ -116,7 +116,9 @@ enum StreakDemoFixture {
     }
 
     static func dailyReport(date: String) -> DailyReportDTO {
-        date == captureDate ? captureDailyReport : emptyDailyReport(date: date)
+        let sessions = mealSessions.filter { dateKey(from: $0.startedAt) == date }
+        guard !sessions.isEmpty else { return emptyDailyReport(date: date) }
+        return makeDailyReport(date: date, sessions: sessions)
     }
 
     static var mealSessions: [ChewingSessionDTO] {
@@ -296,6 +298,68 @@ enum StreakDemoFixture {
             meals: [],
             vsYesterday: nil
         )
+    }
+
+    private static func makeDailyReport(date: String, sessions: [ChewingSessionDTO]) -> DailyReportDTO {
+        let meals = sessions.compactMap(makeDailyReportMeal)
+        let totalEatingSeconds = meals.reduce(0) { $0 + $1.durationSec }
+        let totalChews = meals.compactMap(\.totalChews).reduce(0, +)
+        let rates = meals.compactMap(\.chewRatePerMin)
+        let fractions = meals.compactMap(\.chewingFraction)
+        let scores = meals.compactMap { $0.mealReport.totalScore }.map(Double.init)
+        return DailyReportDTO(
+            date: date,
+            timezone: "Asia/Seoul",
+            mealCount: meals.count,
+            totalEatingSeconds: totalEatingSeconds,
+            totalChews: totalChews,
+            avgChewRatePerMin: average(rates),
+            avgChewingFraction: average(fractions),
+            avgTotalScore: average(scores),
+            meals: meals,
+            vsYesterday: nil
+        )
+    }
+
+    private static func makeDailyReportMeal(session: ChewingSessionDTO) -> DailyReportMealDTO? {
+        guard let mealReport = session.mealReport else { return nil }
+        let hour = fixtureCalendar.component(.hour, from: session.startedAt)
+        let slot = if hour < 11 { "BREAKFAST" } else if hour < 17 { "LUNCH" } else { "DINNER" }
+        return DailyReportMealDTO(
+            sessionId: session.id,
+            slot: slot,
+            startedAt: session.startedAt,
+            endedAt: session.endedAt,
+            durationSec: session.durationSec,
+            totalChews: session.estimatedTotalChews ?? mealReport.metrics?.totalChewCount,
+            chewRatePerMin: mealReport.metrics?.legacyMealRatePerMin,
+            chewingFraction: session.chewingFraction ?? mealReport.metrics?.chewingTimeRatio,
+            paceBadge: "적당해요",
+            mealReport: mealReport
+        )
+    }
+
+    private static func dateKey(from date: Date) -> String {
+        fixtureDateFormatter.string(from: date)
+    }
+
+    private static func average(_ values: [Double]) -> Double? {
+        values.isEmpty ? nil : values.reduce(0, +) / Double(values.count)
+    }
+
+    private static var fixtureCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Seoul") ?? .current
+        return calendar
+    }
+
+    private static var fixtureDateFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.calendar = fixtureCalendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = fixtureCalendar.timeZone
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
     }
 
     private static let daysByMonth: [String: [StreakDayDTO]] = [

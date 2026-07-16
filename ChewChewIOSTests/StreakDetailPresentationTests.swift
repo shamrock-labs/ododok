@@ -161,7 +161,21 @@ final class StreakDetailPresentationTests: XCTestCase {
             presentation.day(id: "2026-07-15")?.accessibilityLabel,
             "15일, 스트릭 기록 정보 없음, 오늘"
         )
+        XCTAssertTrue(presentation.showsCalendar)
         XCTAssertTrue(presentation.showsRetry)
+    }
+
+    func testZeroStreakHidesMissingStartDateCopy() {
+        let presentation = StreakDetailPresentation.make(
+            detail: nil,
+            cachedCurrent: 0,
+            isLoading: false,
+            hasFailed: true,
+            now: now
+        )
+
+        XCTAssertEqual(presentation.current, 0)
+        XCTAssertEqual(presentation.startedOnText, "")
     }
 }
 

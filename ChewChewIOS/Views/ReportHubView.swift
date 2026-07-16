@@ -797,15 +797,28 @@ struct ReportHubView: View {
     /// 범위 세션을 받아 기존 세션과 id 기준으로 병합한다. 생성 불가 행도 서버 사유 표시를 위해 보존한다.
     @MainActor
     private func fetchMerged(since: Date, until: Date, into existing: [ChewingSessionDTO]) async -> [ChewingSessionDTO] {
+        let rows: [ChewingSessionDTO]
         #if DEBUG
         if state.isDebugProfileActive {
-            return StreakDemoFixture.mealSessions.filter {
+            rows = StreakDemoFixture.mealSessions.filter {
                 $0.startedAt >= since && $0.startedAt < until
             }
+        } else {
+            let deviceId = DeviceIdentity.shared
+            rows = (try? await state.remoteStore.fetchChewingSessions(
+                deviceId: deviceId,
+                since: since,
+                until: until
+            )) ?? []
         }
-        #endif
+        #else
         let deviceId = DeviceIdentity.shared
-        let rows = (try? await state.remoteStore.fetchChewingSessions(deviceId: deviceId, since: since, until: until)) ?? []
+        rows = (try? await state.remoteStore.fetchChewingSessions(
+            deviceId: deviceId,
+            since: since,
+            until: until
+        )) ?? []
+        #endif
         guard !rows.isEmpty else { return existing }
         var byId: [UUID: ChewingSessionDTO] = [:]
         for session in existing { byId[session.id] = session }

@@ -919,6 +919,31 @@ final class StreakDemoFixtureTests: XCTestCase {
         XCTAssertEqual(detail.oldestRecordedOn, "2026-04-08")
     }
 
+    func testDailyReportsMatchFixtureSessionsAcrossCaptureWeek() {
+        let expected: [(date: String, meals: Int, chews: Int)] = [
+            ("2026-07-10", 1, 620),
+            ("2026-07-11", 1, 760),
+            ("2026-07-12", 1, 690),
+            ("2026-07-13", 1, 840),
+            ("2026-07-14", 3, 735),
+            ("2026-07-15", 1, 790),
+            ("2026-07-16", 1, 812),
+        ]
+
+        for item in expected {
+            let report = StreakDemoFixture.dailyReport(date: item.date)
+            XCTAssertEqual(report.mealCount, item.meals, item.date)
+            XCTAssertEqual(report.meals.count, item.meals, item.date)
+            XCTAssertEqual(report.totalChews, item.chews, item.date)
+        }
+
+        XCTAssertEqual(
+            StreakDemoFixture.dailyReport(date: "2026-07-14").meals.map(\.slot),
+            ["BREAKFAST", "LUNCH", "DINNER"]
+        )
+        XCTAssertEqual(StreakDemoFixture.dailyReport(date: "2026-07-09").mealCount, 0)
+    }
+
     func testActiveDebugProfileRoutesHomeAndStreakAwayFromRemoteStore() async throws {
         let repository = RemoteStoreHomeRepository(
             remoteStore: NoopRemoteStore(),

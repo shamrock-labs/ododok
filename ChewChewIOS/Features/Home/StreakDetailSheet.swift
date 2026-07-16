@@ -73,6 +73,7 @@ struct StreakDetailPresentation: Equatable {
     let canMovePrevious: Bool
     let canMoveNext: Bool
     let historyStartText: String?
+    let showsCalendar: Bool
     let showsRetry: Bool
 
     static func make(
@@ -147,11 +148,14 @@ struct StreakDetailPresentation: Equatable {
         }
         while days.count < 42 { days.append(nil) }
 
+        let displayedCurrent = detail?.current ?? cachedCurrent
         let startedOnText: String
         if let startedOn = detail?.startedOn, let date = dayFormatter.date(from: startedOn) {
             startedOnText = "\(startFormatter.string(from: date))부터 이어가는 중"
         } else if detail == nil, isLoading {
             startedOnText = "스트릭 정보를 확인하는 중"
+        } else if displayedCurrent == 0 {
+            startedOnText = ""
         } else {
             startedOnText = "시작일 정보 없음"
         }
@@ -178,7 +182,7 @@ struct StreakDetailPresentation: Equatable {
         }
 
         return Self(
-            current: detail?.current ?? cachedCurrent,
+            current: displayedCurrent,
             startedOnText: startedOnText,
             freezeInventory: detail?.freezeInventory ?? cachedFreezeInventory,
             monthTitle: monthFormatter.string(from: monthStart),
@@ -186,6 +190,7 @@ struct StreakDetailPresentation: Equatable {
             canMovePrevious: canMovePrevious,
             canMoveNext: canMoveNext,
             historyStartText: historyStartText,
+            showsCalendar: true,
             showsRetry: detail == nil && hasFailed
         )
     }
@@ -280,7 +285,7 @@ struct StreakDetailSheet: View {
 
             Spacer(minLength: AppSpacing.one)
 
-            VStack(spacing: AppSpacing.half) {
+            ZStack {
                 HStack(spacing: AppSpacing.one) {
                     Image(systemName: "shield.fill")
                         .foregroundStyle(Color.freezeForeground)
@@ -314,7 +319,9 @@ struct StreakDetailSheet: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("프리즈 지급 기준 보기")
                 .accessibilityIdentifier("FreezeAwardGuideButton")
+                .offset(y: (AppSize.controlXLarge + AppSpacing.two) / 2)
             }
+            .padding(.bottom, AppSize.dialogActionHeight / 2)
         }
         .padding(.vertical, AppSpacing.two)
         .accessibilityElement(children: .contain)
@@ -335,7 +342,9 @@ struct StreakDetailSheet: View {
             if presentation.showsRetry {
                 retryState
                     .padding(.horizontal, AppSpacing.three)
-            } else {
+                    .padding(.bottom, AppSpacing.two)
+            }
+            if presentation.showsCalendar {
                 weekdayLabels
                     .padding(.horizontal, AppSpacing.three)
                 LazyVGrid(
