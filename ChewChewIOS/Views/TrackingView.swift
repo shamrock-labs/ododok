@@ -13,6 +13,9 @@ struct TrackingView: View {
 
     var body: some View {
         VStack(spacing: AppSpacing.gap) {
+            // 홈·친구·상점과 같은 헤더 컴포넌트 — 안내 문구는 여기로 올리고
+            // 월 제목·캘린더 버튼은 아래 기록 카드가 담당한다.
+            AppHeaderView(title: "기록", subtitle: "하루 평균 씹기 횟수를 확인할 수 있어요")
             // 라이브 IMU 진단 카드(AirPods 수신 상태 + FG 샘플 카운터)는 UI에서 제외(로직 유지).
             ReportHubView()
         }

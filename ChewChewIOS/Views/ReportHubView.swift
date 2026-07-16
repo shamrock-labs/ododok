@@ -179,15 +179,11 @@ struct ReportHubView: View {
         let bandSpacing: CGFloat = 8      // 날짜행↔차트 간격(축 스페이서와 동일값)
 
         return VStack(alignment: .leading, spacing: AppSpacing.three) {
-            HStack(alignment: .top, spacing: AppSpacing.inner) {
-                VStack(alignment: .leading, spacing: AppSpacing.half) {
-                    Text(monthTitleLabel)
-                        .font(.appFont(.heavyHeadline))
-                        .foregroundStyle(Color.textDefault)
-                    Text("하루 평균 씹기 횟수를 확인할 수 있어요")
-                        .font(.appFont(.semiboldCallout))
-                        .foregroundStyle(Color.textSecondary)
-                }
+            // 안내 문구는 지면 헤더(TrackingView)로 올라갔다 — 여기는 월 제목 + 캘린더 버튼만.
+            HStack(spacing: AppSpacing.inner) {
+                Text(monthTitleLabel)
+                    .font(.appFont(.heavyHeadline))
+                    .foregroundStyle(Color.textDefault)
                 Spacer(minLength: 0)
                 Button { openCalendar() } label: {
                     Image(systemName: "calendar")
