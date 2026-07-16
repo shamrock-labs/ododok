@@ -797,6 +797,13 @@ struct ReportHubView: View {
     /// 범위 세션을 받아 기존 세션과 id 기준으로 병합한다. 생성 불가 행도 서버 사유 표시를 위해 보존한다.
     @MainActor
     private func fetchMerged(since: Date, until: Date, into existing: [ChewingSessionDTO]) async -> [ChewingSessionDTO] {
+        #if DEBUG
+        if state.isDebugProfileActive {
+            return StreakDemoFixture.mealSessions.filter {
+                $0.startedAt >= since && $0.startedAt < until
+            }
+        }
+        #endif
         let deviceId = DeviceIdentity.shared
         let rows = (try? await state.remoteStore.fetchChewingSessions(deviceId: deviceId, since: since, until: until)) ?? []
         guard !rows.isEmpty else { return existing }
@@ -885,12 +892,21 @@ struct ReportHubView: View {
             selectionID: activeSelectionID,
             currentDate: analyticsDateString(selected),
             previousDate: analyticsDateString(previous),
-            fetch: state.remoteStore.fetchDailyReport
+            fetch: fetchDailyReport
         )
         if let errorMessage = dailyReportLoader.errorMessage {
             // 스크롤 콘텐츠 상대 로컬 토스트는 위치가 떠다닌다 — 하단 탭바 위 고정인 전역 토스트로 표시.
             state.flashToast(errorMessage)
         }
+    }
+
+    private func fetchDailyReport(date: String) async throws -> DailyReportDTO {
+        #if DEBUG
+        if state.isDebugProfileActive {
+            return StreakDemoFixture.dailyReport(date: date)
+        }
+        #endif
+        return try await state.remoteStore.fetchDailyReport(date: date)
     }
 
     private func trackReportTabViewIfNeeded() {

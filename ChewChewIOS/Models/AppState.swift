@@ -175,7 +175,10 @@ final class AppState {
     )
 
     @MainActor @ObservationIgnored lazy var friends: FriendsStore = FriendsStore(
-        repository: RemoteStoreFriendRepository(remoteStore: remoteStore),
+        repository: RemoteStoreFriendRepository(
+            remoteStore: remoteStore,
+            debugProfileIsActive: { [weak self] in self?.isDebugProfileActive == true }
+        ),
         isLoggedIn: { [weak self] in self?.isLoggedIn ?? false },
         currentDisplayName: { [weak self] in self?.displayName },
         initialPendingInviteCode: UserDefaults.standard.string(forKey: Self.pendingInviteCodeKey),

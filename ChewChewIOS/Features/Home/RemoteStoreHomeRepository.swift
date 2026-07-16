@@ -66,7 +66,7 @@ struct RemoteStoreHomeRepository: HomeRepository {
 enum StreakDemoFixture {
     static let home = HomeStateDTO(
         deviceId: "debug-profile",
-        displayName: "개발자 다람이",
+        displayName: "다람이",
         points: 486,
         streak: 18,
         freezeInventory: 2,
@@ -112,6 +112,189 @@ enum StreakDemoFixture {
             startedOn: "2026-06-29",
             freezeInventory: 2,
             days: daysByMonth[month] ?? []
+        )
+    }
+
+    static func dailyReport(date: String) -> DailyReportDTO {
+        date == captureDate ? captureDailyReport : emptyDailyReport(date: date)
+    }
+
+    static var mealSessions: [ChewingSessionDTO] {
+        previousWeekSessions + captureDailyReport.meals.map(\.session)
+    }
+
+    private static let captureDate = "2026-07-16"
+    private static let captureDurationSec = 1_740.0
+    private static let captureChewingFraction = 1_148.0 / captureDurationSec
+    private static let captureStartedAt = Date(timeIntervalSince1970: 1_784_171_400)
+    private static let captureSessionId = UUID(uuid: (
+        0x7A, 0x16, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00,
+        0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x17, 0x40
+    ))
+
+    private static let captureMealReport = MealReportDTO(
+        status: .generated,
+        sessionId: captureSessionId,
+        scorePolicyVersion: "legacy-ios-v1",
+        analysisModelVersion: "capture-fixture-v1",
+        totalScore: 88,
+        axisScores: .init(
+            chewingRate: 100,
+            chewingTimeRatio: 92,
+            totalChewCount: 86,
+            mealDuration: 78
+        ),
+        metrics: .init(
+            chewingRatePerMin: nil,
+            legacyMealRatePerMin: 28,
+            chewingTimeRatio: captureChewingFraction,
+            totalChewCount: 812,
+            mealDurationSec: captureDurationSec
+        ),
+        grade: .good,
+        recommendedBaseline: .init(
+            chewingRatePerMin: .init(target: 28),
+            chewingTimeRatio: 0.6,
+            totalChewCount: 600,
+            mealDurationSec: 1_200
+        )
+    )
+
+    private static let captureMeal = DailyReportMealDTO(
+        sessionId: captureSessionId,
+        slot: "LUNCH",
+        startedAt: captureStartedAt,
+        endedAt: captureStartedAt.addingTimeInterval(captureDurationSec),
+        durationSec: captureDurationSec,
+        totalChews: 812,
+        chewRatePerMin: 28,
+        chewingFraction: captureChewingFraction,
+        paceBadge: "적당해요",
+        mealReport: captureMealReport
+    )
+
+    private static let captureDailyReport = DailyReportDTO(
+        date: captureDate,
+        timezone: "Asia/Seoul",
+        mealCount: 1,
+        totalEatingSeconds: captureDurationSec,
+        totalChews: 812,
+        avgChewRatePerMin: 28,
+        avgChewingFraction: captureChewingFraction,
+        avgTotalScore: 88,
+        meals: [captureMeal],
+        vsYesterday: nil
+    )
+
+    private static let previousWeekSessions: [ChewingSessionDTO] = [
+        makeSession(daysBeforeCapture: 6, durationSec: 1_380, chews: 620, rate: 27, fraction: 0.61, score: 74),
+        makeSession(daysBeforeCapture: 5, durationSec: 1_620, chews: 760, rate: 28, fraction: 0.67, score: 85),
+        makeSession(daysBeforeCapture: 4, durationSec: 1_500, chews: 690, rate: 26, fraction: 0.63, score: 78),
+        makeSession(daysBeforeCapture: 3, durationSec: 1_800, chews: 840, rate: 28, fraction: 0.69, score: 91),
+        makeSession(
+            daysBeforeCapture: 2,
+            hourOffset: -4,
+            durationSec: 480,
+            chews: 205,
+            rate: 26,
+            fraction: 0.61,
+            score: 78
+        ),
+        makeSession(
+            daysBeforeCapture: 2,
+            durationSec: 600,
+            chews: 295,
+            rate: 29,
+            fraction: 0.66,
+            score: 86
+        ),
+        makeSession(
+            daysBeforeCapture: 2,
+            hourOffset: 7,
+            durationSec: 480,
+            chews: 235,
+            rate: 27,
+            fraction: 0.65,
+            score: 82
+        ),
+        makeSession(daysBeforeCapture: 1, durationSec: 1_680, chews: 790, rate: 28, fraction: 0.68, score: 87),
+    ]
+
+    // 캡처 fixture 한 줄에서 그래프 축을 함께 조정하므로 값 묶음을 그대로 노출한다.
+    // swiftlint:disable:next function_parameter_count
+    private static func makeSession(
+        daysBeforeCapture: Int,
+        hourOffset: Int = 0,
+        durationSec: Double,
+        chews: Int,
+        rate: Double,
+        fraction: Double,
+        score: Int
+    ) -> ChewingSessionDTO {
+        let sessionId = UUID()
+        let startedAt = captureStartedAt.addingTimeInterval(
+            (-Double(daysBeforeCapture) * 86_400) + (Double(hourOffset) * 3_600)
+        )
+        let report = MealReportDTO(
+            status: .generated,
+            sessionId: sessionId,
+            scorePolicyVersion: "legacy-ios-v1",
+            analysisModelVersion: "capture-fixture-v1",
+            totalScore: score,
+            axisScores: .init(
+                chewingRate: min(100, score + 8),
+                chewingTimeRatio: min(100, score + 3),
+                totalChewCount: max(0, score - 2),
+                mealDuration: max(0, score - 6)
+            ),
+            metrics: .init(
+                chewingRatePerMin: nil,
+                legacyMealRatePerMin: rate,
+                chewingTimeRatio: fraction,
+                totalChewCount: chews,
+                mealDurationSec: durationSec
+            ),
+            grade: score >= 85 ? .good : .soso,
+            recommendedBaseline: .init(
+                chewingRatePerMin: .init(target: 28),
+                chewingTimeRatio: 0.6,
+                totalChewCount: 600,
+                mealDurationSec: 1_200
+            )
+        )
+        return ChewingSessionDTO(
+            id: sessionId,
+            deviceId: "debug-profile",
+            startedAt: startedAt,
+            endedAt: startedAt.addingTimeInterval(durationSec),
+            durationSec: durationSec,
+            sensorLocation: "capture-fixture",
+            sampleCount: 0,
+            sampleRateHz: 0,
+            storagePath: nil,
+            appVersion: nil,
+            chewingSeconds: durationSec * fraction,
+            restSeconds: durationSec * (1 - fraction),
+            chewingFraction: fraction,
+            estimatedTotalChews: chews,
+            modelVersion: "capture-fixture-v1",
+            mealReport: report,
+            userId: "debug-profile"
+        )
+    }
+
+    private static func emptyDailyReport(date: String) -> DailyReportDTO {
+        DailyReportDTO(
+            date: date,
+            timezone: "Asia/Seoul",
+            mealCount: 0,
+            totalEatingSeconds: 0,
+            totalChews: 0,
+            avgChewRatePerMin: nil,
+            avgChewingFraction: nil,
+            avgTotalScore: nil,
+            meals: [],
+            vsYesterday: nil
         )
     }
 
