@@ -485,7 +485,8 @@ struct ReportHubView: View {
         let maxChews = max(1, weeks.map(\.chews).max() ?? 1)
         let maxMinutes = max(1, weeks.map(\.minutes).max() ?? 1)
 
-        return AppCard(padding: AppSpacing.three) {
+        // 카드 콘텐츠 여백은 AppCard 기본값(cardContent)을 따른다 — 기록 카드와 좌우 라인 일치.
+        return AppCard {
             VStack(alignment: .leading, spacing: AppSpacing.two) {
             HStack {
                 Text("주간 리포트")
