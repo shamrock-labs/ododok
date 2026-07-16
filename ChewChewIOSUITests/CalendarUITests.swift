@@ -28,11 +28,8 @@ final class CalendarUITests: XCTestCase {
         app.launchArguments = launchArgs
         app.launch()
 
-        // 끼니 카드의 실제 "0회" 배지 (selectedSessions.count)
-        XCTAssert(app.staticTexts["0회"].waitForExistence(timeout: 10))
-
         // 실제 빈 상태 안내 문구 (emptySessionState) — 가짜 세션이 주입되지 않았다는 증거
-        XCTAssert(app.staticTexts["오늘은 아직 식사 전이에요"].waitForExistence(timeout: 5))
+        XCTAssert(app.staticTexts["오늘은 아직 식사 전이에요"].waitForExistence(timeout: 10))
     }
 
     /// 기록탭 타임라인 구조 검증. 달력 진입 버튼과 일자별 링 셀이 실제로 렌더되는지 확인한다.

@@ -17,7 +17,13 @@ final class HomeMealToggleUITests: XCTestCase {
         app = XCUIApplication()
         // -skipAttendanceDialog로 RewardDialogView 자동 표시 차단 — dialog가 MealToggle
         // hit testing을 가리는 flaky 패턴 회피 (전체 test suite 실행 시 race).
-        app.launchArguments = ["-resetState", "-skipOnboarding", "-skipAttendanceDialog", "-useNoopRemote"]
+        app.launchArguments = [
+            "-resetState",
+            "-skipOnboarding",
+            "-forceLogin",
+            "-skipAttendanceDialog",
+            "-useNoopRemote",
+        ]
     }
 
     override func tearDown() {
@@ -36,7 +42,7 @@ final class HomeMealToggleUITests: XCTestCase {
         XCTAssertTrue(stopButton.waitForExistence(timeout: 5), "tap 후 '식사 종료' 라벨로 전환되어야 한다")
     }
 
-    func testStopEating_returnsToStart() {
+    func testStopEating_discardShortSessionReturnsToStart() {
         app.launch()
 
         let startButton = app.buttons["식사 시작"]
@@ -47,8 +53,16 @@ final class HomeMealToggleUITests: XCTestCase {
         XCTAssertTrue(stopButton.waitForExistence(timeout: 5))
         tapMealToggle(stopButton)
 
+        XCTAssertTrue(
+            app.staticTexts["측정이 너무 짧아요"].waitForExistence(timeout: 5),
+            "30초 미만 측정을 종료하면 짧은 측정 확인 다이얼로그가 나타나야 한다"
+        )
+        let discardButton = app.buttons["그만두기"]
+        XCTAssertTrue(discardButton.waitForExistence(timeout: 3), "짧은 측정을 버리는 버튼이 있어야 한다")
+        discardButton.tap()
+
         let backToStart = app.buttons["식사 시작"]
-        XCTAssertTrue(backToStart.waitForExistence(timeout: 10), "두 번째 tap 후 '식사 시작'으로 되돌아와야 한다")
+        XCTAssertTrue(backToStart.waitForExistence(timeout: 10), "짧은 측정을 버리면 '식사 시작'으로 되돌아와야 한다")
     }
 
     /// ScrollView 안에 묻혀 hit testing이 잘 안 잡히는 케이스 회피용 — element의

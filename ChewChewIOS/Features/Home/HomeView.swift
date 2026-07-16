@@ -291,6 +291,7 @@ struct HomeView: View {
         }
         .accessibilityIdentifier("MealToggle")
         .accessibilityLabel(mealSession.isEating ? "식사 종료" : "식사 시작")
+        .accessibilityValue(mealSession.startButtonHighlighted ? "강조됨" : "기본")
         .buttonStyle(PressableButtonStyle())
         .scaleEffect(mealSession.startButtonHighlighted ? 1.04 : 1.0)
         .shadow(color: Color.highlightShadow.opacity(mealSession.startButtonHighlighted ? 0.55 : 0), radius: 14, x: 0, y: 4)

@@ -7,11 +7,29 @@ protocol AuthSessionManaging {
 }
 
 struct NoopAuthSessionManager: AuthSessionManaging {
+    private let userId: String
+    private let displayName: String?
+    private let onboardingCompleted: Bool
+    private let alertVolume: Double?
+
+    init(
+        userId: String = "",
+        displayName: String? = nil,
+        onboardingCompleted: Bool = false,
+        alertVolume: Double? = nil
+    ) {
+        self.userId = userId
+        self.displayName = displayName
+        self.onboardingCompleted = onboardingCompleted
+        self.alertVolume = alertVolume
+    }
+
     func logout() async {
         TokenManager.clear()
     }
+
     func me() async throws -> (userId: String, displayName: String?, onboardingCompleted: Bool, alertVolume: Double?) {
-        (userId: "", displayName: nil, onboardingCompleted: false, alertVolume: nil)
+        (userId, displayName, onboardingCompleted, alertVolume)
     }
 }
 

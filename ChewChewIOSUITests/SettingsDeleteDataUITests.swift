@@ -26,7 +26,6 @@ final class SettingsDeleteDataUITests: XCTestCase {
 
     func testSettingsSheet_opensFromGearButton() {
         app.launch()
-        dismissOnboardingIfNeeded()
 
         let gearButton = app.buttons["gearshape"]
         XCTAssertTrue(gearButton.waitForExistence(timeout: 10), "gear 버튼이 HomeView에 있어야 한다")
@@ -74,10 +73,14 @@ final class SettingsDeleteDataUITests: XCTestCase {
         app.launch()
         openSettingsAndTapDelete()
 
-        // 다이얼로그 취소 (confirmationDialog는 popover로 표시 → dismiss 영역 탭이 취소)
-        let dismissRegion = app.otherElements["PopoverDismissRegion"]
-        XCTAssertTrue(dismissRegion.waitForExistence(timeout: 3), "팝오버 dismiss 영역이 있어야 한다")
-        dismissRegion.tap()
+        let cancelButton = app.buttons["취소"]
+        XCTAssertTrue(cancelButton.waitForExistence(timeout: 3), "계정 삭제 다이얼로그에 취소 버튼이 있어야 한다")
+        cancelButton.tap()
+
+        XCTAssertTrue(
+            app.staticTexts["계정을 삭제할까요?"].waitForNonExistence(timeout: 3),
+            "취소 후 계정 삭제 다이얼로그가 닫혀야 한다"
+        )
 
         // 설정 화면이 여전히 열려 있어야 함
         XCTAssertTrue(
@@ -88,8 +91,6 @@ final class SettingsDeleteDataUITests: XCTestCase {
 
     /// gear → SettingsView 정착 대기 → '계정 삭제' 탭 → 확인 다이얼로그 타이틀 등장까지.
     private func openSettingsAndTapDelete() {
-        dismissOnboardingIfNeeded()
-
         let gearButton = app.buttons["gearshape"]
         XCTAssertTrue(gearButton.waitForExistence(timeout: 10), "gear 버튼이 HomeView에 있어야 한다")
         gearButton.tap()
@@ -102,12 +103,5 @@ final class SettingsDeleteDataUITests: XCTestCase {
         deleteButton.tap()
 
         XCTAssertTrue(app.staticTexts["계정을 삭제할까요?"].waitForExistence(timeout: 5), "confirmationDialog 타이틀이 표시되어야 한다")
-    }
-
-    private func dismissOnboardingIfNeeded() {
-        let skipButton = app.buttons["OnboardingSkip"]
-        if skipButton.waitForExistence(timeout: 2) {
-            skipButton.tap()
-        }
     }
 }
