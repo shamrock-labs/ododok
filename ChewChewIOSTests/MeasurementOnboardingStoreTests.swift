@@ -157,6 +157,7 @@ final class MeasurementOnboardingStoreTests: XCTestCase {
 
     func testValidationPresentsExactlyTenGuides() async {
         let sampler = ManualCalibrationSampler()
+        let cuePlayer = SpyMeasurementCuePlayer()
         let store = MeasurementOnboardingStore(
             stage: .calibration,
             isAirPodsConnected: true,
@@ -165,7 +166,8 @@ final class MeasurementOnboardingStoreTests: XCTestCase {
                 cueInterval: .milliseconds(2)
             ),
             sampler: sampler,
-            gateCalibrator: StubGateCalibrator()
+            gateCalibrator: StubGateCalibrator(),
+            cuePlayer: cuePlayer
         )
         store.startMeasurement()
         emitNaturalChews(sampler: sampler)
@@ -177,6 +179,7 @@ final class MeasurementOnboardingStoreTests: XCTestCase {
 
         XCTAssertEqual(store.cuePulseID, 10)
         XCTAssertEqual(store.cueHitID, 10)
+        XCTAssertEqual(cuePlayer.playCount, 10)
     }
 
     func testValidationRetryKeepsPersonalThresholdAndOnlyRepeatsValidation() async throws {
@@ -534,6 +537,15 @@ private final class StubGateAdjustmentSearcher: GateAdjustmentSearching {
     ) async -> GateAdjustmentResult? {
         callCount += 1
         return result
+    }
+}
+
+@MainActor
+private final class SpyMeasurementCuePlayer: MeasurementCuePlaying {
+    private(set) var playCount = 0
+
+    func playCalibrationCue() {
+        playCount += 1
     }
 }
 
