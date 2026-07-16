@@ -199,7 +199,11 @@ final class CalibrationArtifactUploadQueue: MeasurementCalibrationArtifactUpload
     ) {
         self.remoteStore = remoteStore
         self.fileManager = fileManager
-        self.rootDirectory = rootDirectory ?? fileManager.urls(
+        self.rootDirectory = rootDirectory ?? Self.defaultRootDirectory(fileManager: fileManager)
+    }
+
+    nonisolated static func defaultRootDirectory(fileManager: FileManager = .default) -> URL {
+        fileManager.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask
         )[0].appendingPathComponent("CalibrationUploads", isDirectory: true)

@@ -6,8 +6,10 @@ final class SpyRemoteStore: RemoteStore {
     private(set) var deleteUserDataCallCount = 0
     private(set) var deleteUserDataAccessToken: String?
     private(set) var deleteUserDataRefreshToken: String?
+    private(set) var uploadedCalibrationBundles: [CalibrationArtifactBundle] = []
     private(set) var acceptedInviteCodes: [String] = []
     var deleteUserDataError: Error?
+    var uploadCalibrationArtifactsError: Error?
     var fetchHomeError: Error?
     var acceptFriendInviteError: Error?
     var home: HomeStateDTO?
@@ -52,6 +54,10 @@ final class SpyRemoteStore: RemoteStore {
     func deleteChewingSession(id: UUID, deviceId: String) async throws {}
     func deleteAllChewingSessions(deviceId: String) async throws {}
     func uploadIMUCSV(sessionId: UUID, deviceId: String, csvData: Data) async throws -> String { "" }
+    func uploadCalibrationArtifacts(_ bundle: CalibrationArtifactBundle) async throws {
+        if let uploadCalibrationArtifactsError { throw uploadCalibrationArtifactsError }
+        uploadedCalibrationBundles.append(bundle)
+    }
     func acceptFriendInvite(code: String) async throws -> FriendAcceptResultDTO {
         acceptedInviteCodes.append(code)
         if let acceptFriendInviteError { throw acceptFriendInviteError }
@@ -112,6 +118,14 @@ private final class UserFlowSpyAnalytics: AnalyticsService {
     func setUserProperty(_ key: String, _ value: Any) {}
 }
 
+private final class SpyLocalAccountDataCleaner: LocalAccountDataClearing {
+    private(set) var clearCallCount = 0
+
+    func clear() {
+        clearCallCount += 1
+    }
+}
+
 @MainActor
 final class EraseAllUserDataTests: XCTestCase {
     private let pendingInviteKey = "ChewChewIOS.AppState.pendingInviteCode"
@@ -144,6 +158,19 @@ final class EraseAllUserDataTests: XCTestCase {
         try await state.eraseAllUserData()
 
         XCTAssertEqual(spy.deleteUserDataCallCount, 1, "eraseAllUserData 호출 시 deleteUserData가 정확히 1회 호출되어야 한다")
+    }
+
+    func testEraseAllUserDataClearsLocalAccountDataAfterServerSuccess() async throws {
+        let cleaner = SpyLocalAccountDataCleaner()
+        let state = AppState(
+            remoteStore: SpyRemoteStore(),
+            localAccountDataCleaner: cleaner,
+            startStartupTasks: false
+        )
+
+        try await state.eraseAllUserData()
+
+        XCTAssertEqual(cleaner.clearCallCount, 1)
     }
 
     func testEraseAllUserData_resetsPointsToZero() async throws {
@@ -272,10 +299,12 @@ final class EraseAllUserDataTests: XCTestCase {
         let spy = SpyRemoteStore()
         spy.deleteUserDataError = RemoteStoreError.offline
         let analytics = UserFlowSpyAnalytics()
+        let cleaner = SpyLocalAccountDataCleaner()
         let state = AppState(
             remoteStore: spy,
             analytics: analytics,
             authTokenStorage: tokens,
+            localAccountDataCleaner: cleaner,
             startStartupTasks: false
         )
         state.isLoggedIn = true
@@ -301,6 +330,7 @@ final class EraseAllUserDataTests: XCTestCase {
         XCTAssertTrue(state.hasCompletedOnboarding)
         XCTAssertEqual(state.points, 42)
         XCTAssertEqual(state.streak, 3)
+        XCTAssertEqual(cleaner.clearCallCount, 0, "서버 삭제 실패 시 로컬 개인정보를 먼저 지우면 안 된다")
         XCTAssertFalse(
             analytics.trackedEvents.contains { $0.name == "account_deleted" },
             "서버가 거부한 탈퇴를 완료 이벤트로 기록하면 안 된다"

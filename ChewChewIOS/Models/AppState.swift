@@ -122,6 +122,7 @@ final class AppState {
     @ObservationIgnored let remoteStore: RemoteStore
 
     @ObservationIgnored private let authTokenStorage: any AuthTokenStorage
+    @ObservationIgnored private let localAccountDataCleaner: any LocalAccountDataClearing
 
     @MainActor @ObservationIgnored lazy var home: HomeStore = HomeStore(
         repository: RemoteStoreHomeRepository(remoteStore: remoteStore),
@@ -248,10 +249,12 @@ final class AppState {
         authRepository: AuthRepository? = nil,
         analytics: AnalyticsService = NoopAnalytics(),
         authTokenStorage: any AuthTokenStorage = KeychainAuthTokenStorage(),
+        localAccountDataCleaner: any LocalAccountDataClearing = LocalAccountDataCleaner(),
         startStartupTasks: Bool = true
     ) {
         self.remoteStore = remoteStore
         self.authTokenStorage = authTokenStorage
+        self.localAccountDataCleaner = localAccountDataCleaner
         self.authSessionManager = authSessionManager
         self.authRepository = authRepository
             ?? (authSessionManager as? AuthRepository)
@@ -399,6 +402,7 @@ final class AppState {
             refreshToken: deletionRefreshToken
         )
 
+        localAccountDataCleaner.clear()
         analytics.track(.accountDeleted(source: "settings"))
         mealSession.resetRuntimeState()
         clearTransientRuntimeState()
