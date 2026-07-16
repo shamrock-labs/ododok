@@ -26,7 +26,8 @@ private struct ShopPlaceholderView: View {
             comingSoonCard
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, AppSpacing.cardOuter)
+        // 좌우는 홈·기록과 같은 page 여백 — 지면 폭을 통일한다.
+        .padding(.horizontal, AppSpacing.page)
         .padding(.top, AppSpacing.cardOuter)
         .padding(.bottom, AppSpacing.cardOuterBottom)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
