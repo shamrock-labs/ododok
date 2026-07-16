@@ -56,7 +56,13 @@ struct ChewChewIOSApp: App {
             || pi.arguments.contains("-useNoopRemote")
         let springConfig = SpringConfig.current
         if underTest {
-            return (NoopRemoteStore(), NoopAuthSessionManager(), springConfig, "prod")
+            let skipsOnboarding = pi.arguments.contains("-skipOnboarding")
+            let authSessionManager = NoopAuthSessionManager(
+                userId: skipsOnboarding ? "ui-test-user" : "",
+                displayName: skipsOnboarding ? "테스터" : nil,
+                onboardingCompleted: skipsOnboarding
+            )
+            return (NoopRemoteStore(), authSessionManager, springConfig, "prod")
         }
         // 레거시 InsForge는 명시적 오버라이드일 때만 — 기본은 Spring.
         if pi.arguments.contains("-useInsForge") {

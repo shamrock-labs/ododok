@@ -13,6 +13,7 @@ final class MealPushHighlightUITests: XCTestCase {
         app.launchArguments = [
             "-resetState",
             "-skipOnboarding",
+            "-forceLogin",
             "-skipAttendanceDialog",
             "-useNoopRemote",
             "-highlightStart",
@@ -45,5 +46,6 @@ final class MealPushHighlightUITests: XCTestCase {
             toggle.waitForExistence(timeout: 10),
             "강조 상태에서 MealToggle identifier가 쿼리돼야 한다"
         )
+        XCTAssertEqual(toggle.value as? String, "강조됨", "푸시 진입 시 식사 시작 버튼이 실제 강조 상태여야 한다")
     }
 }
