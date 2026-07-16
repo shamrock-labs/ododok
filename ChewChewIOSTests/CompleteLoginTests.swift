@@ -102,6 +102,24 @@ final class CompleteLoginTests: XCTestCase {
         XCTAssertEqual(analytics.userIds, ["server-user-123"])
     }
 
+    func testInitRestoresStoredAnalyticsUserIdBeforeColdStartTracking() {
+        UserDefaults.standard.set(
+            "returning-user-123",
+            forKey: "ChewChewIOS.AppState.analyticsUserId"
+        )
+        let analytics = SpyAnalytics()
+        let tokens = InMemoryAuthTokenStore(accessToken: "access-token")
+
+        _ = AppState(
+            remoteStore: SpyRemoteStore(),
+            analytics: analytics,
+            authTokenStorage: tokens,
+            startStartupTasks: false
+        )
+
+        XCTAssertEqual(analytics.userIds, ["returning-user-123"])
+    }
+
     func testCompleteLoginStoresAnonymousDeviceIdAsAnalyticsUserProperty() {
         let analytics = SpyAnalytics()
         let state = AppState(remoteStore: SpyRemoteStore(), analytics: analytics, startStartupTasks: false)

@@ -279,6 +279,12 @@ final class AppState {
         self.analytics = analytics
         isLoggedIn = authTokenStorage.isLoggedIn
         self.mealPushCoordinator = MealPushCoordinator(remoteStore: remoteStore)
+        // scenePhase의 첫 active 콜백보다 먼저 재방문 계정의 식별자를 복원한다.
+        // 그렇지 않으면 cold-start app_opened가 익명 사용자로 먼저 전송될 수 있다.
+        if isLoggedIn,
+           let userId = UserDefaults.standard.string(forKey: Self.analyticsUserIdKey) {
+            analytics.setUserId(userId)
+        }
         // displayName은 game state(`PersistedSnapshot`)과 다른 별도 캐시 키 — cold-start
         // 시 UserDefaults에서 즉시 read해 HomeView가 빈 이름으로 깜빡이지 않도록.
         displayName = UserDefaults.standard.string(forKey: Self.displayNameKey)
