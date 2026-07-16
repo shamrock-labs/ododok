@@ -40,6 +40,7 @@ extension Color {
     static let blush200 = Color(hex: 0xF8CFC0)
     static let blush400 = Color(hex: 0xF4A99B)
     static let blush500 = Color(hex: 0xE88C7B)
+    static let blush600 = Color(hex: 0xD96F5C)
 
     static let ink100 = Color(hex: 0xF2EDE5)
     static let ink400 = Color(hex: 0x8C7B66)
@@ -161,7 +162,8 @@ extension Color {
     static let illustrationShadow = acorn800
     static let illustrationSparkle = butter500
     static let mealStartGradient = [acorn400, acorn600]
-    static let mealStopGradient = [blush400, blush500]
+    // 시작 버튼(acorn 400→600)과 같은 2단 깊이로 — 활성 상태가 흐릿해 보이지 않게 한 톤 진하게.
+    static let mealStopGradient = [blush500, blush600]
     static let highlightShadow = acorn400
 
     // Input component aliases

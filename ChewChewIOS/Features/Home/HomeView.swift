@@ -17,6 +17,8 @@ struct HomeView: View {
     @State private var showSettings = false
     /// 야간 시간대 판정에 쓰는 현재 시각 — 60초마다 갱신해 22:00·06:00 경계에서 stale을 방지.
     @State private var nowTick = Date()
+    /// 식사 시작 후 최소 분석 시간(30초)이 지나 종료 버튼이 본색으로 켜졌는지.
+    @State private var stopButtonArmed = false
 
     var body: some View {
         VStack(spacing: AppSpacing.cardH) {
@@ -30,6 +32,16 @@ struct HomeView: View {
         .padding(.bottom, AppSpacing.verticalLoose)
         .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { newDate in
             nowTick = newDate
+        }
+        .task(id: mealSession.isEating) {
+            stopButtonArmed = false
+            guard mealSession.isEating, let startedAt = mealSession.eatingStartedAt else { return }
+            let remaining = MealSessionReportability.minDurationSec - Date().timeIntervalSince(startedAt)
+            if remaining > 0 {
+                try? await Task.sleep(for: .seconds(remaining))
+                guard !Task.isCancelled else { return }
+            }
+            stopButtonArmed = true
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onChange(of: mealSession.pendingMealStartRequest) { _, requested in
@@ -86,7 +98,10 @@ struct HomeView: View {
     // MARK: Top bar
 
     private var topBar: some View {
-        AppHeaderView(eyebrow: todayLabel, title: greetingTitle, subtitle: homeHeaderSubtitle) {
+        AppHeaderView(
+            eyebrow: greetingEyebrow,
+            title: greetingTitle
+        ) {
             HStack(spacing: 7) {
                 HeaderMetricPill(icon: .flame, value: "\(home.currentStreak)", tint: .statusWarning)
                 Button {
@@ -96,36 +111,30 @@ struct HomeView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("RewardHistoryButton")
-                HeaderIconButton(systemName: "bell", showsBadge: true) {
+                HeaderIconButton(systemName: "bell") {
                     showMealReminderSettings = true
                 }
                 HeaderIconButton(systemName: "gearshape") {
                     showSettings = true
                 }
             }
-            .offset(y: -8)
+            .offset(y: Metrics.headerAccessoryTitleOffset)
         }
+    }
+
+    private var greetingEyebrow: String? {
+        displayName == nil ? nil : "안녕"
     }
 
     private var greetingTitle: String {
+        guard let displayName else { return "안녕!" }
+        return "\(displayName)님"
+    }
+
+    private var displayName: String? {
         guard let displayName = state.displayName?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !displayName.isEmpty else { return "안녕!" }
-        return "안녕, \(displayName)님"
-    }
-
-    private var homeHeaderSubtitle: String? {
-        if mealSession.isEating {
-            return mealSession.imuWaveformSource.usesRealMotion ? "식사 중 · AirPods LIVE" : "식사 중 · MVP 모드"
-        }
-        // 오늘 저작 횟수는 화면 중앙 표시와 중복이라 헤더 서브타이틀에서 제외.
-        return nil
-    }
-
-    private var todayLabel: String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ko_KR")
-        formatter.dateFormat = "오늘 · M월 d일"
-        return formatter.string(from: Date())
+              !displayName.isEmpty else { return nil }
+        return displayName
     }
 
     private func circleButton(_ symbol: String, action: @escaping () -> Void = {}) -> some View {
@@ -259,6 +268,15 @@ struct HomeView: View {
 
     // MARK: Meal toggle button
 
+    /// 시작 전엔 acorn, 식사 중엔 blush. 최소 분석 시간(30초) 전에는 blush를 연하게 눌러
+    /// "아직 이르다"를 표현하고, 지나면 본색으로 켠다. 탭 자체는 계속 가능(짧은 세션 확인이 감당).
+    private var mealToggleGradientColors: [Color] {
+        guard mealSession.isEating else { return Color.mealStartGradient }
+        return stopButtonArmed
+            ? Color.mealStopGradient
+            : Color.mealStopGradient.map { $0.opacity(0.45) }
+    }
+
     private var mealToggleButton: some View {
         Button {
             handleMealToggle()
@@ -274,9 +292,7 @@ struct HomeView: View {
             .padding(.vertical, AppSpacing.actionV)
             .background(
                 LinearGradient(
-                    colors: mealSession.isEating
-                        ? Color.mealStopGradient
-                        : Color.mealStartGradient,
+                    colors: mealToggleGradientColors,
                     startPoint: .topLeading, endPoint: .bottomTrailing
                 ),
                 in: RoundedRectangle(cornerRadius: Metrics.mealButtonRadius)
@@ -296,6 +312,7 @@ struct HomeView: View {
         .scaleEffect(mealSession.startButtonHighlighted ? 1.04 : 1.0)
         .shadow(color: Color.highlightShadow.opacity(mealSession.startButtonHighlighted ? 0.55 : 0), radius: 14, x: 0, y: 4)
         .animation(.easeInOut(duration: AppMotion.durationStateChange), value: mealSession.isEating)
+        .animation(.easeInOut(duration: AppMotion.durationStateChange), value: stopButtonArmed)
         .animation(
             .spring(response: AppMotion.springPlayfulResponse, dampingFraction: AppMotion.springPlayfulDamping),
             value: mealSession.startButtonHighlighted
@@ -417,6 +434,7 @@ private struct RewardHistoryRow: View {
 }
 
 private enum Metrics {
+    static let headerAccessoryTitleOffset: CGFloat = 10
     static let circleButton = AppSize.controlXXLarge
     static let statIcon = AppSize.iconXXLarge
     static let statIconBg: CGFloat = 42

@@ -16,7 +16,8 @@ struct FriendsView: View {
             rankingCard
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, AppSpacing.cardOuter)
+        // 좌우는 홈·기록과 같은 page 여백 — 지면 폭을 통일한다.
+        .padding(.horizontal, AppSpacing.page)
         .padding(.top, AppSpacing.cardOuter)
         .padding(.bottom, AppSpacing.cardOuterBottom)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -29,61 +30,34 @@ struct FriendsView: View {
     // MARK: Header
 
     private var header: some View {
-        AppHeaderView(eyebrow: "함께 먹는 리듬", title: "친구", subtitle: "초대와 랭킹을 한 곳에서 확인해요")
+        // eyebrow 없이 title+subtitle 2줄 — 홈 헤더(eyebrow+title)와 같은 크기로 맞춘다.
+        AppHeaderView(title: "친구", subtitle: "초대와 랭킹을 한 곳에서 확인해요")
     }
 
     // MARK: Invite
 
     private var inviteCard: some View {
         AppCard(padding: AppSpacing.five, elevation: .flat) {
-            VStack(spacing: AppSpacing.cell) {
-                // 카카오 초대를 가장 크게(주 액션). 카카오 공식 옐로우 + 어두운 텍스트.
-                AppActionButton(
-                    action: {
-                        Task { await shareInvite() }
-                    },
-                    foreground: Color.textDefault,
-                    background: AnyShapeStyle(Color.kakaoYellow),
-                    radius: AppRadius.container,
-                    verticalPadding: AppSpacing.verticalLoose,
-                    label: {
-                        HStack(spacing: AppSpacing.two) {
-                            Image(systemName: "message.fill")
-                                .font(.appFont(.boldBodyLarge))
-                            Text("카카오톡으로 초대하기")
-                                .font(.appFont(.heavyHeadline))
-                        }
+            // 카카오 초대 단일 액션. 초대 코드 텍스트 노출은 v1.1에서 제거 —
+            // 코드 미로딩/실패는 shareInvite()의 토스트가 안내한다.
+            AppActionButton(
+                action: {
+                    Task { await shareInvite() }
+                },
+                foreground: Color.textDefault,
+                background: AnyShapeStyle(Color.kakaoYellow),
+                radius: AppRadius.container,
+                verticalPadding: AppSpacing.verticalLoose,
+                label: {
+                    HStack(spacing: AppSpacing.two) {
+                        Image(systemName: "message.fill")
+                            .font(.appFont(.boldBodyLarge))
+                        Text("카카오톡으로 초대하기")
+                            .font(.appFont(.heavyHeadline))
                     }
-                )
-
-                // 내 초대 코드는 작게 아래에. 영구 단일 코드라 "새로고침"은 두지 않고, 실패 시에만 다시 시도.
-                inviteCodeLine
-            }
-        }
-    }
-
-    /// 내 초대 코드(작게). 로딩 중 미니 스피너, 3회 재시도까지 실패하면 "다시 시도".
-    private var inviteCodeLine: some View {
-        HStack(spacing: AppSpacing.oneHalf) {
-            Text("내 초대 코드")
-                .font(.appFont(.semiboldCaption))
-                .foregroundStyle(Color.textSubtle)
-            if let code = store.inviteCode {
-                Text(code)
-                    .font(.appFont(.boldCallout))
-                    .foregroundStyle(Color.textMuted)
-            } else if store.loadState == .failed {
-                Button("다시 시도") {
-                    Task { await store.refresh() }
                 }
-                .font(.appFont(.boldCaption))
-                .foregroundStyle(Color.statusSuccess)
-            } else {
-                ProgressView()
-                    .controlSize(.mini)
-            }
+            )
         }
-        .frame(maxWidth: .infinity)
     }
 
     private var rankingCard: some View {

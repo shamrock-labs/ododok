@@ -46,6 +46,11 @@ struct MeasurementOnboardingView: View {
 
     private var accessibilityLayout: Bool { dynamicTypeSize.isAccessibilitySize }
 
+    /// 측정(calibration)·완료(ready) 단계는 서브텍스트 없이 표시한다(레이아웃 높이는 유지).
+    private var hidesStageMessage: Bool {
+        store.stage == .calibration || store.stage == .ready
+    }
+
     private var stageContent: some View {
         VStack(spacing: AppSpacing.six) {
             stageVisual
@@ -64,6 +69,9 @@ struct MeasurementOnboardingView: View {
                     .multilineTextAlignment(.center)
                     .lineSpacing(5)
                     .fixedSize(horizontal: false, vertical: true)
+                    // 측정·완료 단계는 서브텍스트를 지우되 자리(패딩)는 유지한다.
+                    .opacity(hidesStageMessage ? 0 : 1)
+                    .accessibilityHidden(hidesStageMessage)
             }
 
             stageDetail
@@ -237,7 +245,7 @@ struct MeasurementOnboardingView: View {
         detailRows([
             ("waveform.path.ecg", "내 씹기 신호에 맞는 기준을 만들었어요"),
             ("metronome", "평소 씹는 리듬까지 확인했어요"),
-            ("iphone", "맞춤 기준을 이 기기에 저장해요"),
+            ("iphone", "다음 식사부터 이 기준을 적용해요"),
         ])
     }
 

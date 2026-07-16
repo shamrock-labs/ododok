@@ -9,7 +9,14 @@ protocol MeasurementCuePlaying: AnyObject {
 @MainActor
 protocol AirPodsAudioReadinessServicing: MeasurementCuePlaying {
     func prepareAirPods() async -> Bool
-    func stop()
+    /// `deactivatingSession: false`는 곧바로 측정 keep-alive가 같은 세션을 이어받는 경로용.
+    /// 비활성화→재활성화 왕복이 다른 앱 오디오(유튜브 등)를 무음으로 만드는 것을 막는다.
+    func stop(deactivatingSession: Bool)
+}
+
+@MainActor
+extension AirPodsAudioReadinessServicing {
+    func stop() { stop(deactivatingSession: true) }
 }
 
 @MainActor
@@ -34,13 +41,14 @@ final class AirPodsAudioReadinessService: AirPodsAudioReadinessServicing {
         stopEngine(deactivateSession: false)
         guard let format,
               let transferCue = makeTransferCue(format: format),
-              let readyCue = makeReadyCue(format: format) else {
+              let readyCue = AirPodsReadyCueBufferFactory.make(format: format) else {
             return false
         }
 
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default)
+            // 유튜브 등 다른 앱 오디오를 끊지 않고 위에 얹는다 — 측정은 외부 영상 시청 중에도 돼야 한다.
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try session.setActive(true)
             configureGraphIfNeeded(format: format)
             try engine.start()
@@ -63,8 +71,8 @@ final class AirPodsAudioReadinessService: AirPodsAudioReadinessServicing {
         }
     }
 
-    func stop() {
-        stopEngine(deactivateSession: true)
+    func stop(deactivatingSession: Bool) {
+        stopEngine(deactivateSession: deactivatingSession)
     }
 
     func playCalibrationCue() {
@@ -101,14 +109,6 @@ final class AirPodsAudioReadinessService: AirPodsAudioReadinessServicing {
     private func makeTransferCue(format: AVAudioFormat) -> AVAudioPCMBuffer? {
         makeCue(format: format, segments: [
             .tone(frequency: 392, duration: 0.14, amplitude: 0.07),
-        ])
-    }
-
-    private func makeReadyCue(format: AVAudioFormat) -> AVAudioPCMBuffer? {
-        makeCue(format: format, segments: [
-            .tone(frequency: 523.25, duration: 0.14, amplitude: 0.22),
-            .silence(duration: 0.04),
-            .tone(frequency: 659.25, duration: 0.16, amplitude: 0.22),
         ])
     }
 
@@ -186,6 +186,6 @@ final class SimulatedAirPodsAudioReadinessService: AirPodsAudioReadinessServicin
 
     func playCalibrationCue() {}
 
-    func stop() {}
+    func stop(deactivatingSession: Bool) {}
 }
 #endif

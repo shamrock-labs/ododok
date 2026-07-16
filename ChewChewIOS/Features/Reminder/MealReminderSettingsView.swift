@@ -22,8 +22,6 @@ struct MealReminderSettingsView: View {
                     mealCard(title: "아침", icon: .sunrise, tint: .butter600, slot: .breakfast)
                     mealCard(title: "점심", icon: .utensils, tint: .sage600, slot: .lunch)
                     mealCard(title: "저녁", icon: .moonStar, tint: .blush500, slot: .dinner)
-                    mealCard(title: "추가 1", icon: .utensils, tint: .acorn600, slot: .extra1)
-                    mealCard(title: "추가 2", icon: .moonStar, tint: .acorn700, slot: .extra2)
                     footerHint
                     Spacer(minLength: AppSpacing.six)
                 }
@@ -38,8 +36,12 @@ struct MealReminderSettingsView: View {
                     AppSheetTitleText(title: "끼니 알림")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
-                    AppSheetTextActionButton(title: "완료") { saveAndDismiss() }
-                        .disabled(store.saveState.isSaving)
+                    AppSheetTextActionButton(
+                        title: "완료",
+                        isProcessing: store.saveState.isSaving
+                    ) {
+                        saveAndDismiss()
+                    }
                 }
             }
         }
@@ -72,7 +74,7 @@ struct MealReminderSettingsView: View {
         )
     }
 
-    // MARK: - 저장 (서버 정본)
+    // MARK: - 저장
 
     private func saveAndDismiss() {
         Task { @MainActor in

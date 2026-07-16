@@ -442,7 +442,6 @@ struct DailyReportView: View {
                         let unavailable = unavailableSessions.first?.mealReport
                         let reason = MealReportUnavailableContent.from(unavailable)
                         EmptyReportCardView(
-                            emoji: unavailable == nil ? "🐿️" : reason.emoji,
                             title: unavailable == nil ? "이 날은 일간 리포트가 없어요" : reason.title,
                             subtitle: unavailable == nil
                                 ? "저장된 식사 리포트가 없어요. 식사를 기록하면 하루 종합 리포트가 만들어져요."

@@ -208,7 +208,10 @@ struct ContentView: View {
         if mealSession.showAirPodsConnectionPrompt {
             ZStack {
                 Color.black.opacity(0.28).ignoresSafeArea()
-                AirPodsPromptDialogView {
+                AirPodsPromptDialogView(
+                    isPreparing: mealSession.isPreparingAirPodsRoute,
+                    showsDismissAction: !mealSession.isPreparingAirPodsRoute
+                ) {
                     mealSession.dismissAirPodsConnectionPrompt()
                 }
                 .padding(.horizontal, AppSpacing.overlayH)
@@ -318,7 +321,12 @@ struct ContentView: View {
     private var onboardingBinding: Binding<Bool> {
         Binding(
             // isLoggedIn 가드: 온보딩 중 "다른 계정으로 로그인"으로 로그아웃하면 sheet도 즉시 닫힌다.
-            get: { state.isLoggedIn && state.didLoadProfile && !state.hasCompletedOnboarding },
+            // 캘리브레이션 가드: 같은 베이스에서 sheet가 경합하면 캘리브레이션 cover가
+            // 재구성돼 진행 중인 단계가 처음으로 초기화된다.
+            get: {
+                state.isLoggedIn && state.didLoadProfile && !state.hasCompletedOnboarding
+                    && !isCalibrationPromptPresented && !isCalibrationFlowQueued && !isCalibrationFlowPresented
+            },
             set: { _ in }
         )
     }

@@ -54,6 +54,7 @@ final class MealSessionRuntimeStore {
         }
     }
     var showAirPodsConnectionPrompt: Bool = false
+    private(set) var isPreparingAirPodsRoute: Bool = false
     var startCountdownValue: Int?
 
     private let analytics: AnalyticsService
@@ -76,10 +77,14 @@ final class MealSessionRuntimeStore {
     @ObservationIgnored private lazy var airPodsAutoStartCoordinator: AirPodsAutoStartCoordinator = {
         let coordinator = AirPodsAutoStartCoordinator(
             monitor: runtimeServices.makeAirPodsConnectionMonitor(),
-            countdown: runtimeServices.makeStartCountdownController()
+            countdown: runtimeServices.makeStartCountdownController(),
+            readinessService: runtimeServices.makeAirPodsAudioReadinessService()
         )
         coordinator.onPromptVisibilityChange = { [weak self] isVisible in
             self?.showAirPodsConnectionPrompt = isVisible
+        }
+        coordinator.onPreparationChange = { [weak self] isPreparing in
+            self?.isPreparingAirPodsRoute = isPreparing
         }
         coordinator.onCountdownValueChange = { [weak self] value in
             self?.startCountdownValue = value
@@ -278,16 +283,13 @@ final class MealSessionRuntimeStore {
         onCountdownStarted: @escaping () -> Void,
         onFinished: @escaping () -> Void
     ) {
-        let decision = AirPodsAutoStartGate.decision(
-            status: headphoneMotionService.authorizationStatus,
-            available: headphoneMotionService.isDeviceMotionAvailable,
-            hasHeadphoneAudioRoute: airPodsAutoStartCoordinator.isHeadphoneConnected
-        )
-        continueMealStartAfterAirPodsDecision(
-            decision,
-            onCountdownStarted: onCountdownStarted,
-            onFinished: onFinished
-        )
+        guard !isEating else { return }
+        airPodsAutoStartCoordinator.prepareRoute { [weak self] in
+            self?.continueMealStartAfterAirPodsDecision(
+                onCountdownStarted: onCountdownStarted,
+                onFinished: onFinished
+            )
+        }
     }
 
     func dismissAirPodsConnectionPrompt() {
@@ -398,43 +400,34 @@ private extension MealSessionRuntimeStore {
     }
 
     func continueMealStartAfterAirPodsDecision(
-        _ decision: AirPodsAutoStartDecision,
         onCountdownStarted: @escaping () -> Void,
         onFinished: @escaping () -> Void
     ) {
+        let decision = AirPodsAutoStartGate.decision(
+            status: headphoneMotionService.authorizationStatus,
+            available: headphoneMotionService.isDeviceMotionAvailable,
+            hasHeadphoneAudioRoute: airPodsAutoStartCoordinator.isHeadphoneConnected
+        )
         switch decision {
-        case .block:
+        case .block, .waitForAirPodsConnection:
+            airPodsAutoStartCoordinator.dismissPromptAndStop()
             showAirPodsConnectionPrompt = true
         case .requestPermission:
             requestMotionPermission {
-                if self.airPodsAutoStartCoordinator.isHeadphoneConnected {
-                    self.beginMealStartCountdown(
-                        onCountdownStarted: onCountdownStarted,
-                        onFinished: onFinished
-                    )
-                } else {
-                    self.waitForAirPodsConnectionThenStart(onFinished: onFinished)
-                }
+                self.continueMealStartAfterAirPodsDecision(
+                    onCountdownStarted: onCountdownStarted,
+                    onFinished: onFinished
+                )
             } onDenied: {
+                self.airPodsAutoStartCoordinator.dismissPromptAndStop()
                 self.showAirPodsConnectionPrompt = true
             }
-        case .waitForAirPodsConnection:
-            waitForAirPodsConnectionThenStart(onFinished: onFinished)
         case .startCountdown:
-            beginMealStartCountdown(
-                onCountdownStarted: onCountdownStarted,
+            airPodsAutoStartCoordinator.startCountdown(
+                onStarted: onCountdownStarted,
                 onFinished: onFinished
             )
         }
-    }
-
-    func waitForAirPodsConnectionThenStart(onFinished: @escaping () -> Void) {
-        airPodsAutoStartCoordinator.waitForConnectionThenStart(onFinished: onFinished)
-    }
-
-    func beginMealStartCountdown(onCountdownStarted: @escaping () -> Void, onFinished: @escaping () -> Void) {
-        onCountdownStarted()
-        airPodsAutoStartCoordinator.startCountdownWithDisconnectMonitoring(onFinished: onFinished)
     }
 
     func pauseMeasurementForCall() async {

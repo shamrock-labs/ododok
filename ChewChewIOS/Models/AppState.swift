@@ -146,10 +146,6 @@ final class AppState {
         }
     )
 
-    @MainActor @ObservationIgnored lazy var records: RecordsStore = RecordsStore(
-        repository: RemoteStoreMealSessionRepository(remoteStore: remoteStore)
-    )
-
     @MainActor @ObservationIgnored lazy var auth: AuthStore = AuthStore(
         repository: authRepository,
         isLoggedIn: isLoggedIn,
@@ -673,8 +669,10 @@ final class AppState {
                 storeAnalyticsUserId(result.userId)
                 analytics.setUserId(result.userId)
                 SentryService.setUser(id: result.userId)
-                hasCompletedOnboarding = result.onboardingCompleted
-                auth.updateOnboardingCompleted(result.onboardingCompleted)
+                // 서버값은 승격만 한다. 로컬 완료 직후 서버 반영이 늦으면 false가 내려오는데,
+                // 그대로 덮으면 온보딩 sheet가 재진입해 캘리브레이션 cover를 초기화시킨다.
+                if result.onboardingCompleted { hasCompletedOnboarding = true }
+                auth.updateOnboardingCompleted(hasCompletedOnboarding)
                 if let name = result.displayName, !name.isEmpty, name != displayName {
                     displayName = name
                 }
@@ -722,15 +720,20 @@ final class AppState {
 
     @MainActor
     func saveDisplayName(_ rawName: String) async {
-        let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        displayName = trimmed
+        guard let displayName = Self.normalizedDisplayName(rawName) else { return }
+        self.displayName = displayName
         let deviceId = DeviceIdentity.shared
         do {
-            try await remoteStore.upsertProfile(ProfileDTO(deviceId: deviceId, displayName: trimmed))
+            try await remoteStore.upsertProfile(ProfileDTO(deviceId: deviceId, displayName: displayName))
         } catch {
             handleRemoteError(error)
         }
+    }
+
+    static func normalizedDisplayName(_ rawName: String) -> String? {
+        let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return String(trimmed.prefix(8))
     }
 
     static func generatedNickname(number: Int) -> String {

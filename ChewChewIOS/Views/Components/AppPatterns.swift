@@ -142,15 +142,27 @@ struct AppSheetHeader<Trailing: View>: View {
 
 struct AppSheetTextActionButton: View {
     let title: String
+    var isProcessing = false
     let action: () -> Void
 
     var body: some View {
-        Button(title, action: action)
-            .buttonStyle(.plain)
+        Button(action: action) {
+            ZStack {
+                Text(title)
+                    .opacity(isProcessing ? 0 : 1)
+                if isProcessing {
+                    ProgressView()
+                        .tint(Color.tintInteractive)
+                }
+            }
             .font(.appFont(.semiboldBody))
             .foregroundStyle(Color.tintInteractive)
             .padding(.horizontal, AppSpacing.four)
             .frame(height: AppSize.dialogActionHeight)
             .background(Color.controlOnSurface, in: Capsule())
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(isProcessing)
     }
 }

@@ -95,6 +95,70 @@ final class MealSessionPhaseTests: XCTestCase {
         store.discardCurrentSession()
     }
 
+    func testMealStartClaimsAirPodsRouteBeforeCountdownAndMeasurement() async {
+        let runtime = FakeMealSessionRuntimeServices()
+        runtime.airPodsMonitor.isConnected = false
+        runtime.readiness.onPrepared = {
+            runtime.airPodsMonitor.isConnected = true
+        }
+        let store = makeStore(runtime: runtime)
+        var didFinish = false
+
+        store.beginMealStartAfterAirPodsReadiness(
+            onCountdownStarted: {},
+            onFinished: { didFinish = true }
+        )
+
+        XCTAssertFalse(store.showAirPodsConnectionPrompt)
+        XCTAssertTrue(store.isPreparingAirPodsRoute)
+        await waitUntil {
+            runtime.readiness.prepareCallCount == 1 && store.startCountdownValue == 3
+        }
+        XCTAssertFalse(store.showAirPodsConnectionPrompt)
+        XCTAssertFalse(store.isEating)
+        XCTAssertFalse(didFinish)
+
+        store.dismissAirPodsConnectionPrompt()
+    }
+
+    func testMealStartAllowsDismissOnlyAfterRoutePreparationFails() async {
+        let runtime = FakeMealSessionRuntimeServices()
+        runtime.airPodsMonitor.isConnected = false
+        runtime.readiness.result = false
+        let store = makeStore(runtime: runtime)
+
+        store.beginMealStartAfterAirPodsReadiness(
+            onCountdownStarted: {},
+            onFinished: {}
+        )
+
+        XCTAssertTrue(store.isPreparingAirPodsRoute)
+        await waitUntil {
+            runtime.readiness.prepareCallCount == 1 && !store.isPreparingAirPodsRoute
+        }
+        XCTAssertTrue(store.showAirPodsConnectionPrompt)
+
+        store.dismissAirPodsConnectionPrompt()
+    }
+
+    func testMealStartShowsPreparingPromptAfterFastPathDelay() async {
+        let runtime = FakeMealSessionRuntimeServices()
+        // 프롬프트 지연(1초)보다 준비가 확실히 오래 걸려야 프롬프트가 뜬다.
+        runtime.readiness.prepareDelay = .seconds(3)
+        let store = makeStore(runtime: runtime)
+
+        store.beginMealStartAfterAirPodsReadiness(
+            onCountdownStarted: {},
+            onFinished: {}
+        )
+
+        XCTAssertFalse(store.showAirPodsConnectionPrompt)
+        await waitUntil(timeout: .seconds(2)) { store.showAirPodsConnectionPrompt }
+        XCTAssertTrue(store.isPreparingAirPodsRoute)
+
+        store.dismissAirPodsConnectionPrompt()
+    }
+
     func testStoppingEatingEndsActivityAndCancelsInterruptionPrompt() async {
         let runtime = FakeMealSessionRuntimeServices()
         let store = makeStore(runtime: runtime)
@@ -124,8 +188,9 @@ final class MealSessionPhaseTests: XCTestCase {
         store.discardCurrentSession()
     }
 
-    private func makeStore(runtime: FakeMealSessionRuntimeServices = FakeMealSessionRuntimeServices()) -> MealSessionRuntimeStore {
-        MealSessionRuntimeStore(
+    private func makeStore(runtime: FakeMealSessionRuntimeServices? = nil) -> MealSessionRuntimeStore {
+        let runtime = runtime ?? FakeMealSessionRuntimeServices()
+        return MealSessionRuntimeStore(
             analytics: NoopAnalytics(),
             onChewPulse: {},
             onPersistSnapshot: {},
@@ -147,12 +212,14 @@ final class MealSessionPhaseTests: XCTestCase {
     }
 }
 
+@MainActor
 private final class FakeMealSessionRuntimeServices {
     let motion = FakeMotionService()
     let audio = FakeAudioFeedbackService()
     let callMonitor = FakeCallInterruptionMonitor()
     let activity = FakeMealActivityController()
     let airPodsMonitor = FakeAirPodsConnectionMonitor()
+    let readiness = FakeAirPodsAudioReadinessService()
     let notification = FakeInterruptionNotifier()
     var currentDate = Date()
 
@@ -163,11 +230,31 @@ private final class FakeMealSessionRuntimeServices {
             makeCallInterruptionMonitor: { self.callMonitor },
             makeActivityController: { self.activity },
             makeAirPodsConnectionMonitor: { self.airPodsMonitor },
+            makeAirPodsAudioReadinessService: { self.readiness },
             makeStartCountdownController: { StartCountdownController() },
             notificationScheduler: notification,
             now: { self.currentDate }
         )
     }
+}
+
+@MainActor
+private final class FakeAirPodsAudioReadinessService: AirPodsAudioReadinessServicing {
+    var prepareCallCount = 0
+    var result = true
+    var prepareDelay: Duration?
+    var onPrepared: (() -> Void)?
+
+    func prepareAirPods() async -> Bool {
+        prepareCallCount += 1
+        if let prepareDelay {
+            try? await Task.sleep(for: prepareDelay)
+        }
+        onPrepared?()
+        return result
+    }
+    func playCalibrationCue() {}
+    func stop(deactivatingSession: Bool) {}
 }
 
 private final class FakeMotionService: MealMotionServicing {

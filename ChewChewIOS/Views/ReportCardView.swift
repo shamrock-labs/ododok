@@ -1045,10 +1045,10 @@ private extension Mood {
 }
 
 /// 카드 frame을 유지한 채 본문에 안내 메시지를 표시하는 빈 카드. 기본값은 분석 5필드가
-/// 없는 세션(시뮬레이터/AirPods 미연결/30초 미만)용. emoji/title/subtitle을 갈아끼우면
+/// 없는 세션(시뮬레이터/AirPods 미연결/30초 미만)용. title/subtitle을 갈아끼우면
 /// "오늘 식사 0건" 같은 다른 빈 상태에도 같은 디자인으로 재사용 가능.
+/// 아이콘은 기록 지면 "식사 리포트가 없어요" empty state와 같은 fork.knife로 통일.
 struct EmptyReportCardView: View {
-    var emoji: String = "🐿️"
     var title: String = "분석을 만들지 못했어요"
     var subtitle: String = "식사 시간이 너무 짧거나 AirPods 신호를 받지 못했어요."
 
@@ -1060,8 +1060,11 @@ struct EmptyReportCardView: View {
             titleFont: .heavyHeadlineLarge,
             messageFont: .semiboldBody
         ) {
-            Text(emoji)
-                .font(.appFont(.regularEmojiXXLarge))
+            Image(systemName: "fork.knife")
+                .font(.appFont(.boldTitleLarge))
+                .foregroundStyle(Color.textMuted)
+                .frame(width: Metrics.emptyStateIcon, height: Metrics.emptyStateIcon)
+                .background(Color.bgSunken, in: Circle())
         }
         .padding(.vertical, Metrics.emptyStateVerticalPadding)
         .padding(.horizontal, AppSpacing.six)
@@ -1080,5 +1083,6 @@ private enum Metrics {
     static let chartDeltaHeight = AppSpacing.two
     static let guideLabelWidth: CGFloat = 36
     static let emptyStateVerticalPadding: CGFloat = 48
+    static let emptyStateIcon: CGFloat = 56
     static let infoIcon = AppSize.iconCompact
 }

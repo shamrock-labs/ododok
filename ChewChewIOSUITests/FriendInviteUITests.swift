@@ -17,10 +17,10 @@ final class FriendInviteUITests: XCTestCase {
         app.launch()
     }
 
-    func test_friendInviteScreen_rendersCodeAndKakaoButton() {
-        XCTAssertTrue(app.staticTexts["내 초대 코드"].waitForExistence(timeout: 15))
-        XCTAssertTrue(app.staticTexts["TESTCODE01"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["카카오톡으로 초대하기"].waitForExistence(timeout: 5))
+    func test_friendInviteScreen_rendersKakaoButtonWithoutInviteCodeText() {
+        XCTAssertTrue(app.buttons["카카오톡으로 초대하기"].waitForExistence(timeout: 15))
+        // v1.1: 내 초대 코드 텍스트는 화면에서 제거됐다(코드는 공유 경로 내부에서만 사용).
+        XCTAssertFalse(app.staticTexts["내 초대 코드"].exists)
     }
 
     func test_tapKakaoInvite_executesShareWithoutCrashing() {
@@ -32,7 +32,7 @@ final class FriendInviteUITests: XCTestCase {
         // 자동화로 보장할 수 있는 핵심: 공유 경로가 앱을 크래시시키지 않고 친구 화면이 유지된다.
         // (실제 카카오톡 전송/공유 시트는 실기기 + 카카오톡 설치가 있어야 하는 수동 e2e 영역.)
         XCTAssertTrue(
-            app.staticTexts["내 초대 코드"].waitForExistence(timeout: 3),
+            app.buttons["카카오톡으로 초대하기"].waitForExistence(timeout: 3),
             "공유 탭 후에도 친구 화면이 살아 있어야 한다(공유 경로가 크래시 없이 실행됨)"
         )
         XCTAssertEqual(app.state, .runningForeground, "공유 경로 실행 후 앱이 포그라운드로 살아 있어야 한다")

@@ -56,9 +56,8 @@ final class NotificationViewController: UIViewController, UNNotificationContentE
 
         avatarView.translatesAutoresizingMaskIntoConstraints = false
         avatarView.image = UIImage(named: "RealDaram")
+        // 앱 아이콘(누워있는 다람이) 그림 그대로 — 풀블리드 아트라 여백 크롭 없이 쓴다.
         avatarView.contentMode = .scaleAspectFit
-        // 1536px 원본의 바깥쪽 투명 여백을 제외해 SwiftUI의 1.35배 보정과 같은 크기로 보인다.
-        avatarView.layer.contentsRect = CGRect(x: 0.13, y: 0.13, width: 0.74, height: 0.74)
         avatarView.backgroundColor = UIColor(red: 251/255, green: 243/255, blue: 232/255, alpha: 1)
         avatarView.layer.cornerRadius = 12
         avatarView.clipsToBounds = true
