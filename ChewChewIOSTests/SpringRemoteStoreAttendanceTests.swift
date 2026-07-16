@@ -187,6 +187,8 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
                       "message": "요청에 성공하였습니다.",
                       "result": {
                         "asOf": "2026-07-15",
+                        "month": "2026-06",
+                        "oldestRecordedOn": "2026-05-20",
                         "current": 8,
                         "longest": 18,
                         "startedOn": "2026-07-08",
@@ -202,12 +204,13 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
             )
         }
 
-        let result = try await store.fetchStreakDetail()
+        let result = try await store.fetchStreakDetail(month: "2026-06")
 
         XCTAssertEqual(capturedRequest?.httpMethod, "GET")
-        XCTAssertEqual(capturedRequest?.url?.absoluteString, "http://localhost:8080/v1/me/streak")
+        XCTAssertEqual(capturedRequest?.url?.absoluteString, "http://localhost:8080/v1/me/streak?month=2026-06")
         XCTAssertEqual(result.asOf, "2026-07-15")
         XCTAssertEqual(result.current, 8)
+        XCTAssertEqual(result.oldestRecordedOn, "2026-05-20")
         XCTAssertEqual(result.days.map(\.state), [.attended, .frozen])
     }
 

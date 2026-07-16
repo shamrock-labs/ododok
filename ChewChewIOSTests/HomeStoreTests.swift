@@ -656,6 +656,49 @@ final class HomeStoreTests: XCTestCase {
         XCTAssertEqual(store.streakDetailLoadState, .loaded)
     }
 
+    func testMoveStreakMonthFetchesOnlyTheAdjacentMonth() async {
+        let detail = makeStreakDetail()
+        let previous = StreakDetailDTO(
+            asOf: detail.asOf,
+            month: "2026-06",
+            oldestRecordedOn: "2026-05-20",
+            current: detail.current,
+            longest: detail.longest,
+            startedOn: detail.startedOn,
+            freezeInventory: detail.freezeInventory,
+            days: []
+        )
+        let repository = SequencedStreakHomeRepository(results: [.success(detail), .success(previous)])
+        let store = HomeStore(repository: repository)
+
+        await store.fetchStreakDetail()
+        await store.moveStreakMonth(delta: -1)
+
+        XCTAssertEqual(repository.requestedMonths, [nil, "2026-06"])
+        XCTAssertEqual(store.streakDetail?.resolvedMonth, "2026-06")
+    }
+
+    func testMoveStreakMonthStopsAtOldestAndCurrentMonths() async {
+        let detail = makeStreakDetail()
+        let currentRepository = SequencedStreakHomeRepository(results: [.success(detail)])
+        let currentStore = HomeStore(repository: currentRepository)
+
+        await currentStore.fetchStreakDetail()
+        await currentStore.moveStreakMonth(delta: 1)
+
+        XCTAssertEqual(currentRepository.requestedMonths, [nil])
+
+        var oldestDetail = detail
+        oldestDetail.month = "2026-06"
+        let oldestRepository = SequencedStreakHomeRepository(results: [.success(oldestDetail)])
+        let oldestStore = HomeStore(repository: oldestRepository)
+
+        await oldestStore.fetchStreakDetail()
+        await oldestStore.moveStreakMonth(delta: -1)
+
+        XCTAssertEqual(oldestRepository.requestedMonths, [nil])
+    }
+
     func testFetchStreakDetailFailureKeepsLastGoodDetail() async {
         let detail = makeStreakDetail()
         let repository = SequencedStreakHomeRepository(results: [.success(detail), .failure(TestError.fetch)])
@@ -826,6 +869,8 @@ final class HomeStoreTests: XCTestCase {
     private func makeStreakDetail() -> StreakDetailDTO {
         StreakDetailDTO(
             asOf: "2026-07-15",
+            month: "2026-07",
+            oldestRecordedOn: "2026-06-21",
             current: 8,
             longest: 18,
             startedOn: "2026-07-08",
@@ -931,13 +976,14 @@ private final class FakeHomeRepository: HomeRepository {
         try rewardHistoryResult.get()
     }
 
-    func fetchStreakDetail() async throws -> StreakDetailDTO {
+    func fetchStreakDetail(month: String?) async throws -> StreakDetailDTO {
         try streakDetailResult.get()
     }
 }
 
 private final class SequencedStreakHomeRepository: HomeRepository {
     private var results: [Result<StreakDetailDTO, Error>]
+    private(set) var requestedMonths: [String?] = []
 
     init(results: [Result<StreakDetailDTO, Error>]) {
         self.results = results
@@ -964,7 +1010,10 @@ private final class SequencedStreakHomeRepository: HomeRepository {
         )
     }
     func fetchRewardHistory() async throws -> [RewardHistoryDTO] { [] }
-    func fetchStreakDetail() async throws -> StreakDetailDTO { try results.removeFirst().get() }
+    func fetchStreakDetail(month: String?) async throws -> StreakDetailDTO {
+        requestedMonths.append(month)
+        return try results.removeFirst().get()
+    }
 }
 
 private enum TestError: Error {

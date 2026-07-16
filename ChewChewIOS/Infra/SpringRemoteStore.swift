@@ -258,8 +258,9 @@ final class SpringRemoteStore: RemoteStore {
         return try decodeResult(AttendanceResultDTO.self, from: data)
     }
 
-    func fetchStreakDetail() async throws -> StreakDetailDTO {
-        let req = jsonRequest(method: "GET", path: "/v1/me/streak")
+    func fetchStreakDetail(month: String?) async throws -> StreakDetailDTO {
+        let query = month.map { "?month=\($0)" } ?? ""
+        let req = jsonRequest(method: "GET", path: "/v1/me/streak\(query)")
         let data = try await sendExpectingSuccess(req)
         return try decodeResult(StreakDetailDTO.self, from: data)
     }

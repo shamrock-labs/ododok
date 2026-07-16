@@ -37,7 +37,7 @@ struct RemoteStoreHomeRepository: HomeRepository {
         try await remoteStore.fetchRewardHistory()
     }
 
-    func fetchStreakDetail() async throws -> StreakDetailDTO {
-        try await remoteStore.fetchStreakDetail()
+    func fetchStreakDetail(month: String?) async throws -> StreakDetailDTO {
+        try await remoteStore.fetchStreakDetail(month: month)
     }
 }

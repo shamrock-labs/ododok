@@ -264,12 +264,12 @@ final class HomeStore {
         }
     }
 
-    func fetchStreakDetail() async {
+    func fetchStreakDetail(month: String? = nil) async {
         streakDetailGeneration += 1
         let generation = streakDetailGeneration
         streakDetailLoadState = .loading
         do {
-            let detail = try await repository.fetchStreakDetail()
+            let detail = try await repository.fetchStreakDetail(month: month)
             guard generation == streakDetailGeneration else { return }
             streakDetail = detail
             streakDetailLoadState = .loaded
@@ -278,6 +278,21 @@ final class HomeStore {
             onRemoteError(error)
             streakDetailLoadState = .failed
         }
+    }
+
+    func moveStreakMonth(delta: Int) async {
+        guard delta != 0, let detail = streakDetail else { return }
+        guard let current = Self.streakMonthFormatter.date(from: detail.resolvedMonth),
+              let target = Self.streakCalendar.date(byAdding: .month, value: delta, to: current)
+        else { return }
+
+        let targetMonth = Self.streakMonthFormatter.string(from: target)
+        let currentServerMonth = String(detail.asOf.prefix(7))
+        let oldestMonth = detail.oldestRecordedOn.map { String($0.prefix(7)) }
+        if targetMonth > currentServerMonth { return }
+        if let oldestMonth, targetMonth < oldestMonth { return }
+
+        await fetchStreakDetail(month: targetMonth)
     }
 
     func dismissPendingRewardGrant() {
@@ -310,6 +325,21 @@ final class HomeStore {
         streak = home.streak
         freezeInventory = home.freezeInventory
     }
+
+    private static let streakMonthFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+        formatter.dateFormat = "yyyy-MM"
+        return formatter
+    }()
+
+    private static let streakCalendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "Asia/Seoul")!
+        return calendar
+    }()
 
     private func applyAndNotify(_ home: HomeStateDTO) {
         apply(home)

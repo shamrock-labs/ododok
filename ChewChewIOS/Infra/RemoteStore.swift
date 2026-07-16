@@ -34,8 +34,8 @@ protocol RemoteStore {
         decision: FreezeDecisionDTO?,
         expectedMissedDays: Int?
     ) async throws -> AttendanceResultDTO
-    /// KST 오늘을 포함한 최근 14일 스트릭 요약과 실제 출석/프리즈 원장 행.
-    func fetchStreakDetail() async throws -> StreakDetailDTO
+    /// 서버 KST 기준 월의 스트릭 요약과 실제 출석/프리즈 원장 행.
+    func fetchStreakDetail(month: String?) async throws -> StreakDetailDTO
     /// 서버 reward_events 원장 조회 — 도토리 적립 내역 표시용.
     func fetchRewardHistory() async throws -> [RewardHistoryDTO]
     /// `since` 이후 + 옵셔널 `until` 이전에 시작된 세션을 시간 오름차순으로 조회.
@@ -108,7 +108,7 @@ extension RemoteStore {
     func upsertMealNotifications(_ settings: MealReminderSettings, timeZone: String) async throws {}
     func fetchMealNotifications() async throws -> MealReminderSettings? { nil }
     func fetchRewardHistory() async throws -> [RewardHistoryDTO] { [] }
-    func fetchStreakDetail() async throws -> StreakDetailDTO { .empty }
+    func fetchStreakDetail(month: String?) async throws -> StreakDetailDTO { .empty }
     func fetchDailyReport(date: String) async throws -> DailyReportDTO {
         DailyReportDTO(
             date: date,

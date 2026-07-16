@@ -166,11 +166,16 @@ struct AttendanceStreakDTO: Codable, Equatable {
 
 struct StreakDetailDTO: Codable, Equatable {
     var asOf: String
+    var month: String?
+    var oldestRecordedOn: String?
     var current: Int
     var longest: Int
     var startedOn: String?
     var freezeInventory: Int
     var days: [StreakDayDTO]
+
+    /// 월별 계약 배포 전 서버 응답은 `month`가 없으므로 서버 기준일의 월로 수렴한다.
+    var resolvedMonth: String { month ?? String(asOf.prefix(7)) }
 
     /// Spring 응답 대체값이 아니라 Noop/non-Spring fallback 전용 중립 상세.
     /// 로컬 KST 기준일만 채우고 출석/프리즈 원장 행은 만들지 않는다.
@@ -180,8 +185,11 @@ struct StreakDetailDTO: Codable, Equatable {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
         formatter.dateFormat = "yyyy-MM-dd"
+        let asOf = formatter.string(from: Date())
         return StreakDetailDTO(
-            asOf: formatter.string(from: Date()),
+            asOf: asOf,
+            month: String(asOf.prefix(7)),
+            oldestRecordedOn: nil,
             current: 0,
             longest: 0,
             startedOn: nil,

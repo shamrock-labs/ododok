@@ -9,11 +9,15 @@ protocol HomeRepository {
         decision: FreezeDecisionDTO?,
         expectedMissedDays: Int?
     ) async throws -> AttendanceResultDTO
-    func fetchStreakDetail() async throws -> StreakDetailDTO
+    func fetchStreakDetail(month: String?) async throws -> StreakDetailDTO
     func fetchRewardHistory() async throws -> [RewardHistoryDTO]
 }
 
 extension HomeRepository {
+    func fetchStreakDetail() async throws -> StreakDetailDTO {
+        try await fetchStreakDetail(month: nil)
+    }
+
     func fetchAttendanceStatus() async throws -> AttendanceStatusDTO {
         AttendanceStatusDTO(
             asOf: "",

@@ -4,13 +4,13 @@ enum StreakDayPresentationState: Equatable {
     case missing
     case attended
     case frozen
+    case upcoming
     case unknownLoading
     case unknownUnavailable
 }
 
 struct StreakDayPresentation: Equatable, Identifiable {
     let dateID: String
-    let weekday: String
     let dayOfMonth: Int
     let state: StreakDayPresentationState
     let isToday: Bool
@@ -23,6 +23,7 @@ struct StreakDayPresentation: Equatable, Identifiable {
         case .missing: "기록 없음"
         case .attended: "출석"
         case .frozen: "프리즈 방어"
+        case .upcoming: "아직 오지 않은 날"
         case .unknownLoading: "스트릭 정보 확인 중"
         case .unknownUnavailable: "스트릭 기록 정보 없음"
         }
@@ -32,10 +33,13 @@ struct StreakDayPresentation: Equatable, Identifiable {
 
 struct StreakDetailPresentation: Equatable {
     let current: Int
-    let longestText: String
     let startedOnText: String
     let freezeInventory: Int
-    let days: [StreakDayPresentation]
+    let monthTitle: String
+    let days: [StreakDayPresentation?]
+    let canMovePrevious: Bool
+    let canMoveNext: Bool
+    let historyStartText: String?
     let showsRetry: Bool
 
     static func make(
@@ -59,11 +63,11 @@ struct StreakDetailPresentation: Equatable {
         dayFormatter.timeZone = calendar.timeZone
         dayFormatter.dateFormat = "yyyy-MM-dd"
 
-        let weekdayFormatter = DateFormatter()
-        weekdayFormatter.calendar = calendar
-        weekdayFormatter.locale = Locale(identifier: "ko_KR")
-        weekdayFormatter.timeZone = calendar.timeZone
-        weekdayFormatter.dateFormat = "EEEEE"
+        let monthFormatter = DateFormatter()
+        monthFormatter.calendar = calendar
+        monthFormatter.locale = Locale(identifier: "ko_KR")
+        monthFormatter.timeZone = calendar.timeZone
+        monthFormatter.dateFormat = "yyyy년 M월"
 
         let startFormatter = DateFormatter()
         startFormatter.calendar = calendar
@@ -71,29 +75,44 @@ struct StreakDetailPresentation: Equatable {
         startFormatter.timeZone = calendar.timeZone
         startFormatter.dateFormat = "M월 d일"
 
+        let fallbackToday = calendar.startOfDay(for: now)
+        let asOf = detail.flatMap { dayFormatter.date(from: $0.asOf) } ?? fallbackToday
+        let requestedMonth = detail.flatMap { dayFormatter.date(from: "\($0.resolvedMonth)-01") }
+            ?? calendar.dateInterval(of: .month, for: fallbackToday)?.start
+            ?? fallbackToday
+        let monthStart = calendar.dateInterval(of: .month, for: requestedMonth)?.start ?? requestedMonth
         let statesByDay = Dictionary(uniqueKeysWithValues: (detail?.days ?? []).map { ($0.date, $0.state) })
-        let today = detail.flatMap { dayFormatter.date(from: $0.asOf) }
-            ?? calendar.startOfDay(for: now)
-        let days = (-13...0).compactMap { offset -> StreakDayPresentation? in
-            guard let date = calendar.date(byAdding: .day, value: offset, to: today) else { return nil }
+
+        var days: [StreakDayPresentation?] = Array(
+            repeating: nil,
+            count: calendar.component(.weekday, from: monthStart) - 1
+        )
+        let numberOfDays = calendar.range(of: .day, in: .month, for: monthStart)?.count ?? 0
+        for offset in 0..<numberOfDays {
+            guard let date = calendar.date(byAdding: .day, value: offset, to: monthStart) else { continue }
             let dateID = dayFormatter.string(from: date)
-            let state: StreakDayPresentationState = if detail == nil {
-                isLoading ? .unknownLoading : .unknownUnavailable
+            let state: StreakDayPresentationState
+            if detail == nil {
+                state = isLoading ? .unknownLoading : .unknownUnavailable
+            } else if date > asOf {
+                state = .upcoming
             } else {
-                switch statesByDay[dateID] {
+                state = switch statesByDay[dateID] {
                 case .attended: .attended
                 case .frozen: .frozen
                 case nil: .missing
                 }
             }
-            return StreakDayPresentation(
-                dateID: dateID,
-                weekday: weekdayFormatter.string(from: date),
-                dayOfMonth: calendar.component(.day, from: date),
-                state: state,
-                isToday: offset == 0
+            days.append(
+                StreakDayPresentation(
+                    dateID: dateID,
+                    dayOfMonth: calendar.component(.day, from: date),
+                    state: state,
+                    isToday: calendar.isDate(date, inSameDayAs: asOf)
+                )
             )
         }
+        while days.count < 42 { days.append(nil) }
 
         let startedOnText: String
         if let startedOn = detail?.startedOn, let date = dayFormatter.date(from: startedOn) {
@@ -104,12 +123,36 @@ struct StreakDetailPresentation: Equatable {
             startedOnText = "시작일 정보 없음"
         }
 
+        let oldestMonth = detail?.oldestRecordedOn.map { String($0.prefix(7)) }
+        let currentServerMonth = detail.map { String($0.asOf.prefix(7)) }
+        let selectedMonth = detail?.resolvedMonth
+        let historyStartText = detail?.oldestRecordedOn.flatMap { value -> String? in
+            guard let date = dayFormatter.date(from: value) else { return nil }
+            return "스트릭 기록은 \(startFormatter.string(from: date))부터 확인할 수 있어요"
+        }
+
+        let canMovePrevious: Bool
+        if let selectedMonth, let oldestMonth {
+            canMovePrevious = selectedMonth > oldestMonth
+        } else {
+            canMovePrevious = false
+        }
+        let canMoveNext: Bool
+        if let selectedMonth, let currentServerMonth {
+            canMoveNext = selectedMonth < currentServerMonth
+        } else {
+            canMoveNext = false
+        }
+
         return Self(
             current: detail?.current ?? cachedCurrent,
-            longestText: detail.map { "최장 스트릭 \($0.longest)일" } ?? "최장 스트릭 —",
             startedOnText: startedOnText,
             freezeInventory: detail?.freezeInventory ?? cachedFreezeInventory,
+            monthTitle: monthFormatter.string(from: monthStart),
             days: days,
+            canMovePrevious: canMovePrevious,
+            canMoveNext: canMoveNext,
+            historyStartText: historyStartText,
             showsRetry: detail == nil && hasFailed
         )
     }
@@ -140,18 +183,22 @@ struct StreakDetailSheet: View {
 
     var body: some View {
         VStack(spacing: AppSpacing.five) {
-            header
+            AppSheetHeader(title: "스트릭") {
+                AppSheetTextActionButton(title: "닫기") { dismiss() }
+                    .accessibilityIdentifier("StreakDetailCloseButton")
+            }
 
             ScrollView {
                 VStack(alignment: .leading, spacing: AppSpacing.five) {
-                    Text(presentation.startedOnText)
-                        .font(.appFont(.semiboldBody))
-                        .foregroundStyle(Color.textMuted)
-
                     summarySection
-                    recentDays
+                    calendarSection
                     if !presentation.showsRetry {
                         legend
+                        if let historyStartText = presentation.historyStartText {
+                            Text(historyStartText)
+                                .font(.appFont(.semiboldCaption))
+                                .foregroundStyle(Color.textTertiary)
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -164,16 +211,7 @@ struct StreakDetailSheet: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Color.bgPage.ignoresSafeArea())
         .accessibilityIdentifier("StreakDetailSheet")
-        .task {
-            await home.fetchStreakDetail()
-        }
-    }
-
-    private var header: some View {
-        AppSheetHeader(title: "나의 스트릭") {
-            AppSheetTextActionButton(title: "닫기") { dismiss() }
-                .accessibilityIdentifier("StreakDetailCloseButton")
-        }
+        .task { await home.fetchStreakDetail() }
     }
 
     private var summarySection: some View {
@@ -191,10 +229,9 @@ struct StreakDetailSheet: View {
                     .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
-                Text(presentation.longestText)
+                Text(presentation.startedOnText)
                     .font(.appFont(.boldBody))
                     .foregroundStyle(Color.textMuted)
-                    .monospacedDigit()
             }
 
             Spacer(minLength: AppSpacing.one)
@@ -217,55 +254,106 @@ struct StreakDetailSheet: View {
         .accessibilityIdentifier("StreakSummaryCard")
     }
 
-    private var recentDays: some View {
+    private var calendarSection: some View {
         VStack(alignment: .leading, spacing: AppSpacing.three) {
-            HStack {
-                Text("최근 기록")
-                    .font(.appFont(.heavyHeadline))
-                    .foregroundStyle(Color.textDefault)
-                Spacer()
-                Text("14일")
-                    .font(.appFont(.boldBody))
-                    .foregroundStyle(Color.textMuted)
-            }
-
+            monthHeader
             if presentation.showsRetry {
-                HStack(spacing: AppSpacing.three) {
-                    Text("기록을 불러오지 못했어요")
-                        .font(.appFont(.semiboldCallout))
-                        .foregroundStyle(Color.textMuted)
-
-                    Spacer(minLength: AppSpacing.two)
-
-                    Button("다시 시도") {
-                        Task { await home.fetchStreakDetail() }
-                    }
-                    .buttonStyle(.plain)
-                    .font(.appFont(.boldCallout))
-                    .foregroundStyle(Color.textAction)
-                    .padding(.horizontal, AppSpacing.three)
-                    .frame(minHeight: AppSize.controlXLarge)
-                    .background(Color.bgSunken, in: Capsule())
-                    .accessibilityLabel("스트릭 기록 다시 불러오기")
-                    .accessibilityIdentifier("StreakDetailRetryButton")
-                }
-                .frame(minHeight: Metrics.retryHeight)
-                .accessibilityElement(children: .contain)
-                .accessibilityIdentifier("StreakDetailRetryState")
+                retryState
             } else {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: AppSpacing.two), count: 7), spacing: AppSpacing.three) {
-                    ForEach(presentation.days) { day in
-                        StreakDayCell(day: day)
+                weekdayLabels
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), spacing: AppSpacing.one), count: 7),
+                    spacing: AppSpacing.one
+                ) {
+                    ForEach(presentation.days.indices, id: \.self) { index in
+                        if let day = presentation.days[index] {
+                            StreakDayCell(day: day)
+                        } else {
+                            Color.clear.frame(height: Metrics.dayCircle)
+                        }
                     }
                 }
-                .accessibilityIdentifier("StreakRecentDaysGrid")
+                .accessibilityIdentifier("StreakMonthGrid")
             }
         }
     }
 
+    private var monthHeader: some View {
+        HStack {
+            monthButton(
+                systemName: "chevron.left",
+                accessibilityLabel: "이전 달",
+                enabled: presentation.canMovePrevious
+            ) {
+                await home.moveStreakMonth(delta: -1)
+            }
+            Spacer()
+            Text(presentation.monthTitle)
+                .font(.appFont(.heavyBody))
+                .foregroundStyle(Color.textDefault)
+            Spacer()
+            monthButton(
+                systemName: "chevron.right",
+                accessibilityLabel: "다음 달",
+                enabled: presentation.canMoveNext
+            ) {
+                await home.moveStreakMonth(delta: 1)
+            }
+        }
+    }
+
+    private func monthButton(
+        systemName: String,
+        accessibilityLabel: String,
+        enabled: Bool,
+        action: @escaping @MainActor () async -> Void
+    ) -> some View {
+        Button { Task { await action() } } label: {
+            Image(systemName: systemName)
+                .font(.appFont(.boldCallout))
+                .frame(width: Metrics.calendarButton, height: Metrics.calendarButton)
+                .background(Color.bgSurface.opacity(0.7), in: Circle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Color.textAction)
+        .accessibilityLabel(accessibilityLabel)
+        .disabled(!enabled || isDetailLoading)
+        .opacity(enabled ? 1 : 0.35)
+    }
+
+    private var weekdayLabels: some View {
+        HStack(spacing: AppSpacing.one) {
+            ForEach(["일", "월", "화", "수", "목", "금", "토"], id: \.self) { symbol in
+                Text(symbol)
+                    .font(.appFont(.boldMicro))
+                    .foregroundStyle(symbol == "일" ? Color.blush400 : symbol == "토" ? Color.acorn600 : Color.textTertiary)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private var retryState: some View {
+        HStack(spacing: AppSpacing.three) {
+            Text("기록을 불러오지 못했어요")
+                .font(.appFont(.semiboldCallout))
+                .foregroundStyle(Color.textMuted)
+            Spacer(minLength: AppSpacing.two)
+            Button("다시 시도") { Task { await home.fetchStreakDetail() } }
+                .buttonStyle(.plain)
+                .font(.appFont(.boldCallout))
+                .foregroundStyle(Color.textAction)
+                .padding(.horizontal, AppSpacing.three)
+                .frame(minHeight: AppSize.controlXLarge)
+                .background(Color.bgSunken, in: Capsule())
+                .accessibilityIdentifier("StreakDetailRetryButton")
+        }
+        .frame(minHeight: Metrics.retryHeight)
+        .accessibilityIdentifier("StreakDetailRetryState")
+    }
+
     private var legend: some View {
         HStack(spacing: AppSpacing.five) {
-            StreakLegendItem(kind: .today, label: "오늘 접속")
+            StreakLegendItem(kind: .attended, label: "접속")
             StreakLegendItem(kind: .frozen, label: "프리즈 방어")
         }
         .accessibilityElement(children: .contain)
@@ -277,33 +365,23 @@ private struct StreakDayCell: View {
     let day: StreakDayPresentation
 
     var body: some View {
-        VStack(spacing: AppSpacing.oneHalf) {
-            Text(day.isToday ? "오늘" : day.weekday)
-                .font(.appFont(.boldCaption))
-                .foregroundStyle(day.isToday ? Color.textAction : Color.textMuted)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-
-            ZStack {
-                Circle()
-                    .fill(surface)
-                Circle()
-                    .stroke(border, lineWidth: borderWidth)
-
-                switch day.state {
-                case .frozen:
-                    Image(systemName: "shield.fill")
-                        .font(.appFont(.semiboldCallout))
-                        .foregroundStyle(Color.freezeForeground)
-                case .attended, .missing, .unknownLoading, .unknownUnavailable:
-                    Text("\(day.dayOfMonth)")
-                        .font(.appFont(.heavyCallout))
-                        .foregroundStyle(foreground)
-                        .monospacedDigit()
-                }
+        ZStack {
+            Circle().fill(surface)
+            Circle().stroke(border, lineWidth: borderWidth)
+            switch day.state {
+            case .frozen:
+                Image(systemName: "shield.fill")
+                    .font(.appFont(.semiboldCallout))
+                    .foregroundStyle(Color.freezeForeground)
+            case .missing, .attended, .upcoming, .unknownLoading, .unknownUnavailable:
+                Text("\(day.dayOfMonth)")
+                    .font(.appFont(.heavyCallout))
+                    .foregroundStyle(foreground)
+                    .monospacedDigit()
             }
-            .frame(width: Metrics.dayCircle, height: Metrics.dayCircle)
         }
+        .frame(width: Metrics.dayCircle, height: Metrics.dayCircle)
+        .frame(maxWidth: .infinity)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(day.accessibilityLabel)
         .accessibilityIdentifier(day.accessibilityIdentifier)
@@ -312,19 +390,25 @@ private struct StreakDayCell: View {
     private var surface: Color {
         switch day.state {
         case .missing, .unknownLoading, .unknownUnavailable: Color.bgSunken
+        case .upcoming: Color.bgSurface.opacity(0.45)
         case .attended: Color.tintPrimary
         case .frozen: Color.freezeSurface
         }
     }
 
     private var foreground: Color {
-        day.state == .attended ? Color.textActionInverse : Color.textSubtle
+        switch day.state {
+        case .attended: Color.textActionInverse
+        case .upcoming: Color.textTertiary
+        case .missing, .frozen, .unknownLoading, .unknownUnavailable: Color.textSubtle
+        }
     }
 
     private var border: Color {
         if day.isToday, day.state == .attended { return Color.butter400 }
         if day.state == .frozen { return Color.freezeBorder }
-        return day.state == .attended ? Color.tintPrimary : Color.borderDefault
+        if day.state == .attended { return Color.tintPrimary }
+        return Color.clear
     }
 
     private var borderWidth: CGFloat {
@@ -333,7 +417,7 @@ private struct StreakDayCell: View {
 }
 
 private struct StreakLegendItem: View {
-    enum Kind { case today, frozen }
+    enum Kind { case attended, frozen }
 
     let kind: Kind
     let label: String
@@ -341,8 +425,8 @@ private struct StreakLegendItem: View {
     var body: some View {
         HStack(spacing: AppSpacing.oneHalf) {
             ZStack {
-                Circle().fill(kind == .today ? Color.tintPrimary : Color.freezeSurface)
-                Circle().stroke(kind == .today ? Color.butter400 : Color.freezeBorder, lineWidth: AppSize.border)
+                Circle().fill(kind == .attended ? Color.tintPrimary : Color.freezeSurface)
+                Circle().stroke(kind == .attended ? Color.tintPrimary : Color.freezeBorder, lineWidth: AppSize.border)
                 if kind == .frozen {
                     Image(systemName: "shield.fill")
                         .font(.appFont(.semiboldMicro))
@@ -350,7 +434,6 @@ private struct StreakLegendItem: View {
                 }
             }
             .frame(width: AppSize.controlTiny, height: AppSize.controlTiny)
-
             Text(label)
                 .font(.appFont(.semiboldCallout))
                 .foregroundStyle(Color.textMuted)
@@ -359,7 +442,8 @@ private struct StreakLegendItem: View {
 }
 
 private enum Metrics {
-    static let dayCircle: CGFloat = 44
+    static let calendarButton = AppSize.controlLarge
+    static let dayCircle: CGFloat = 40
     static let todayBorder: CGFloat = 4
     static let retryHeight: CGFloat = 88
 }

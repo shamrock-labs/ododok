@@ -23,10 +23,10 @@ final class StreakDetailUITests: XCTestCase {
         streakButton.tap()
 
         XCTAssertTrue(app.otherElements["StreakDetailSheet"].waitForExistence(timeout: 3))
-        XCTAssertTrue(app.staticTexts["나의 스트릭"].exists)
+        XCTAssertTrue(app.staticTexts["스트릭"].exists)
         XCTAssertTrue(app.buttons["StreakDetailCloseButton"].exists)
         XCTAssertTrue(app.otherElements["StreakSummaryCard"].exists)
-        XCTAssertTrue(app.otherElements["StreakRecentDaysGrid"].exists)
+        XCTAssertTrue(app.otherElements["StreakMonthGrid"].exists)
 
         app.buttons["StreakDetailCloseButton"].tap()
         XCTAssertTrue(app.otherElements["StreakDetailSheet"].waitForNonExistence(timeout: 3))
