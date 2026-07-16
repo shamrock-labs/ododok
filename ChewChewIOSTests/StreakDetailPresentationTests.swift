@@ -5,6 +5,13 @@ final class StreakDetailPresentationTests: XCTestCase {
     private let now = Date(timeIntervalSince1970: 1_784_043_000)
     private let skewedDeviceNow = Date(timeIntervalSince1970: 1_924_961_400)
 
+    func testCalendarRingStylesKeepRecordsStandardAndStreakThin() {
+        XCTAssertEqual(CalendarStatusRingStyle.standard.baseLineWidth, 3)
+        XCTAssertEqual(CalendarStatusRingStyle.standard.progressLineWidth, 3.2)
+        XCTAssertEqual(CalendarStatusRingStyle.streak.baseLineWidth, 1.5)
+        XCTAssertEqual(CalendarStatusRingStyle.streak.progressLineWidth, 2)
+    }
+
     func testLegacyDetailWithoutMonthUsesServerAsOfMonth() throws {
         let detail = try JSONDecoder().decode(
             StreakDetailDTO.self,

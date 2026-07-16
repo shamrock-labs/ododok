@@ -393,7 +393,8 @@ private struct StreakDayCell: View {
                 completedSegments: day.ringKind == .neutral ? 0 : 1,
                 totalSegments: 1,
                 accent: ringAccent,
-                fill: day.isToday ? Color.borderSelected.opacity(0.7) : Color.clear
+                fill: day.isToday ? Color.borderSelected.opacity(0.7) : Color.clear,
+                style: .streak
             )
             Text("\(day.dayOfMonth)")
                 .font(.appFont(day.isToday ? .heavyCaption : .semiboldCaption))
@@ -439,7 +440,8 @@ private struct StreakLegendItem: View {
                 CalendarStatusRing(
                     completedSegments: 1,
                     totalSegments: 1,
-                    accent: kind == .attended ? Color.acorn500 : Color.freezeForeground
+                    accent: kind == .attended ? Color.acorn500 : Color.freezeForeground,
+                    style: .streak
                 )
                 if kind == .frozen {
                     Image(systemName: "shield.fill")
