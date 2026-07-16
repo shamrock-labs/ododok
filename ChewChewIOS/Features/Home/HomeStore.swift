@@ -340,6 +340,15 @@ final class HomeStore {
         return formatter
     }()
 
+    private static let streakDayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter
+    }()
+
     private static let streakCalendar: Calendar = {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "Asia/Seoul")!
@@ -366,6 +375,11 @@ final class HomeStore {
         guard isCurrentAttendanceOperation(operation) else { return false }
         loadGeneration += 1
         applyAndNotify(result.userStats)
+        applyAttendanceToStreakDetail(
+            result.streak,
+            now: now,
+            recoveredDates: decision == .use ? pendingFreezeRecovery?.missedDates ?? [] : []
+        )
         if !result.idempotentReplay {
             if let streakGrant = rewardGrant(for: result.streak) {
                 pendingRewardGrant = streakGrant
@@ -378,6 +392,36 @@ final class HomeStore {
             onRewardEarned(result.grantedPoints, "attendance")
         }
         return true
+    }
+
+    private func applyAttendanceToStreakDetail(
+        _ streak: AttendanceStreakDTO,
+        now: Date,
+        recoveredDates: [String]
+    ) {
+        let today = Self.streakDayFormatter.string(from: now)
+        let month = String(today.prefix(7))
+        let existingDays = streakDetail?.resolvedMonth == month ? streakDetail?.days ?? [] : []
+        var daysByDate = Dictionary(uniqueKeysWithValues: existingDays.map { ($0.date, $0) })
+        for date in recoveredDates where date.hasPrefix(month) {
+            daysByDate[date] = StreakDayDTO(date: date, state: .frozen)
+        }
+        daysByDate[today] = StreakDayDTO(date: today, state: .attended)
+
+        let oldestRecordedOn = (
+            [streakDetail?.oldestRecordedOn].compactMap { $0 } + Array(daysByDate.keys)
+        ).min()
+        streakDetail = StreakDetailDTO(
+            asOf: today,
+            month: month,
+            oldestRecordedOn: oldestRecordedOn,
+            current: streak.current,
+            longest: streak.longest,
+            startedOn: streak.startedOn ?? (streak.current == 1 ? today : nil),
+            freezeInventory: streak.freezeInventory,
+            days: daysByDate.values.sorted { $0.date < $1.date }
+        )
+        streakSelectedMonth = month
     }
 
     private func beginAttendanceOperation() -> Int? {

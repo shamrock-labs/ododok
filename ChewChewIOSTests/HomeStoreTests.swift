@@ -152,6 +152,35 @@ final class HomeStoreTests: XCTestCase {
         XCTAssertEqual(rewarded?.kind, "attendance")
     }
 
+    func testSuccessfulAttendanceImmediatelyMarksTodayInStreakDetail() async {
+        let now = Date(timeIntervalSince1970: 1_784_171_400)
+        let home = makeHome(points: 10, streak: 1, freeze: 0)
+        let repository = FakeHomeRepository(
+            result: .success(makeHome()),
+            attendanceResult: .success(
+                AttendanceResultDTO(
+                    grantedPoints: 10,
+                    capped: false,
+                    idempotentReplay: false,
+                    streak: makeAttendanceStreak(current: 1, event: "FIRST_DAY"),
+                    userStats: home
+                )
+            ),
+            streakDetailResult: .failure(TestError.fetch)
+        )
+        let store = HomeStore(repository: repository)
+
+        await store.grantDailyAttendanceIfNeeded(now: now)
+        await store.fetchStreakDetail()
+
+        XCTAssertEqual(store.streakDetail?.current, 1)
+        XCTAssertEqual(store.streakDetail?.startedOn, "2026-07-16")
+        XCTAssertEqual(
+            store.streakDetail?.days.first { $0.date == "2026-07-16" }?.state,
+            .attended
+        )
+    }
+
     func testGrantDailyAttendanceRecoveryAvailableWaitsThenUsePostsPreviewCount() async {
         let status = makeAttendanceStatus(.recoveryAvailable, missedDays: 2, inventory: 3)
         let repository = FakeHomeRepository(

@@ -231,7 +231,8 @@ struct StreakDetailSheet: View {
                 VStack(alignment: .leading, spacing: 0) {
                     summarySection
                     sectionDivider
-                        .padding(.vertical, AppSpacing.three)
+                        .padding(.top, AppSpacing.one)
+                        .padding(.bottom, AppSpacing.three)
                     calendarSection
                     legend
                         .padding(.top, AppSpacing.two)
@@ -309,7 +310,7 @@ struct StreakDetailSheet: View {
                     .padding(.top, AppSpacing.one)
                     .frame(
                         minWidth: AppSize.dialogActionHeight,
-                        minHeight: AppSize.dialogActionHeight,
+                        minHeight: AppSize.controlMedium,
                         alignment: .top
                     )
                     .contentShape(Rectangle())
@@ -322,7 +323,7 @@ struct StreakDetailSheet: View {
                 dimensions[.top] + (AppSize.controlXLarge / 2)
             }
         }
-        .padding(.vertical, AppSpacing.two)
+        .padding(.top, AppSpacing.two)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("StreakSummaryCard")
     }
