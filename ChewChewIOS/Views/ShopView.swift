@@ -33,9 +33,8 @@ private struct ShopPlaceholderView: View {
     }
 
     private var header: some View {
-        AppHeaderView(eyebrow: "도토리 사용처", title: "상점", subtitle: "꾸미기 아이템을 준비 중이에요") {
-            HeaderMetricPill(icon: .acorn, value: "준비중", tint: .acorn700)
-        }
+        // eyebrow·준비중 pill 없이 title+subtitle 2줄 — 홈 헤더와 같은 크기로 맞춘다.
+        AppHeaderView(title: "상점", subtitle: "꾸미기 아이템을 준비 중이에요")
     }
 
     private var comingSoonCard: some View {

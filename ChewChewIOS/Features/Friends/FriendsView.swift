@@ -29,7 +29,8 @@ struct FriendsView: View {
     // MARK: Header
 
     private var header: some View {
-        AppHeaderView(eyebrow: "함께 먹는 리듬", title: "친구", subtitle: "초대와 랭킹을 한 곳에서 확인해요")
+        // eyebrow 없이 title+subtitle 2줄 — 홈 헤더(eyebrow+title)와 같은 크기로 맞춘다.
+        AppHeaderView(title: "친구", subtitle: "초대와 랭킹을 한 곳에서 확인해요")
     }
 
     // MARK: Invite
