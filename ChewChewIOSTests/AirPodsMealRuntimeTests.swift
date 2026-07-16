@@ -239,7 +239,7 @@ private final class FakeAirPodsMealRuntimeServices {
 private final class FakeAirPodsMealReadinessService: AirPodsAudioReadinessServicing {
     func prepareAirPods() async -> Bool { true }
     func playCalibrationCue() {}
-    func stop() {}
+    func stop(deactivatingSession: Bool) {}
 }
 
 private final class FakeAirPodsMotionService: MealMotionServicing {

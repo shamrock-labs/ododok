@@ -253,7 +253,7 @@ private final class FakeAirPodsAudioReadinessService: AirPodsAudioReadinessServi
         return result
     }
     func playCalibrationCue() {}
-    func stop() {}
+    func stop(deactivatingSession: Bool) {}
 }
 
 private final class FakeMotionService: MealMotionServicing {
