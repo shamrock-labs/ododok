@@ -320,7 +320,7 @@ private struct LegalDocumentView: View {
                 Text("•")
                     .font(.appFont(.regularLabel))
                     .foregroundStyle(Color.textSecondary)
-                Text(text)
+                inlineMarkdownText(text)
                     .font(.appFont(.regularLabel))
                     .foregroundStyle(Color.textSecondary)
                     .lineSpacing(5)
@@ -332,7 +332,7 @@ private struct LegalDocumentView: View {
                 Text("•")
                     .font(.appFont(.regularLabel))
                     .foregroundStyle(Color.textSecondary)
-                Text(text)
+                inlineMarkdownText(text)
                     .font(.appFont(.regularLabel))
                     .foregroundStyle(Color.textSecondary)
                     .lineSpacing(5)
@@ -340,7 +340,7 @@ private struct LegalDocumentView: View {
             }
             .padding(.top, 3)
         case .body(let text):
-            Text(text)
+            inlineMarkdownText(text)
                 .font(.appFont(.regularLabel))
                 .foregroundStyle(Color.textSecondary)
                 .lineSpacing(5)
@@ -350,9 +350,16 @@ private struct LegalDocumentView: View {
             Color.clear.frame(height: AppSpacing.two)
         }
     }
+
+    private func inlineMarkdownText(_ source: String) -> Text {
+        guard let attributed = try? AttributedString(markdown: source) else {
+            return Text(source)
+        }
+        return Text(attributed)
+    }
 }
 
-// MARK: - Legal content (법무 검토 전 초안 — 실제 출시 전 법무 검토 및 교체 필요)
+// MARK: - Legal content
 
 private extension LegalDocumentView {
 
@@ -434,89 +441,15 @@ private extension LegalDocumentView {
 """
     // TODO: 시행일(2026-06-30)은 목표 출시일 기준. 실제 출시일이 바뀌면 갱신하고 법무 최종 검토 후 적용할 것.
 
-    static let privacyMarkdown = """
-**시행일:** 2026-06-30
-
-오도독(이하 '본 앱')은 이용자의 개인정보를 중요하게 생각하며, 「개인정보 보호법」 등 관련 법령을 준수합니다. 본 방침은 본 앱이 어떤 정보를 어떤 목적으로 수집·이용하며, 어떻게 보호·파기하는지를 안내합니다.
-
-## 1. 수집하는 정보
-
-**계정 정보 (소셜 로그인)**
-
-본 앱은 Apple, Google, Kakao 계정을 통한 소셜 로그인만 제공합니다. 로그인 시 각 제공자로부터 계정을 식별하기 위한 고유 식별자를 전달받으며, 제공자 정책과 이용자 동의 범위에 따라 이메일, 이름(닉네임)이 포함될 수 있습니다. (Apple 로그인은 '이메일 가리기'를 선택할 수 있습니다.)
-
-**서비스 이용 정보**
-
-- 저작(씹기) 세션 기록: 씹기 횟수, 리듬, 측정 시간 등
-- 통계 및 도토리 적립 내역
-- 이용자가 입력한 호칭(별명)
-- 친구·랭킹 기능 이용에 따른 연결 정보
-
-**기기 센서 정보**
-
-식사 중 AirPods 등 기기의 모션(IMU) 신호를 분석해 저작 리듬을 산출합니다. 본 앱은 음성을 녹음하거나 저장하지 않습니다.
-
-**자동 수집 정보 (분석·진단)**
-
-서비스 개선과 오류 대응을 위해 제품 이용 상호작용 데이터, 기기 식별자, 크래시·오류 진단 정보가 자동 수집될 수 있습니다. 이는 분석 도구(Amplitude)와 오류 추적 도구(Sentry)를 통해 처리되며, 광고 식별자(IDFA)를 사용하지 않고 다른 앱·웹사이트에 걸친 이용자 추적을 하지 않습니다.
-
-## 2. 이용 목적
-
-- 계정 식별 및 로그인 유지, 기기 변경·재설치 시 데이터 연속성 보장
-- 저작 측정, 통계, 도토리 보상 등 핵심 기능 제공
-- 친구·랭킹 기능 제공
-- 끼니 리마인더 등 알림 전송
-- 서비스 품질 개선 및 오류 진단
-
-## 3. 기기 권한
-
-본 앱은 아래 권한을 기능 제공 목적으로 요청하며, 권한은 기기 설정에서 언제든 거부·철회할 수 있습니다. (거부 시 해당 기능이 제한될 수 있습니다.)
-
-- **동작 및 피트니스(모션):** 식사 중 AirPods 움직임을 분석해 저작 리듬을 시각화합니다.
-- **마이크:** AirPods 동작 신뢰성 분석을 위해 요청될 수 있습니다. 음성 녹음·저장은 하지 않습니다.
-- **알림:** 끼니 리마인더 등 알림을 전송합니다.
-
-## 4. 제3자 처리 및 위탁
-
-본 앱은 서비스 제공을 위해 아래 사업자에 일부 정보 처리를 위탁하거나 연동합니다.
-
-- **소셜 로그인:** Apple, Google, Kakao (계정 인증)
-- **이용 분석:** Amplitude (익명 통계 분석)
-- **오류 추적:** Sentry (크래시·진단 데이터)
-- **서버 인프라:** Amazon Web Services
-
-## 5. 국외 이전
-
-본 앱은 서비스 제공, 이용 분석, 오류 진단, 소셜 로그인 처리를 위해 Apple, Google, Amplitude, Sentry 등 국외 사업자의 서비스를 이용할 수 있으며, 이 과정에서 계정 식별 정보, 이용 분석 정보, 오류·진단 정보 등이 국외에서 처리될 수 있습니다. 각 사업자는 해당 서비스 제공 및 보안·품질 개선 목적 범위에서 정보를 처리하며, 관련 법령에 따라 필요한 보호 조치를 적용합니다
-
-## 6. 보유 및 파기
-
-이용자가 회원 탈퇴(계정 삭제)를 하면 해당 계정의 서버·기기 내 데이터를 지체 없이 파기합니다. 계정 삭제는 앱 내 **설정 > 계정 삭제**에서 직접 할 수 있습니다. 관련 법령에 따라 보존 의무가 있는 경우에는 해당 기간 동안만 보관 후 파기합니다.
-
-## 7. 이용자의 권리
-
-이용자는 자신의 개인정보에 대해 열람·정정·삭제·처리정지를 요청할 수 있습니다. 앱 내 계정 삭제 기능을 이용하거나 아래 문의처로 연락하면 됩니다.
-
-## 8. 아동의 개인정보
-
-본 앱은 만 14세 미만 아동을 주 대상으로 하지 않으며, 만 14세 미만 아동의 개인정보를 법정대리인 동의 없이 고의로 수집하지 않습니다.
-
-## 9. 안전성 확보 조치
-
-본 앱은 통신 구간 암호화(HTTPS) 및 접근 권한 관리 등 합리적인 보호 조치를 적용합니다.
-
-## 10. 방침 변경
-
-본 방침이 변경되는 경우 앱 또는 본 페이지를 통해 변경 내용을 공지합니다.
-
-## 11. 문의
-
-개인정보 관련 문의는 아래로 연락해 주세요.
-
-- 이메일: ododok.team@gmail.com
-"""
+    /// 개인정보처리방침은 번들 Markdown을 단일 원본으로 사용해 공개 문서와 앱 표시가 어긋나지 않게 한다.
+    static let privacyMarkdown: String = {
+        guard let url = Bundle.main.url(forResource: "PrivacyPolicy", withExtension: "md"),
+              let markdown = try? String(contentsOf: url, encoding: .utf8) else {
+            return "개인정보처리방침을 불러오지 못했습니다. ododok.team@gmail.com으로 문의해 주세요."
+        }
+        return markdown
+    }()
     // swiftlint:enable line_length
-    // TODO: 시행일(2026-06-30)은 목표 출시일 기준. 실제 출시일이 바뀌면 갱신하고 법무 최종 검토 후 적용할 것.
 }
 
 // MARK: - AirPods Model Picker (dialog overlay)
