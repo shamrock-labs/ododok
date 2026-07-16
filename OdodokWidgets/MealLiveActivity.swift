@@ -21,12 +21,11 @@ struct MealLiveActivity: Widget {
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
                     HStack(spacing: 6) {
+                        // 앱 아이콘 그림 그대로 — 자체 라운딩이 있어 추가 클립·확대 불필요.
                         Image("RealDaram")
                             .resizable()
                             .scaledToFit()
                             .frame(width: 22, height: 22)
-                            .scaleEffect(1.35)
-                            .clipShape(Circle())
                         Text("오도독")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(Color.mealIslandAccent)
@@ -182,12 +181,11 @@ struct MealLiveActivity: Widget {
     }
 
     private var avatar: some View {
-        // 배경 박스·테두리 없이 다람이(앱 아이콘 마스코트)만 — 라이트/다크 카드 공통으로 자연스럽게 얹힌다.
+        // 앱 아이콘(누워있는 다람이) 그림 그대로 — 자체 라운딩이 있어 클립·확대 없이 얹는다.
         Image("RealDaram")
             .resizable()
             .scaledToFit()
             .frame(width: 48, height: 48)
-            .scaleEffect(1.35)
     }
 }
 

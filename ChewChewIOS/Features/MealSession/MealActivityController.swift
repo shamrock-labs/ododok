@@ -45,6 +45,16 @@ final class MealActivityController {
         #endif
     }
 
+    /// 식사 중 앱이 강제 종료되면 Live Activity가 시스템에 남는다. 세션은 재실행 시
+    /// 복원되지 않으므로, 앱 시작 시점에 이전 실행이 남긴 고아 activity를 정리한다.
+    static func endOrphanedActivities() async {
+        #if os(iOS)
+        for activity in Activity<MealActivityAttributes>.activities {
+            await activity.end(nil, dismissalPolicy: .immediate)
+        }
+        #endif
+    }
+
     func end() async {
         #if os(iOS)
         var activeActivities = Activity<MealActivityAttributes>.activities

@@ -24,6 +24,19 @@ final class NotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotific
         return true
     }
 
+    /// 스와이프 종료 등 정상 종료 경로에서 식사 Live Activity·중단 알림을 최선-노력으로 정리한다.
+    /// (백그라운드 오디오로 실행 중일 때의 강제 종료에서 호출됨. suspend 상태 종료는 호출이
+    /// 보장되지 않으므로 앱 시작 시 고아 정리(onAppear)가 백스톱으로 남는다.)
+    func applicationWillTerminate(_ application: UIApplication) {
+        MealNotificationService.cancelInterruptionPrompt()
+        let semaphore = DispatchSemaphore(value: 0)
+        Task.detached {
+            await MealActivityController.endOrphanedActivities()
+            semaphore.signal()
+        }
+        _ = semaphore.wait(timeout: .now() + 2)
+    }
+
     /// APNs device token 수신 — 서버 식사 푸시 등록(ODO-56). 조정자가 서버 등록 + 로컬→서버 전환을 처리.
     func application(
         _ application: UIApplication,

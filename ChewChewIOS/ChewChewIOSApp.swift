@@ -129,6 +129,13 @@ struct ChewChewIOSApp: App {
                     handleLaunchArguments()
                     // 알림 탭 딥링크 수신을 위해 delegate에 appState 연결.
                     notifDelegate.appState = appState
+                    // 식사 중 강제 종료로 남은 Live Activity·중단 알림 정리(세션은 재실행 시 복원되지 않음).
+                    // scene 재생성으로 onAppear가 다시 불릴 수 있어, 측정 중일 땐 건드리지 않는다.
+                    Task {
+                        guard !appState.mealSession.isEating else { return }
+                        await MealActivityController.endOrphanedActivities()
+                        MealNotificationService.cancelInterruptionPrompt()
+                    }
                 }
                 .onOpenURL { url in
                     // 소셜 로그인 콜백 우선 처리(Google / Kakao), 아니면 기존 chewchew 딥링크.
@@ -196,6 +203,7 @@ struct ChewChewIOSApp: App {
     /// - `-equipShowcase`: 모자/안경/액세서리 1개씩 미리 구매·장착 (꾸미기 검증용).
     /// - `-resetState`: XCUITest용 — UserDefaults/AppState 전체 초기화.
     /// - `-skipOnboarding`: XCUITest용 — displayName="테스터" + 온보딩 완료 처리로 onboarding sheet 우회.
+    /// - `-displayNameFixture <name>`: 시뮬레이터 UI QA용 — 표시 이름을 지정한 fixture로 교체.
     /// - `-useNoopRemote`: XCUITest용 — 실 백엔드 대신 NoopRemoteStore 주입(`makeRemoteStore`에서 처리).
     /// - `-highlightStart`: XCUITest용 — 앱 진입 즉시 startButtonHighlighted=true (강조 UI 검증).
     /// 운영 코드에는 영향 없음.
@@ -216,6 +224,13 @@ struct ChewChewIOSApp: App {
             appState.hasCompletedOnboarding = true
             appState.didLoadProfile = true
         }
+
+        #if targetEnvironment(simulator)
+        if let fixtureIndex = args.firstIndex(of: "-displayNameFixture"),
+           fixtureIndex + 1 < args.count {
+            appState.displayName = args[fixtureIndex + 1]
+        }
+        #endif
 
         // XCUITest용 — 로그인 상태를 강제해 LoginView를 우회하고 mainTabs로 진입(Keychain 토큰 유무에 비의존).
         if args.contains("-forceLogin") {
