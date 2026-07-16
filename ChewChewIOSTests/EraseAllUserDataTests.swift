@@ -518,7 +518,7 @@ final class EraseAllUserDataTests: XCTestCase {
             todayProgress: 0,
             todayCompleted: false
         )
-        let state = AppState(remoteStore: remote)
+        let state = AppState(remoteStore: remote, startStartupTasks: false)
         state.isLoggedIn = true
         state.points = 0
 
