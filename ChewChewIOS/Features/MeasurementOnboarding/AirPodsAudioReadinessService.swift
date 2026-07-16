@@ -40,7 +40,8 @@ final class AirPodsAudioReadinessService: AirPodsAudioReadinessServicing {
 
         do {
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .default)
+            // 유튜브 등 다른 앱 오디오를 끊지 않고 위에 얹는다 — 측정은 외부 영상 시청 중에도 돼야 한다.
+            try session.setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try session.setActive(true)
             configureGraphIfNeeded(format: format)
             try engine.start()
