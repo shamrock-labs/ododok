@@ -9,7 +9,14 @@ protocol MeasurementCuePlaying: AnyObject {
 @MainActor
 protocol AirPodsAudioReadinessServicing: MeasurementCuePlaying {
     func prepareAirPods() async -> Bool
-    func stop()
+    /// `deactivatingSession: false`는 곧바로 측정 keep-alive가 같은 세션을 이어받는 경로용.
+    /// 비활성화→재활성화 왕복이 다른 앱 오디오(유튜브 등)를 무음으로 만드는 것을 막는다.
+    func stop(deactivatingSession: Bool)
+}
+
+@MainActor
+extension AirPodsAudioReadinessServicing {
+    func stop() { stop(deactivatingSession: true) }
 }
 
 @MainActor
@@ -64,8 +71,8 @@ final class AirPodsAudioReadinessService: AirPodsAudioReadinessServicing {
         }
     }
 
-    func stop() {
-        stopEngine(deactivateSession: true)
+    func stop(deactivatingSession: Bool) {
+        stopEngine(deactivateSession: deactivatingSession)
     }
 
     func playCalibrationCue() {
@@ -179,6 +186,6 @@ final class SimulatedAirPodsAudioReadinessService: AirPodsAudioReadinessServicin
 
     func playCalibrationCue() {}
 
-    func stop() {}
+    func stop(deactivatingSession: Bool) {}
 }
 #endif

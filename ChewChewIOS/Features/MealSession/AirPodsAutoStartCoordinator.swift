@@ -110,7 +110,9 @@ final class AirPodsAutoStartCoordinator {
 
     private func finishPreparation(onFinished: @escaping () -> Void) {
         setPreparing(false)
-        readinessService.stop()
+        // 곧바로 측정 keep-alive가 같은 오디오 세션을 이어받는다. 여기서 세션을 내리면
+        // 비활성화→재활성화 왕복이 생겨 다른 앱 오디오(유튜브 등)가 무음이 된다.
+        readinessService.stop(deactivatingSession: false)
         onFinished()
     }
 
