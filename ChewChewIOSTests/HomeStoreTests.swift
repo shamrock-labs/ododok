@@ -726,6 +726,23 @@ final class HomeStoreTests: XCTestCase {
         XCTAssertEqual(store.streakDetailLoadState, .loaded)
     }
 
+    func testMoveStreakMonthStillRequestsAdjacentMonthAfterInitialFailure() async {
+        let repository = SequencedStreakHomeRepository(results: [
+            .failure(TestError.fetch),
+            .failure(TestError.fetch),
+        ])
+        let store = HomeStore(repository: repository)
+
+        await store.fetchStreakDetail()
+        let initialMonth = store.streakSelectedMonth
+        await store.moveStreakMonth(delta: -1)
+
+        XCTAssertEqual(repository.requestedMonths.first, nil)
+        XCTAssertEqual(repository.requestedMonths.count, 2)
+        XCTAssertNotNil(initialMonth)
+        XCTAssertNotEqual(store.streakSelectedMonth, initialMonth)
+    }
+
     func testResetClearsStreakDetailState() async {
         let repository = FakeHomeRepository(
             result: .success(makeHome()),

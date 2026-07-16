@@ -29,6 +29,7 @@ final class HomeStore {
     private(set) var rewardHistory: [RewardHistoryDTO] = []
     private(set) var rewardHistoryLoadState: RewardHistoryLoadState = .idle
     private(set) var streakDetail: StreakDetailDTO?
+    private(set) var streakSelectedMonth: String?
     private(set) var streakDetailLoadState: StreakDetailLoadState = .idle
 
     private let repository: HomeRepository
@@ -267,11 +268,13 @@ final class HomeStore {
     func fetchStreakDetail(month: String? = nil) async {
         streakDetailGeneration += 1
         let generation = streakDetailGeneration
+        streakSelectedMonth = month ?? streakSelectedMonth ?? Self.streakMonthFormatter.string(from: Date())
         streakDetailLoadState = .loading
         do {
             let detail = try await repository.fetchStreakDetail(month: month)
             guard generation == streakDetailGeneration else { return }
             streakDetail = detail
+            streakSelectedMonth = detail.resolvedMonth
             streakDetailLoadState = .loaded
         } catch {
             guard generation == streakDetailGeneration else { return }
@@ -281,14 +284,15 @@ final class HomeStore {
     }
 
     func moveStreakMonth(delta: Int) async {
-        guard delta != 0, let detail = streakDetail else { return }
-        guard let current = Self.streakMonthFormatter.date(from: detail.resolvedMonth),
+        guard delta != 0, let selectedMonth = streakSelectedMonth else { return }
+        guard let current = Self.streakMonthFormatter.date(from: selectedMonth),
               let target = Self.streakCalendar.date(byAdding: .month, value: delta, to: current)
         else { return }
 
         let targetMonth = Self.streakMonthFormatter.string(from: target)
-        let currentServerMonth = String(detail.asOf.prefix(7))
-        let oldestMonth = detail.oldestRecordedOn.map { String($0.prefix(7)) }
+        let currentServerMonth = streakDetail.map { String($0.asOf.prefix(7)) }
+            ?? Self.streakMonthFormatter.string(from: Date())
+        let oldestMonth = streakDetail?.oldestRecordedOn.map { String($0.prefix(7)) }
         if targetMonth > currentServerMonth { return }
         if let oldestMonth, targetMonth < oldestMonth { return }
 
@@ -316,6 +320,7 @@ final class HomeStore {
         rewardHistory = []
         rewardHistoryLoadState = .idle
         streakDetail = nil
+        streakSelectedMonth = nil
         streakDetailLoadState = .idle
     }
 
