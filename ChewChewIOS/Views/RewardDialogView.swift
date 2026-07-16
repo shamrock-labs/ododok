@@ -16,9 +16,10 @@ struct RewardDialogView: View {
                 .frame(width: Metrics.image, height: Metrics.image)
                 .scaleEffect(AppArtwork.daramContentScale)
 
-            Text(grant.kind.title)
+            Text(grant.title)
                 .font(.appFont(.heavyHeadlineLarge))
                 .foregroundStyle(Color.textDefault)
+                .multilineTextAlignment(.center)
 
             if grant.kind.isAcorn {
                 HStack(alignment: .firstTextBaseline, spacing: AppSpacing.one) {
@@ -29,22 +30,31 @@ struct RewardDialogView: View {
                     OpenIconView(icon: .acorn, color: .rewardAcorn, lineWidth: 2.2)
                         .frame(width: Metrics.icon, height: Metrics.icon)
                 }
-            } else if grant.kind.isFreezeGain {
+            } else if let amountText = grant.amountText {
                 HStack(alignment: .firstTextBaseline, spacing: AppSpacing.one) {
-                    Text("+\(grant.amount)")
+                    Text(amountText)
                         .font(.appFont(.rewardNumber))
-                        .foregroundStyle(Color.statusSuccess)
+                        .foregroundStyle(Color.freezeForeground)
                         .monospacedDigit()
                     Text("🛡️")
                         .font(.appFont(.regularEmojiMedium))
                 }
             }
 
-            Text(grant.kind.subtitle)
+            Text(grant.detailText)
                 .font(.appFont(.semiboldLabel))
                 .foregroundStyle(Color.textMuted)
                 .multilineTextAlignment(.center)
                 .lineSpacing(3)
+
+            if let inventoryText = grant.inventoryText {
+                Text(inventoryText)
+                    .font(.appFont(.semiboldCaption))
+                    .foregroundStyle(Color.freezeForeground)
+                    .padding(.horizontal, AppSpacing.two)
+                    .padding(.vertical, AppSpacing.one)
+                    .background(Color.freezeSurface, in: Capsule())
+            }
         }
         .padding(.vertical, AppSpacing.dialogContentV)
         .padding(.horizontal, AppSpacing.dialogContentH)
@@ -62,20 +72,68 @@ struct RewardDialogView: View {
 
 /// AppState가 publish하는 적립/알림 trigger. `ContentView` overlay가 이 값을 관찰해서
 /// 다이얼로그를 띄운다. dismiss 시 nil로 비움. 도토리 적립(`attendance`/`sessionComplete`)과
-/// PRD #11 streak 이벤트(`streakMilestone`/`streakSaved`/`streakReset`)를 한 type으로
+/// 출석 streak 이벤트(프리즈 지급/사용/초기화)를 한 type으로
 /// 묶어 ContentView overlay 코드를 단순화.
 struct RewardGrant: Equatable {
-    /// 표시할 숫자(도토리 또는 프리즈 잔여). kind에 따라 의미가 다름. 0이면 숫자 표시 안 함.
+    /// 분석에 사용할 보상 수량. 화면의 정확한 사용·지급 수량은 `kind`의 연관값을 표시한다.
     let amount: Int
     let kind: Kind
+
+    var title: String {
+        switch kind {
+        case .streakFreezeGranted(let streakCount, _, _):
+            "\(streakCount)일 연속 접속!"
+        case .streakFreezeUsed:
+            "스트릭을 지켰어요"
+        default:
+            kind.title
+        }
+    }
+
+    var amountText: String? {
+        switch kind {
+        case .streakFreezeGranted(_, let granted, _):
+            "+\(granted)"
+        case .streakFreezeUsed(let consumed, _):
+            "-\(consumed)"
+        case .streakFreezeUsedAndGranted:
+            nil
+        case .streakMilestone:
+            "+\(amount)"
+        default:
+            nil
+        }
+    }
+
+    var detailText: String {
+        switch kind {
+        case .streakFreezeUsed(let consumed, _):
+            "\(consumed)일을 쉬어 프리즈 \(consumed)개를 사용했어요"
+        default:
+            kind.subtitle
+        }
+    }
+
+    var inventoryText: String? {
+        let inventory: Int? = switch kind {
+        case .streakFreezeGranted(_, _, let inventory): inventory
+        case .streakFreezeUsed(_, let inventory): inventory
+        case .streakFreezeUsedAndGranted(_, _, let inventory, _): inventory
+        default: nil
+        }
+        return inventory.map { "현재 프리즈 \($0)개" }
+    }
 
     enum Kind: Equatable {
         case attendance                          // 도토리 출석 보너스 +n
         case sessionComplete                     // 도토리 세션 종료 적립 +n
         case streakMilestone(streakCount: Int)   // 7/30/100일 도달, 프리즈 +n(amount)
-        case streakSaved                         // 프리즈 1 자동 소진, amount=잔여
+        case streakSaved                         // 프리즈 사용 결과, amount=잔여
         case streakReset                         // 끊김 리셋
         case streakFirstDay                      // 첫 성공(스트릭 1일째) 토스트
+        case streakFreezeGranted(streakCount: Int, granted: Int, inventory: Int)
+        case streakFreezeUsed(consumed: Int, inventory: Int)
+        case streakFreezeUsedAndGranted(consumed: Int, granted: Int, inventory: Int, streakCount: Int)
 
         /// 분석 이벤트용 안정적 식별자(ODO-79). 표시 문구(title)와 독립 — 문구가 바뀌어도 값은 유지된다.
         var analyticsType: String {
@@ -86,6 +144,9 @@ struct RewardGrant: Equatable {
             case .streakSaved:     "streak_saved"
             case .streakReset:     "streak_reset"
             case .streakFirstDay:  "streak_first_day"
+            case .streakFreezeGranted: "streak_freeze_granted"
+            case .streakFreezeUsed: "streak_freeze_used"
+            case .streakFreezeUsedAndGranted: "streak_freeze_used_and_granted"
             }
         }
 
@@ -97,6 +158,9 @@ struct RewardGrant: Equatable {
             case .streakSaved:     "🛡️ 프리즈로 스트릭 유지"
             case .streakReset:     "스트릭이 끊겼어요"
             case .streakFirstDay:  "1일째"
+            case .streakFreezeGranted(let count, _, _): "\(count)일 연속 접속!"
+            case .streakFreezeUsed: "스트릭을 지켰어요"
+            case .streakFreezeUsedAndGranted: "스트릭을 지키고 보상도 받았어요"
             }
         }
 
@@ -108,6 +172,10 @@ struct RewardGrant: Equatable {
             case .streakSaved:     "프리즈 1개로 스트릭을 지켰어요"
             case .streakReset:     "다시 시작해 볼까요?"
             case .streakFirstDay:  "스트릭을 시작했어요"
+            case .streakFreezeGranted: "프리즈를 받았어요"
+            case .streakFreezeUsed(let consumed, _): "프리즈 \(consumed)개로 스트릭을 지켰어요"
+            case .streakFreezeUsedAndGranted(let consumed, let granted, _, _):
+                "\(consumed)개 사용 · \(granted)개 획득"
             }
         }
 
@@ -117,12 +185,6 @@ struct RewardGrant: Equatable {
             case .attendance, .sessionComplete: true
             default: false
             }
-        }
-
-        /// 프리즈 적립 케이스 — "+n🛡️" 표시
-        var isFreezeGain: Bool {
-            if case .streakMilestone = self { return true }
-            return false
         }
 
         /// 보상 종류별 다람이 일러스트. 매핑이 없으면 기본 happy.

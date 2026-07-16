@@ -7,6 +7,8 @@ struct SpringConfig {
     let baseURL: URL
 }
 
+// Attendance recovery added enough protocol surface to cross the configured warning threshold.
+// swiftlint:disable type_body_length
 /// Spring REST 백엔드 구현체.
 ///
 /// InsForge(PostgREST)와의 주요 차이점:
@@ -46,8 +48,27 @@ final class SpringRemoteStore: RemoteStore {
         let message: String
     }
 
+    private enum AttendanceRequestError: Error {
+        case expectedMissedDaysRequired
+    }
+
     private struct AttendanceRequest: Encodable {
         let idempotencyKey: String
+        let freezeDecision: FreezeDecisionDTO?
+        let expectedMissedDays: Int?
+
+        init(
+            idempotencyKey: String,
+            freezeDecision: FreezeDecisionDTO?,
+            expectedMissedDays: Int?
+        ) throws {
+            if freezeDecision == .use, expectedMissedDays == nil {
+                throw AttendanceRequestError.expectedMissedDaysRequired
+            }
+            self.idempotencyKey = idempotencyKey
+            self.freezeDecision = freezeDecision
+            self.expectedMissedDays = freezeDecision == .use ? expectedMissedDays : nil
+        }
     }
 
     private struct RefreshRequest: Encodable {
@@ -204,11 +225,43 @@ final class SpringRemoteStore: RemoteStore {
         return try decodeResult(HomeStateDTO.self, from: data)
     }
 
+    func fetchAttendanceStatus() async throws -> AttendanceStatusDTO {
+        let req = jsonRequest(method: "GET", path: "/v1/me/attendance/status")
+        let data = try await sendExpectingSuccess(req)
+        return try decodeResult(AttendanceStatusDTO.self, from: data)
+    }
+
     func earnAttendance(deviceId: String, idempotencyKey: String) async throws -> AttendanceResultDTO {
+        try await earnAttendance(
+            deviceId: deviceId,
+            idempotencyKey: idempotencyKey,
+            decision: nil,
+            expectedMissedDays: nil
+        )
+    }
+
+    func earnAttendance(
+        deviceId: String,
+        idempotencyKey: String,
+        decision: FreezeDecisionDTO?,
+        expectedMissedDays: Int?
+    ) async throws -> AttendanceResultDTO {
         var req = jsonRequest(method: "POST", path: "/v1/me/attendance")
-        req.httpBody = try encoder.encode(AttendanceRequest(idempotencyKey: idempotencyKey))
+        req.httpBody = try encoder.encode(
+            try AttendanceRequest(
+                idempotencyKey: idempotencyKey,
+                freezeDecision: decision,
+                expectedMissedDays: expectedMissedDays
+            )
+        )
         let data = try await sendExpectingSuccess(req)
         return try decodeResult(AttendanceResultDTO.self, from: data)
+    }
+
+    func fetchStreakDetail() async throws -> StreakDetailDTO {
+        let req = jsonRequest(method: "GET", path: "/v1/me/streak")
+        let data = try await sendExpectingSuccess(req)
+        return try decodeResult(StreakDetailDTO.self, from: data)
     }
 
     func fetchRewardHistory() async throws -> [RewardHistoryDTO] {
@@ -552,3 +605,4 @@ final class SpringRemoteStore: RemoteStore {
         return f
     }()
 }
+// swiftlint:enable type_body_length

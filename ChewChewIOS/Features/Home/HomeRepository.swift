@@ -3,7 +3,34 @@ import Foundation
 protocol HomeRepository {
     func fetchHome() async throws -> HomeStateDTO
     func earnAttendance(now: Date) async throws -> AttendanceResultDTO
+    func fetchAttendanceStatus() async throws -> AttendanceStatusDTO
+    func earnAttendance(
+        now: Date,
+        decision: FreezeDecisionDTO?,
+        expectedMissedDays: Int?
+    ) async throws -> AttendanceResultDTO
+    func fetchStreakDetail() async throws -> StreakDetailDTO
     func fetchRewardHistory() async throws -> [RewardHistoryDTO]
+}
+
+extension HomeRepository {
+    func fetchAttendanceStatus() async throws -> AttendanceStatusDTO {
+        AttendanceStatusDTO(
+            asOf: "",
+            status: .notNeeded,
+            missedDates: [],
+            requiredFreezes: 0,
+            freezeInventory: 0
+        )
+    }
+
+    func earnAttendance(
+        now: Date,
+        decision: FreezeDecisionDTO?,
+        expectedMissedDays: Int?
+    ) async throws -> AttendanceResultDTO {
+        try await earnAttendance(now: now)
+    }
 }
 
 enum AttendanceKey {

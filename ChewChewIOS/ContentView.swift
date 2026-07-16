@@ -59,6 +59,9 @@ struct ContentView: View {
                 }
             }
         }
+        .overlay(alignment: .center) {
+            freezeRecoveryOverlay
+        }
         .appToast($presentedGlobalToast)
         .onChange(of: state.globalToast) { _, toast in
             presentedGlobalToast = toast.map { AppToastMessage($0, kind: .info) }
@@ -235,6 +238,22 @@ struct ContentView: View {
         }
     }
 
+    @ViewBuilder
+    private var freezeRecoveryOverlay: some View {
+        if let recovery = state.home.pendingFreezeRecovery {
+            FreezeRecoveryDialog(
+                status: recovery,
+                onUse: { Task { await state.home.confirmFreezeUse() } },
+                onSkip: { Task { await state.home.skipFreezeUse() } },
+                onConfirmInsufficient: {
+                    Task { await state.home.confirmInsufficientRecovery() }
+                }
+            )
+            .transition(.opacity.combined(with: .scale(scale: 0.96)))
+            .zIndex(100)
+        }
+    }
+
     private var shortSessionBinding: Binding<Bool> {
         Binding(
             get: { mealSession.showShortSessionConfirm },
@@ -281,7 +300,9 @@ struct ContentView: View {
     }
 
     private var canPresentReward: Bool {
-        mealResults.lastCompletedSession == nil && !isPostOnboardingCalibrationActive
+        state.home.pendingFreezeRecovery == nil
+            && mealResults.lastCompletedSession == nil
+            && !isPostOnboardingCalibrationActive
     }
 
     private var isPostOnboardingCalibrationActive: Bool {
@@ -328,9 +349,21 @@ struct ContentView: View {
             get: {
                 state.isLoggedIn && state.didLoadProfile && !state.hasCompletedOnboarding
                     && !isCalibrationPromptPresented && !isCalibrationFlowQueued && !isCalibrationFlowPresented
+                    && !isFreezeRecoveryUITestFixture
             },
             set: { _ in }
         )
+    }
+
+    private var isFreezeRecoveryUITestFixture: Bool {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        return arguments.contains("-showFreezeRecoveryAvailable")
+            || arguments.contains("-showFreezeRecoveryInsufficient")
+            || arguments.contains("-showFreezeRecoveryLongInsufficient")
+        #else
+        return false
+        #endif
     }
 
     private func tabPage<Content: View>(@ViewBuilder content: @escaping () -> Content) -> some View {

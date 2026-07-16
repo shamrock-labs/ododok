@@ -3,7 +3,7 @@ import Foundation
 /// 원격 영속화 추상화. AppState는 이 프로토콜에만 의존해서, 시뮬레이터/유닛테스트에서
 /// `NoopRemoteStore`로 갈아끼울 수 있다.
 ///
-/// ODO-54 이후 도토리/스트릭/오늘완료/출석 정본은 서버 정책 엔드포인트다
+/// ODO-54 이후 도토리/오늘완료/출석 정본은 서버 정책 엔드포인트고, 스트릭은 출석에서만 갱신된다
 /// (`createChewingSession`·`fetchHome`·`earnAttendance`). 아래 profiles/user_stats 접근은
 /// 신원 보장과 레거시 읽기용이다.
 ///   profiles: 디바이스 신원 — `upsertProfile`로 최초 1회 보장.
@@ -18,13 +18,24 @@ protocol RemoteStore {
     func deleteUserData() async throws
     func deleteUserData(accessToken: String?) async throws
     func deleteUserData(accessToken: String?, refreshToken: String?) async throws
-    /// 정책 세션 저장 — 세션을 저장하고 서버가 계산한 적립/스트릭/오늘/홈을 함께 받는다.
-    /// 도토리·스트릭·오늘완료 정본은 서버이므로 iOS는 응답값을 표시만 한다(재계산 금지).
+    /// 정책 세션 저장 — 세션을 저장하고 서버가 계산한 적립/오늘/홈을 함께 받는다.
+    /// 레거시 `streak` 객체는 호환 필드이며 세션 완료로 스트릭을 갱신하지 않는다.
     func createChewingSession(_ session: ChewingSessionDTO) async throws -> CreateSessionResultDTO
     /// 홈 상태 조회 — 서버가 계산한 도토리/스트릭/오늘 진행도.
     func fetchHome(deviceId: String) async throws -> HomeStateDTO
     /// 앱-열기 출석 적립 — iOS가 멱등키로 트리거, 서버가 일 1회 판정 + 적립.
     func earnAttendance(deviceId: String, idempotencyKey: String) async throws -> AttendanceResultDTO
+    /// 출석 전 복구 가능 여부 — 서버가 누락일과 필요한 프리즈 수를 확정한다.
+    func fetchAttendanceStatus() async throws -> AttendanceStatusDTO
+    /// 복구 결정을 포함한 출석 적립. `expectedMissedDays`는 USE 결정의 낙관적 동시성 가드다.
+    func earnAttendance(
+        deviceId: String,
+        idempotencyKey: String,
+        decision: FreezeDecisionDTO?,
+        expectedMissedDays: Int?
+    ) async throws -> AttendanceResultDTO
+    /// KST 오늘을 포함한 최근 14일 스트릭 요약과 실제 출석/프리즈 원장 행.
+    func fetchStreakDetail() async throws -> StreakDetailDTO
     /// 서버 reward_events 원장 조회 — 도토리 적립 내역 표시용.
     func fetchRewardHistory() async throws -> [RewardHistoryDTO]
     /// `since` 이후 + 옵셔널 `until` 이전에 시작된 세션을 시간 오름차순으로 조회.
@@ -72,12 +83,32 @@ extension RemoteStore {
         try await deleteUserData(accessToken: accessToken)
     }
 
+    func fetchAttendanceStatus() async throws -> AttendanceStatusDTO {
+        AttendanceStatusDTO(
+            asOf: "",
+            status: .notNeeded,
+            missedDates: [],
+            requiredFreezes: 0,
+            freezeInventory: 0
+        )
+    }
+
+    func earnAttendance(
+        deviceId: String,
+        idempotencyKey: String,
+        decision: FreezeDecisionDTO?,
+        expectedMissedDays: Int?
+    ) async throws -> AttendanceResultDTO {
+        try await earnAttendance(deviceId: deviceId, idempotencyKey: idempotencyKey)
+    }
+
     // push: 레거시/테스트 스토어는 기본 no-op. Spring 구현만 실제 서버와 통신한다.
     func registerPushToken(_ token: String, environment: String) async throws {}
     func deactivatePushToken(_ token: String) async throws {}
     func upsertMealNotifications(_ settings: MealReminderSettings, timeZone: String) async throws {}
     func fetchMealNotifications() async throws -> MealReminderSettings? { nil }
     func fetchRewardHistory() async throws -> [RewardHistoryDTO] { [] }
+    func fetchStreakDetail() async throws -> StreakDetailDTO { .empty }
     func fetchDailyReport(date: String) async throws -> DailyReportDTO {
         DailyReportDTO(
             date: date,
@@ -126,6 +157,10 @@ extension RemoteStore {
 }
 
 struct NoopRemoteStore: RemoteStore {
+    #if DEBUG
+    private static let didResolveRecoveryFixtureKey = "ChewChewIOS.NoopRemoteStore.didResolveRecoveryFixture"
+    #endif
+
     func upsertProfile(_ profile: ProfileDTO) async throws {}
     func fetchProfile() async throws -> ProfileDTO? { nil }
     func fetchUserStats() async throws -> UserStatsDTO? { nil }
@@ -147,12 +182,108 @@ struct NoopRemoteStore: RemoteStore {
         )
     }
     func fetchHome(deviceId: String) async throws -> HomeStateDTO { .empty(deviceId: deviceId) }
+    func fetchAttendanceStatus() async throws -> AttendanceStatusDTO {
+        #if DEBUG
+        let arguments = ProcessInfo.processInfo.arguments
+        if UserDefaults.standard.bool(forKey: Self.didResolveRecoveryFixtureKey) {
+            return AttendanceStatusDTO(
+                asOf: "2026-07-16",
+                status: .notNeeded,
+                missedDates: [],
+                requiredFreezes: 0,
+                freezeInventory: 0
+            )
+        }
+        if arguments.contains("-showFreezeRecoveryAvailable") {
+            return AttendanceStatusDTO(
+                asOf: "2026-07-16",
+                status: .recoveryAvailable,
+                missedDates: ["2026-07-14", "2026-07-15"],
+                requiredFreezes: 2,
+                freezeInventory: 2
+            )
+        }
+        if arguments.contains("-showFreezeRecoveryInsufficient") {
+            return AttendanceStatusDTO(
+                asOf: "2026-07-16",
+                status: .insufficient,
+                missedDates: ["2026-07-14", "2026-07-15"],
+                requiredFreezes: 2,
+                freezeInventory: 1
+            )
+        }
+        if arguments.contains("-showFreezeRecoveryLongInsufficient") {
+            return AttendanceStatusDTO(
+                asOf: "2026-07-16",
+                status: .insufficient,
+                missedDates: (1...30).map { String(format: "2026-06-%02d", $0) }
+                    + (1...15).map { String(format: "2026-07-%02d", $0) },
+                requiredFreezes: 45,
+                freezeInventory: 1
+            )
+        }
+        #endif
+        return AttendanceStatusDTO(
+            asOf: "",
+            status: .notNeeded,
+            missedDates: [],
+            requiredFreezes: 0,
+            freezeInventory: 0
+        )
+    }
     func earnAttendance(deviceId: String, idempotencyKey: String) async throws -> AttendanceResultDTO {
+        try await earnAttendance(
+            deviceId: deviceId,
+            idempotencyKey: idempotencyKey,
+            decision: nil,
+            expectedMissedDays: nil
+        )
+    }
+    func earnAttendance(
+        deviceId: String,
+        idempotencyKey: String,
+        decision: FreezeDecisionDTO?,
+        expectedMissedDays: Int?
+    ) async throws -> AttendanceResultDTO {
         let grantedPoints = ProcessInfo.processInfo.arguments.contains("-grantAttendanceReward") ? 2 : 0
+        #if DEBUG
+        let isRecoveryFixture = ProcessInfo.processInfo.arguments.contains("-showFreezeRecoveryAvailable")
+            || ProcessInfo.processInfo.arguments.contains("-showFreezeRecoveryInsufficient")
+            || ProcessInfo.processInfo.arguments.contains("-showFreezeRecoveryLongInsufficient")
+        if isRecoveryFixture, decision != nil {
+            UserDefaults.standard.set(true, forKey: Self.didResolveRecoveryFixtureKey)
+        }
+        let fixtureStreak: AttendanceStreakDTO = if isRecoveryFixture && decision == .use {
+            AttendanceStreakDTO(
+                current: 12,
+                longest: 12,
+                startedOn: "2026-07-03",
+                event: "SAVED_BY_FREEZE",
+                freezeInventory: 0,
+                freezeConsumed: 2,
+                freezeGranted: 0
+            )
+        } else if isRecoveryFixture && decision == .skip {
+            AttendanceStreakDTO(
+                current: 1,
+                longest: 10,
+                startedOn: "2026-07-16",
+                event: "RESET",
+                freezeInventory: ProcessInfo.processInfo.arguments.contains("-showFreezeRecoveryInsufficient") ? 1 : 2,
+                freezeConsumed: 0,
+                freezeGranted: 0
+            )
+        } else {
+            .empty
+        }
+        #else
+        let fixtureStreak = AttendanceStreakDTO.empty
+        #endif
         return AttendanceResultDTO(
             grantedPoints: grantedPoints,
             capped: false,
             idempotentReplay: false,
+            streak: fixtureStreak,
             userStats: .empty(deviceId: deviceId)
         )
     }
@@ -342,7 +473,31 @@ final class InsForgeRemoteStore: RemoteStore {
         return Self.legacyHome(deviceId: deviceId, stats: stats)
     }
 
+    func fetchAttendanceStatus() async throws -> AttendanceStatusDTO {
+        AttendanceStatusDTO(
+            asOf: "",
+            status: .notNeeded,
+            missedDates: [],
+            requiredFreezes: 0,
+            freezeInventory: 0
+        )
+    }
+
     func earnAttendance(deviceId: String, idempotencyKey: String) async throws -> AttendanceResultDTO {
+        try await earnAttendance(
+            deviceId: deviceId,
+            idempotencyKey: idempotencyKey,
+            decision: nil,
+            expectedMissedDays: nil
+        )
+    }
+
+    func earnAttendance(
+        deviceId: String,
+        idempotencyKey: String,
+        decision: FreezeDecisionDTO?,
+        expectedMissedDays: Int?
+    ) async throws -> AttendanceResultDTO {
         let stats = try await fetchUserStats()
         return AttendanceResultDTO(
             grantedPoints: 0,

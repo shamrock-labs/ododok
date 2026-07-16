@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - 서버 권위 응답 (ODO-54 thin-client)
 //
-// ODO-45 이후 도토리/스트릭/오늘완료 정본은 서버다. 아래 DTO는 Spring 응답(camelCase,
+// ODO-45 이후 도토리/오늘완료 정본은 서버이며, 스트릭은 출석 응답의 정본을 따른다. 아래 DTO는 Spring 응답(camelCase,
 // wrapping의 `result` 안쪽)과 1:1 매핑한다. iOS는 이 값을 표시만 하고 재계산하지 않는다.
 
 /// 홈 상태 응답(`GET /v1/me/home`, 세션 저장 응답의 `userStats`). 서버가 계산한 화면 정본.
@@ -106,7 +106,100 @@ struct AttendanceResultDTO: Codable, Equatable {
     var grantedPoints: Int
     var capped: Bool
     var idempotentReplay: Bool
+    var streak: AttendanceStreakDTO
     var userStats: HomeStateDTO
+
+    init(
+        grantedPoints: Int,
+        capped: Bool,
+        idempotentReplay: Bool,
+        streak: AttendanceStreakDTO = .empty,
+        userStats: HomeStateDTO
+    ) {
+        self.grantedPoints = grantedPoints
+        self.capped = capped
+        self.idempotentReplay = idempotentReplay
+        self.streak = streak
+        self.userStats = userStats
+    }
+}
+
+enum AttendanceRecoveryStatus: String, Codable, Equatable {
+    case notNeeded = "NOT_NEEDED"
+    case recoveryAvailable = "RECOVERY_AVAILABLE"
+    case insufficient = "INSUFFICIENT"
+}
+
+struct AttendanceStatusDTO: Codable, Equatable {
+    var asOf: String
+    var status: AttendanceRecoveryStatus
+    var missedDates: [String]
+    var requiredFreezes: Int
+    var freezeInventory: Int
+}
+
+enum FreezeDecisionDTO: String, Codable, Equatable {
+    case use = "USE"
+    case skip = "SKIP"
+}
+
+/// 출석과 같은 트랜잭션에서 서버가 확정한 스트릭 결과.
+struct AttendanceStreakDTO: Codable, Equatable {
+    var current: Int
+    var longest: Int
+    var startedOn: String?
+    var event: String
+    var freezeInventory: Int
+    var freezeConsumed: Int
+    var freezeGranted: Int
+
+    static let empty = AttendanceStreakDTO(
+        current: 0,
+        longest: 0,
+        startedOn: nil,
+        event: "NONE",
+        freezeInventory: 0,
+        freezeConsumed: 0,
+        freezeGranted: 0
+    )
+}
+
+struct StreakDetailDTO: Codable, Equatable {
+    var asOf: String
+    var current: Int
+    var longest: Int
+    var startedOn: String?
+    var freezeInventory: Int
+    var days: [StreakDayDTO]
+
+    /// Spring 응답 대체값이 아니라 Noop/non-Spring fallback 전용 중립 상세.
+    /// 로컬 KST 기준일만 채우고 출석/프리즈 원장 행은 만들지 않는다.
+    static var empty: StreakDetailDTO {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(identifier: "Asia/Seoul")
+        formatter.dateFormat = "yyyy-MM-dd"
+        return StreakDetailDTO(
+            asOf: formatter.string(from: Date()),
+            current: 0,
+            longest: 0,
+            startedOn: nil,
+            freezeInventory: 0,
+            days: []
+        )
+    }
+}
+
+struct StreakDayDTO: Codable, Equatable, Identifiable {
+    var date: String
+    var state: StreakDayState
+    var id: String { date }
+}
+
+enum StreakDayState: String, Codable, Equatable {
+    case attended = "ATTENDED"
+    case frozen = "FROZEN"
 }
 
 enum RewardEventType: String, Codable, Equatable {

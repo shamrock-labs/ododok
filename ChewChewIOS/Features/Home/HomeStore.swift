@@ -11,6 +11,13 @@ final class HomeStore {
         case failed
     }
 
+    enum StreakDetailLoadState: Equatable {
+        case idle
+        case loading
+        case loaded
+        case failed
+    }
+
     private(set) var serverHome: HomeStateDTO?
     private(set) var points: Int
     private(set) var streak: Int
@@ -18,8 +25,11 @@ final class HomeStore {
     private(set) var isLoading: Bool = false
     private(set) var errorMessage: String?
     private(set) var pendingRewardGrant: RewardGrant?
+    private(set) var pendingFreezeRecovery: AttendanceStatusDTO?
     private(set) var rewardHistory: [RewardHistoryDTO] = []
     private(set) var rewardHistoryLoadState: RewardHistoryLoadState = .idle
+    private(set) var streakDetail: StreakDetailDTO?
+    private(set) var streakDetailLoadState: StreakDetailLoadState = .idle
 
     private let repository: HomeRepository
     private let serverReportTodayChewCount: @MainActor () -> Int
@@ -29,6 +39,9 @@ final class HomeStore {
     private let onStreakEvent: @MainActor (String, Int) -> Void
     private var loadGeneration: Int = 0
     private var rewardHistoryGeneration: Int = 0
+    private var streakDetailGeneration: Int = 0
+    private var attendanceOperationGeneration = 0
+    private var activeAttendanceOperation: Int?
 
     init(
         repository: HomeRepository,
@@ -117,10 +130,7 @@ final class HomeStore {
     }
 
     func applySessionReward(from result: CreateSessionResultDTO) {
-        if let streakGrant = rewardGrant(for: result.streak) {
-            pendingRewardGrant = streakGrant
-            onStreakEvent(streakGrant.kind.analyticsType, streakGrant.amount)
-        } else if result.reward.grantedPoints > 0 && !result.reward.idempotentReplay {
+        if result.reward.grantedPoints > 0 && !result.reward.idempotentReplay {
             // SessionResultSheet가 먼저 떠 있는 상태 — ContentView overlay는
             // sheet 닫힌 후(`lastCompletedSession == nil`)에만 그려져, 다이얼로그가
             // sheet에 가려지지 않고 순차로 등장한다.
@@ -135,16 +145,105 @@ final class HomeStore {
     }
 
     func grantDailyAttendanceIfNeeded(now: Date = Date()) async {
-        loadGeneration += 1
+        guard pendingFreezeRecovery == nil, let operation = beginAttendanceOperation() else { return }
+        defer { finishAttendanceOperation(operation) }
+
         do {
-            let result = try await repository.earnAttendance(now: now)
-            loadGeneration += 1
-            applyAndNotify(result.userStats)
-            if result.grantedPoints > 0 && !result.idempotentReplay {
-                pendingRewardGrant = RewardGrant(amount: result.grantedPoints, kind: .attendance)
-                onRewardEarned(result.grantedPoints, "attendance")
+            let status = try await repository.fetchAttendanceStatus()
+            guard isCurrentAttendanceOperation(operation) else { return }
+            switch status.status {
+            case .notNeeded:
+                _ = try await submitAttendance(
+                    now: now,
+                    decision: nil,
+                    expectedMissedDays: nil,
+                    operation: operation
+                )
+            case .recoveryAvailable, .insufficient:
+                pendingFreezeRecovery = status
             }
         } catch {
+            guard isCurrentAttendanceOperation(operation) else { return }
+            onRemoteError(error)
+        }
+    }
+
+    func confirmFreezeUse(now: Date = Date()) async {
+        guard
+            let recovery = pendingFreezeRecovery,
+            recovery.status == .recoveryAvailable,
+            let operation = beginAttendanceOperation()
+        else { return }
+
+        defer { finishAttendanceOperation(operation) }
+
+        do {
+            let didApply = try await submitAttendance(
+                now: now,
+                decision: .use,
+                expectedMissedDays: recovery.requiredFreezes,
+                operation: operation
+            )
+            if didApply {
+                pendingFreezeRecovery = nil
+            }
+        } catch {
+            guard isCurrentAttendanceOperation(operation) else { return }
+            guard Self.isStaleRecovery(error) else {
+                onRemoteError(error)
+                return
+            }
+
+            do {
+                let refreshedStatus = try await repository.fetchAttendanceStatus()
+                guard isCurrentAttendanceOperation(operation) else { return }
+                switch refreshedStatus.status {
+                case .notNeeded:
+                    let didApply = try await submitAttendance(
+                        now: now,
+                        decision: nil,
+                        expectedMissedDays: nil,
+                        operation: operation
+                    )
+                    if didApply {
+                        pendingFreezeRecovery = nil
+                    }
+                case .recoveryAvailable, .insufficient:
+                    pendingFreezeRecovery = refreshedStatus
+                }
+            } catch {
+                guard isCurrentAttendanceOperation(operation) else { return }
+                onRemoteError(error)
+            }
+        }
+    }
+
+    func skipFreezeUse(now: Date = Date()) async {
+        guard pendingFreezeRecovery?.status == .recoveryAvailable else { return }
+        await confirmSkip(now: now)
+    }
+
+    func confirmInsufficientRecovery(now: Date = Date()) async {
+        guard pendingFreezeRecovery?.status == .insufficient else { return }
+        await confirmSkip(now: now)
+    }
+
+    private func confirmSkip(now: Date) async {
+        guard pendingFreezeRecovery != nil, let operation = beginAttendanceOperation() else { return }
+        defer { finishAttendanceOperation(operation) }
+
+        do {
+            let didApply = try await submitAttendance(
+                now: now,
+                decision: .skip,
+                expectedMissedDays: nil,
+                operation: operation
+            )
+            if didApply {
+                pendingFreezeRecovery = nil
+            }
+        } catch {
+            guard isCurrentAttendanceOperation(operation) else { return }
             onRemoteError(error)
         }
     }
@@ -165,6 +264,22 @@ final class HomeStore {
         }
     }
 
+    func fetchStreakDetail() async {
+        streakDetailGeneration += 1
+        let generation = streakDetailGeneration
+        streakDetailLoadState = .loading
+        do {
+            let detail = try await repository.fetchStreakDetail()
+            guard generation == streakDetailGeneration else { return }
+            streakDetail = detail
+            streakDetailLoadState = .loaded
+        } catch {
+            guard generation == streakDetailGeneration else { return }
+            onRemoteError(error)
+            streakDetailLoadState = .failed
+        }
+    }
+
     func dismissPendingRewardGrant() {
         pendingRewardGrant = nil
     }
@@ -172,6 +287,9 @@ final class HomeStore {
     func reset() {
         loadGeneration += 1
         rewardHistoryGeneration += 1
+        streakDetailGeneration += 1
+        attendanceOperationGeneration &+= 1
+        activeAttendanceOperation = nil
         serverHome = nil
         points = 0
         streak = 0
@@ -179,8 +297,11 @@ final class HomeStore {
         errorMessage = nil
         isLoading = false
         pendingRewardGrant = nil
+        pendingFreezeRecovery = nil
         rewardHistory = []
         rewardHistoryLoadState = .idle
+        streakDetail = nil
+        streakDetailLoadState = .idle
     }
 
     private func apply(_ home: HomeStateDTO) {
@@ -195,12 +316,89 @@ final class HomeStore {
         onHomeApplied(home)
     }
 
-    private func rewardGrant(for streak: SessionStreakDTO) -> RewardGrant? {
-        switch streak.event {
-        case "MILESTONE":
-            RewardGrant(amount: 1, kind: .streakMilestone(streakCount: streak.current))
-        case "SAVED_BY_FREEZE":
-            RewardGrant(amount: streak.freezeInventory, kind: .streakSaved)
+    private func submitAttendance(
+        now: Date,
+        decision: FreezeDecisionDTO?,
+        expectedMissedDays: Int?,
+        operation: Int
+    ) async throws -> Bool {
+        loadGeneration += 1
+        let result = try await repository.earnAttendance(
+            now: now,
+            decision: decision,
+            expectedMissedDays: expectedMissedDays
+        )
+        guard isCurrentAttendanceOperation(operation) else { return false }
+        loadGeneration += 1
+        applyAndNotify(result.userStats)
+        if !result.idempotentReplay {
+            if let streakGrant = rewardGrant(for: result.streak) {
+                pendingRewardGrant = streakGrant
+                onStreakEvent(streakGrant.kind.analyticsType, streakGrant.amount)
+            } else if result.grantedPoints > 0 {
+                pendingRewardGrant = RewardGrant(amount: result.grantedPoints, kind: .attendance)
+            }
+        }
+        if result.grantedPoints > 0 && !result.idempotentReplay {
+            onRewardEarned(result.grantedPoints, "attendance")
+        }
+        return true
+    }
+
+    private func beginAttendanceOperation() -> Int? {
+        guard activeAttendanceOperation == nil else { return nil }
+        attendanceOperationGeneration &+= 1
+        activeAttendanceOperation = attendanceOperationGeneration
+        return attendanceOperationGeneration
+    }
+
+    private func finishAttendanceOperation(_ operation: Int) {
+        if activeAttendanceOperation == operation {
+            activeAttendanceOperation = nil
+        }
+    }
+
+    private func isCurrentAttendanceOperation(_ operation: Int) -> Bool {
+        activeAttendanceOperation == operation
+    }
+
+    private static func isStaleRecovery(_ error: Error) -> Bool {
+        guard case let RemoteStoreError.server(status, code, _) = error else { return false }
+        return status == 409 && code == 4014
+    }
+
+    private func rewardGrant(for streak: AttendanceStreakDTO) -> RewardGrant? {
+        if streak.freezeConsumed > 0 && streak.freezeGranted > 0 {
+            return RewardGrant(
+                amount: streak.freezeGranted,
+                kind: .streakFreezeUsedAndGranted(
+                    consumed: streak.freezeConsumed,
+                    granted: streak.freezeGranted,
+                    inventory: streak.freezeInventory,
+                    streakCount: streak.current
+                )
+            )
+        }
+        if streak.freezeGranted > 0 {
+            return RewardGrant(
+                amount: streak.freezeGranted,
+                kind: .streakFreezeGranted(
+                    streakCount: streak.current,
+                    granted: streak.freezeGranted,
+                    inventory: streak.freezeInventory
+                )
+            )
+        }
+        if streak.freezeConsumed > 0 {
+            return RewardGrant(
+                amount: streak.freezeConsumed,
+                kind: .streakFreezeUsed(
+                    consumed: streak.freezeConsumed,
+                    inventory: streak.freezeInventory
+                )
+            )
+        }
+        return switch streak.event {
         case "RESET":
             RewardGrant(amount: 0, kind: .streakReset)
         case "FIRST_DAY":

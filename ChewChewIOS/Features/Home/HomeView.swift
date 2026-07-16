@@ -12,6 +12,7 @@ struct HomeView: View {
     // MARK: - 끼니 알림 설정 sheet
     @State private var showMealReminderSettings = false
     @State private var showRewardHistory = false
+    @State private var showStreakDetail = false
 
     // MARK: - 설정 sheet (REQ-05)
     @State private var showSettings = false
@@ -64,6 +65,9 @@ struct HomeView: View {
             RewardHistorySheet()
                 .presentationDetents([.medium, .large])
         }
+        .sheet(isPresented: $showStreakDetail) {
+            StreakDetailSheet()
+        }
         .sheet(isPresented: $showSettings) {
             SettingsView()
         }
@@ -103,7 +107,14 @@ struct HomeView: View {
             title: greetingTitle
         ) {
             HStack(spacing: 7) {
-                HeaderMetricPill(icon: .flame, value: "\(home.currentStreak)", tint: .statusWarning)
+                Button {
+                    showStreakDetail = true
+                } label: {
+                    HeaderMetricPill(icon: .flame, value: "\(home.currentStreak)", tint: .statusWarning)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("스트릭 \(home.currentStreak)일, 자세히 보기")
+                .accessibilityIdentifier("StreakDetailButton")
                 Button {
                     showRewardHistory = true
                 } label: {

@@ -1,11 +1,72 @@
 import XCTest
 @testable import ChewChewIOS
 
+// Attendance recovery request coverage intentionally shares the existing remote-store fixture.
+// swiftlint:disable:next type_body_length
 final class SpringRemoteStoreAttendanceTests: XCTestCase {
     override func tearDown() {
         MockURLProtocol.handler = nil
         TokenManager.clear()
         super.tearDown()
+    }
+
+    func testAttendanceStatusDTO_decodesRecoveryStatusAndMissedDates() throws {
+        let dto = try JSONDecoder().decode(
+            AttendanceStatusDTO.self,
+            from: Data(
+                #"""
+                {
+                  "asOf": "2026-07-16",
+                  "status": "RECOVERY_AVAILABLE",
+                  "missedDates": ["2026-07-14", "2026-07-15"],
+                  "requiredFreezes": 2,
+                  "freezeInventory": 2
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertEqual(dto.status, .recoveryAvailable)
+        XCTAssertEqual(dto.missedDates, ["2026-07-14", "2026-07-15"])
+        XCTAssertEqual(dto.requiredFreezes, 2)
+    }
+
+    func testFetchAttendanceStatus_sendsExpectedRequestAndDecodesResult() async throws {
+        let store = makeStore()
+        var capturedRequest: URLRequest?
+
+        MockURLProtocol.handler = { request in
+            capturedRequest = request
+            return (
+                try Self.response(
+                    for: request,
+                    statusCode: 200,
+                    headerFields: ["Content-Type": "application/json"]
+                ),
+                Data(
+                    #"""
+                    {
+                      "code": 1000,
+                      "message": "요청에 성공하였습니다.",
+                      "result": {
+                        "asOf": "2026-07-16",
+                        "status": "RECOVERY_AVAILABLE",
+                        "missedDates": ["2026-07-14", "2026-07-15"],
+                        "requiredFreezes": 2,
+                        "freezeInventory": 2
+                      }
+                    }
+                    """#.utf8
+                )
+            )
+        }
+
+        let result = try await store.fetchAttendanceStatus()
+
+        XCTAssertEqual(capturedRequest?.httpMethod, "GET")
+        XCTAssertEqual(capturedRequest?.url?.absoluteString, "http://localhost:8080/v1/me/attendance/status")
+        XCTAssertEqual(result.status, .recoveryAvailable)
+        XCTAssertEqual(result.requiredFreezes, 2)
     }
 
     func testEarnAttendance_sendsExpectedRequestAndDecodesResult() async throws {
@@ -15,14 +76,16 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
         MockURLProtocol.handler = { request in
             capturedRequest = request
             let body = try Self.bodyData(from: request)
-            let json = try JSONSerialization.jsonObject(with: body) as? [String: String]
+            let json = try JSONSerialization.jsonObject(with: body) as? [String: Any]
 
             XCTAssertEqual(request.httpMethod, "POST")
             XCTAssertEqual(request.url?.path, "/v1/me/attendance")
             // `/v1/me/*`는 JWT(user_id)로만 스코프 — device 헤더는 더 이상 보내지 않는다.
             XCTAssertNil(request.value(forHTTPHeaderField: "X-Device-Id"))
             XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Type"), "application/json")
-            XCTAssertEqual(json?["idempotencyKey"], "app-open-device-1-20260612")
+            XCTAssertEqual(json?["idempotencyKey"] as? String, "app-open-device-1-20260612")
+            XCTAssertEqual(json?["freezeDecision"] as? String, "USE")
+            XCTAssertEqual(json?["expectedMissedDays"] as? Int, 2)
 
             return (
                 HTTPURLResponse(
@@ -37,7 +100,9 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
 
         let result = try await store.earnAttendance(
             deviceId: "device-1",
-            idempotencyKey: "app-open-device-1-20260612"
+            idempotencyKey: "app-open-device-1-20260612",
+            decision: .use,
+            expectedMissedDays: 2
         )
 
         XCTAssertEqual(capturedRequest?.url?.absoluteString, "http://localhost:8080/v1/me/attendance")
@@ -47,14 +112,111 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
         XCTAssertEqual(result.userStats.deviceId, "11111111-1111-1111-1111-111111111111")
         XCTAssertEqual(result.userStats.userId, "11111111-1111-1111-1111-111111111111")
         XCTAssertEqual(result.userStats.points, 10)
+        XCTAssertEqual(result.streak.current, 8)
+        XCTAssertEqual(result.streak.freezeConsumed, 1)
+        XCTAssertEqual(result.streak.freezeGranted, 1)
     }
 
-    func testEarnAttendance_decodesServerErrorEnvelope() async throws {
+    func testEarnAttendance_skipOmitsExpectedMissedDays() async throws {
+        let store = makeStore()
+
+        MockURLProtocol.handler = { request in
+            let body = try Self.bodyData(from: request)
+            let json = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+
+            XCTAssertEqual(json?["freezeDecision"] as? String, "SKIP")
+            XCTAssertNil(json?["expectedMissedDays"])
+
+            return (
+                try Self.response(
+                    for: request,
+                    statusCode: 200,
+                    headerFields: ["Content-Type": "application/json"]
+                ),
+                Self.successBody
+            )
+        }
+
+        _ = try await store.earnAttendance(
+            deviceId: "device-1",
+            idempotencyKey: "app-open-device-1-20260612",
+            decision: .skip,
+            expectedMissedDays: 2
+        )
+    }
+
+    func testEarnAttendance_useWithoutExpectedMissedDaysFailsBeforeSendingRequest() async {
+        let store = makeStore()
+        var requestCount = 0
+        MockURLProtocol.handler = { request in
+            requestCount += 1
+            return (
+                try Self.response(for: request, statusCode: 200),
+                Self.successBody
+            )
+        }
+
+        do {
+            _ = try await store.earnAttendance(
+                deviceId: "device-1",
+                idempotencyKey: "app-open-device-1-20260612",
+                decision: .use,
+                expectedMissedDays: nil
+            )
+            XCTFail("Expected invalid attendance request")
+        } catch {
+            XCTAssertEqual(requestCount, 0)
+        }
+    }
+
+    func testFetchStreakDetail_sendsExpectedRequestAndDecodesDays() async throws {
+        let store = makeStore()
+        var capturedRequest: URLRequest?
+        MockURLProtocol.handler = { request in
+            capturedRequest = request
+            return (
+                try Self.response(
+                    for: request,
+                    statusCode: 200,
+                    headerFields: ["Content-Type": "application/json"]
+                ),
+                Data(
+                    """
+                    {
+                      "code": 1000,
+                      "message": "요청에 성공하였습니다.",
+                      "result": {
+                        "asOf": "2026-07-15",
+                        "current": 8,
+                        "longest": 18,
+                        "startedOn": "2026-07-08",
+                        "freezeInventory": 1,
+                        "days": [
+                          {"date": "2026-07-14", "state": "ATTENDED"},
+                          {"date": "2026-07-15", "state": "FROZEN"}
+                        ]
+                      }
+                    }
+                    """.utf8
+                )
+            )
+        }
+
+        let result = try await store.fetchStreakDetail()
+
+        XCTAssertEqual(capturedRequest?.httpMethod, "GET")
+        XCTAssertEqual(capturedRequest?.url?.absoluteString, "http://localhost:8080/v1/me/streak")
+        XCTAssertEqual(result.asOf, "2026-07-15")
+        XCTAssertEqual(result.current, 8)
+        XCTAssertEqual(result.days.map(\.state), [.attended, .frozen])
+    }
+
+    func testEarnAttendance_decodesStaleRecoveryErrorCode() async throws {
         let store = makeStore()
         MockURLProtocol.handler = { request in
             (
-                HTTPURLResponse(url: request.url!, statusCode: 400, httpVersion: nil, headerFields: nil)!,
-                Data(#"{"code":4004,"message":"유효하지 않은 디바이스 식별자입니다."}"#.utf8)
+                HTTPURLResponse(url: request.url!, statusCode: 409, httpVersion: nil, headerFields: nil)!,
+                Data(#"{"code":4014,"message":"출석 복구 상태가 변경되었습니다."}"#.utf8)
             )
         }
 
@@ -65,9 +227,9 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
             guard case .server(let status, let code, let message) = error else {
                 return XCTFail("Expected server error, got \(error)")
             }
-            XCTAssertEqual(status, 400)
-            XCTAssertEqual(code, 4004)
-            XCTAssertEqual(message, "유효하지 않은 디바이스 식별자입니다.")
+            XCTAssertEqual(status, 409)
+            XCTAssertEqual(code, 4014)
+            XCTAssertEqual(message, "출석 복구 상태가 변경되었습니다.")
         }
     }
 
@@ -270,6 +432,22 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
         throw URLError(.cannotDecodeContentData)
     }
 
+    private static func response(
+        for request: URLRequest,
+        statusCode: Int,
+        headerFields: [String: String]? = nil
+    ) throws -> HTTPURLResponse {
+        let url = try XCTUnwrap(request.url)
+        return try XCTUnwrap(
+            HTTPURLResponse(
+                url: url,
+                statusCode: statusCode,
+                httpVersion: nil,
+                headerFields: headerFields
+            )
+        )
+    }
+
     private static func readBody(_ stream: InputStream) throws -> Data {
         stream.open()
         defer { stream.close() }
@@ -298,6 +476,15 @@ final class SpringRemoteStoreAttendanceTests: XCTestCase {
             "grantedPoints": 10,
             "capped": false,
             "idempotentReplay": false,
+            "streak": {
+              "current": 8,
+              "longest": 18,
+              "startedOn": "2026-07-08",
+              "event": "MILESTONE",
+              "freezeInventory": 1,
+              "freezeConsumed": 1,
+              "freezeGranted": 1
+            },
             "userStats": {
               "userId": "11111111-1111-1111-1111-111111111111",
               "displayName": null,
