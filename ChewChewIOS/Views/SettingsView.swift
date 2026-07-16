@@ -14,6 +14,9 @@ struct SettingsView: View {
     @State private var showPersonalizationResetConfirmation = false
     @State private var showAirPodsPicker = false
     @State private var showFeedback = false
+    @State private var isDeletingAccount = false
+    @State private var showDeleteFailure = false
+    @State private var deleteFailureMessage = ""
     @State private var personalizationSettings = UserDefaultsChewProfileStore().load()
 
     private static let feedbackFormURL = URL(string: "https://forms.gle/6AsoDPHhywVpV9Qb6")!
@@ -96,10 +99,18 @@ struct SettingsView: View {
         .appDialog(
             isPresented: $showDeleteConfirmation,
             title: "계정을 삭제할까요?",
-            message: "오도독 계정과 씹기 기록, 도토리, 스트릭이 모두 삭제돼요. 이 작업은 되돌릴 수 없어요.",
+            message: "계정이 탈퇴 처리되고 로그인이 해제돼요. "
+                + "프로필과 서비스 이용 기록 일부는 보관 정책에 따라 남을 수 있으며, 이 작업은 되돌릴 수 없어요.",
             primary: .init("계정 삭제", role: .destructive) {
-                Task { await state.eraseAllUserData() }
+                deleteAccount()
             },
+            secondary: .init("취소", role: .cancel) {}
+        )
+        .appDialog(
+            isPresented: $showDeleteFailure,
+            title: "계정을 삭제하지 못했어요",
+            message: deleteFailureMessage,
+            primary: .init("다시 시도") { deleteAccount() },
             secondary: .init("취소", role: .cancel) {}
         )
         .appDialog(
@@ -121,6 +132,39 @@ struct SettingsView: View {
         )
         .sheet(isPresented: $showFeedback) {
             SafariView(url: Self.feedbackFormURL)
+        }
+        .overlay {
+            if isDeletingAccount {
+                ZStack {
+                    Color.bgOverlayScrim.ignoresSafeArea()
+                    VStack(spacing: AppSpacing.two) {
+                        ProgressView()
+                        Text("계정을 삭제하고 있어요")
+                            .font(.appFont(.semiboldLabel))
+                            .foregroundStyle(Color.textDefault)
+                    }
+                    .padding(AppSpacing.four)
+                    .background(Color.bgPopover, in: RoundedRectangle(cornerRadius: AppRadius.element))
+                    .appElevation(.floating)
+                }
+            }
+        }
+        .interactiveDismissDisabled(isDeletingAccount)
+    }
+
+    private func deleteAccount() {
+        guard !isDeletingAccount else { return }
+        isDeletingAccount = true
+        Task { @MainActor in
+            defer { isDeletingAccount = false }
+            do {
+                try await state.eraseAllUserData()
+                dismiss()
+            } catch {
+                deleteFailureMessage = (error as? RemoteStoreError)?.userMessage
+                    ?? "잠시 후 다시 시도해 주세요."
+                showDeleteFailure = true
+            }
         }
     }
 
