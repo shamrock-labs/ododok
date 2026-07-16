@@ -113,6 +113,44 @@ final class SpringRemoteStore: RemoteStore {
         return dto
     }
 
+    func fetchCurrentChewDetectionProfile(modelVersion: String) async throws -> ChewDetectionProfileDTO? {
+        var components = URLComponents()
+        components.queryItems = [URLQueryItem(name: "modelVersion", value: modelVersion)]
+        guard let query = components.percentEncodedQuery else {
+            throw RemoteStoreError.malformed("failed to encode DSP model version")
+        }
+        let req = jsonRequest(
+            method: "GET",
+            path: "/v1/me/chew-detection-profiles/current?\(query)"
+        )
+        let data = try await sendExpectingSuccess(req)
+        return try decodeOptionalResult(ChewDetectionProfileDTO.self, from: data)
+    }
+
+    func createChewDetectionProfile(
+        _ profile: ChewDetectionProfileRequestDTO,
+        idempotencyKey: String
+    ) async throws -> ChewDetectionProfileDTO {
+        var req = jsonRequest(method: "POST", path: "/v1/me/chew-detection-profiles")
+        req.setValue(idempotencyKey, forHTTPHeaderField: "Idempotency-Key")
+        req.httpBody = try encoder.encode(profile)
+        let data = try await sendExpectingSuccess(req)
+        return try decodeResult(ChewDetectionProfileDTO.self, from: data)
+    }
+
+    func resetCurrentChewDetectionProfile(modelVersion: String) async throws {
+        var components = URLComponents()
+        components.queryItems = [URLQueryItem(name: "modelVersion", value: modelVersion)]
+        guard let query = components.percentEncodedQuery else {
+            throw RemoteStoreError.malformed("failed to encode DSP model version")
+        }
+        let req = jsonRequest(
+            method: "DELETE",
+            path: "/v1/me/chew-detection-profiles/current?\(query)"
+        )
+        _ = try await sendExpectingSuccess(req)
+    }
+
     // MARK: - user_stats
 
     /// 404 → nil (첫 기기 등록 전 stats 없음은 정상). 200 → wrapping의 result 디코드.

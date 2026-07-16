@@ -15,8 +15,6 @@ struct ChewPersonalizationSettingsControls: View {
     @State private var isDiagnosticsPresented = false
     @State private var pendingDiagnosticsAction: PendingDiagnosticsAction?
 
-    private let store = UserDefaultsChewProfileStore()
-
     var body: some View {
         VStack(spacing: AppSpacing.none) {
             if settings == nil {
@@ -27,9 +25,9 @@ struct ChewPersonalizationSettingsControls: View {
         }
         .fullScreenCover(isPresented: $isPersonalizationPresented) {
             MeasurementPersonalizationFlow(
-                personalizationStore: store,
                 remoteStore: state.remoteStore
             ) { updatedSettings in
+                try await state.saveChewDetectionSettings(updatedSettings)
                 settings = updatedSettings
             }
         }

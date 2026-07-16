@@ -199,6 +199,10 @@ final class AppState {
     /// 제품·리텐션 분석 포트. 테스트/미설정 시 Noop.
     @ObservationIgnored let analytics: AnalyticsService
 
+    @MainActor @ObservationIgnored lazy var chewProfileManager = ChewDetectionProfileManager(
+        remoteStore: remoteStore
+    )
+
     @MainActor @ObservationIgnored lazy var mealSession: MealSessionRuntimeStore = MealSessionRuntimeStore(
         analytics: analytics,
         onChewPulse: { [weak self] in
@@ -209,6 +213,10 @@ final class AppState {
         },
         onSessionReadyForUpload: { [weak self] output, stats in
             await self?.mealResults.uploadSession(output, stats: stats)
+        },
+        chewDetectionContext: { [weak self] in
+            guard let self else { return .standard }
+            return self.chewProfileManager.mealContext(userId: self.storedAnalyticsUserId())
         }
     )
 
@@ -290,6 +298,9 @@ final class AppState {
         }
         await refreshFromServerHome()
         await fetchAndApplyDisplayName()
+        if let userId = storedAnalyticsUserId() {
+            await chewProfileManager.activate(userId: userId)
+        }
     }
 
     // MARK: - Shop / Wardrobe actions
@@ -361,6 +372,9 @@ final class AppState {
         let wasInForeground = isInForeground
         isInForeground = toForeground
         if !wasInForeground && toForeground {
+            if isLoggedIn, let userId = storedAnalyticsUserId() {
+                Task { await chewProfileManager.refreshIfStale(userId: userId) }
+            }
             if ProcessInfo.processInfo.arguments.contains("-skipAttendanceDialog") {
                 return
             }
@@ -390,6 +404,7 @@ final class AppState {
     func eraseAllUserData() async throws {
         let deletionAccessToken = authTokenStorage.accessToken
         let deletionRefreshToken = authTokenStorage.refreshToken
+        let deletedUserId = storedAnalyticsUserId()
 
         // 로컬 세션을 먼저 비우면 서버 실패를 복구하거나 재시도할 인증 수단이 사라진다.
         // DELETE /v1/me의 2xx 응답을 확인한 뒤에만 사용자에게 탈퇴 완료 상태를 보여준다.
@@ -412,6 +427,11 @@ final class AppState {
         mealResults.resetAll()
         displayName = nil
         loginMethod = nil
+        if let deletedUserId {
+            chewProfileManager.clearLocalAccountData(userId: deletedUserId)
+        } else {
+            chewProfileManager.deactivate()
+        }
         clearAnalyticsUserId()
         didLoadProfile = false
         hasCompletedOnboarding = false
@@ -427,6 +447,28 @@ final class AppState {
             home.reset()
         }
         clearPersistedSnapshot()
+    }
+
+    @MainActor
+    func saveChewDetectionSettings(_ settings: PersonalizedChewDetectionSettings) async throws {
+        guard let userId = storedAnalyticsUserId(), isLoggedIn else {
+            throw RemoteStoreError.authExpired
+        }
+        try await chewProfileManager.save(settings, userId: userId)
+    }
+
+    @MainActor
+    func resetChewDetectionSettings() async throws {
+        guard let userId = storedAnalyticsUserId(), isLoggedIn else {
+            throw RemoteStoreError.authExpired
+        }
+        try await chewProfileManager.reset(userId: userId)
+    }
+
+    @MainActor
+    func refreshChewDetectionProfileIfStale() async {
+        guard let userId = storedAnalyticsUserId(), isLoggedIn else { return }
+        await chewProfileManager.refreshIfStale(userId: userId)
     }
 
     // MARK: - Reset
@@ -447,6 +489,7 @@ final class AppState {
         hasCompletedOnboarding = false
         freezeInventory = 0
         clearAnalyticsUserId()
+        chewProfileManager.deactivate()
         authTokenStorage.clear()
         isLoggedIn = false
         analytics.setUserId(nil)
@@ -470,6 +513,7 @@ final class AppState {
         analytics.track(.login(method: method, onboardingCompleted: onboardingCompleted))
         syncAnalyticsUserProperties()
         Task { [weak self] in
+            await self?.chewProfileManager.activate(userId: userId, forceRefresh: true)
             await self?.refreshFromServerHome()
             await self?.fetchAndApplyDisplayName()
             // 계정 전환 시 이전 계정의 푸시 등록이 새 계정으로 누수되지 않게 서버 발송 신호를 내린다.
@@ -498,6 +542,7 @@ final class AppState {
 
     @MainActor
     private func expireSession(trackLogoutEvent: Bool) {
+        let loggedOutUserId = storedAnalyticsUserId()
         if trackLogoutEvent {
             analytics.track(.logout(source: "settings"))
         }
@@ -505,6 +550,11 @@ final class AppState {
         Task { await mealPushCoordinator.clearRegistration() }
         authTokenStorage.clear()
         isLoggedIn = false
+        if let loggedOutUserId {
+            chewProfileManager.clearLocalAccountData(userId: loggedOutUserId)
+        } else {
+            chewProfileManager.deactivate()
+        }
         clearAnalyticsUserId()
         analytics.setUserId(nil)
         SentryService.setUser(id: nil)

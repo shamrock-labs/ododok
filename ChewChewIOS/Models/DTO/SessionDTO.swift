@@ -158,6 +158,7 @@ struct ChewingSessionDTO: Codable, Equatable, Identifiable {
     var chewingFraction: Double?
     var estimatedTotalChews: Int?
     var modelVersion: String?
+    var chewDetectionProfileId: UUID?
     var chewingTimeline: String?
     var mealReport: MealReportDTO?
 
@@ -178,6 +179,7 @@ struct ChewingSessionDTO: Codable, Equatable, Identifiable {
         case chewingFraction
         case estimatedTotalChews
         case modelVersion
+        case chewDetectionProfileId
         case chewingTimeline
         case mealReport
     }
@@ -198,6 +200,7 @@ struct ChewingSessionDTO: Codable, Equatable, Identifiable {
         chewingFraction: Double?,
         estimatedTotalChews: Int?,
         modelVersion: String?,
+        chewDetectionProfileId: UUID? = nil,
         chewingTimeline: String? = nil,
         mealReport: MealReportDTO? = nil,
         userId: String? = nil
@@ -218,6 +221,7 @@ struct ChewingSessionDTO: Codable, Equatable, Identifiable {
         self.chewingFraction = chewingFraction
         self.estimatedTotalChews = estimatedTotalChews
         self.modelVersion = modelVersion
+        self.chewDetectionProfileId = chewDetectionProfileId
         self.chewingTimeline = chewingTimeline
         self.mealReport = mealReport
     }
@@ -240,6 +244,7 @@ struct ChewingSessionDTO: Codable, Equatable, Identifiable {
         chewingFraction = try container.decodeIfPresent(Double.self, forKey: .chewingFraction)
         estimatedTotalChews = try container.decodeIfPresent(Int.self, forKey: .estimatedTotalChews)
         modelVersion = try container.decodeIfPresent(String.self, forKey: .modelVersion)
+        chewDetectionProfileId = try container.decodeIfPresent(UUID.self, forKey: .chewDetectionProfileId)
         chewingTimeline = try container.decodeIfPresent(String.self, forKey: .chewingTimeline)
         mealReport = try container.decodeIfPresent(MealReportDTO.self, forKey: .mealReport)
     }
@@ -261,6 +266,7 @@ struct ChewingSessionDTO: Codable, Equatable, Identifiable {
         try container.encodeIfPresent(chewingFraction, forKey: .chewingFraction)
         try container.encodeIfPresent(estimatedTotalChews, forKey: .estimatedTotalChews)
         try container.encodeIfPresent(modelVersion, forKey: .modelVersion)
+        try container.encodeIfPresent(chewDetectionProfileId, forKey: .chewDetectionProfileId)
         try container.encodeIfPresent(chewingTimeline, forKey: .chewingTimeline)
     }
 }

@@ -6,18 +6,18 @@ struct MeasurementPersonalizationFlow: View {
     @State private var store: MeasurementOnboardingStore
     @State private var connectionMonitor: AirPodsConnectionMonitor
     @State private var isPreparingAirPods = false
+    @State private var isSavingProfile = false
+    @State private var saveErrorMessage: String?
     @State private var readinessTask: Task<Void, Never>?
 
-    private let personalizationStore: any ChewDetectionPersonalizationStoring
     private let readinessService: any AirPodsAudioReadinessServicing
     private let artifactUploader: any MeasurementCalibrationArtifactUploading
-    private let onSaved: (PersonalizedChewDetectionSettings) -> Void
+    private let onSaved: (PersonalizedChewDetectionSettings) async throws -> Void
 
     init(
-        personalizationStore: any ChewDetectionPersonalizationStoring = UserDefaultsChewProfileStore(),
         remoteStore: any RemoteStore = NoopRemoteStore(),
         readinessService: (any AirPodsAudioReadinessServicing)? = nil,
-        onSaved: @escaping (PersonalizedChewDetectionSettings) -> Void
+        onSaved: @escaping (PersonalizedChewDetectionSettings) async throws -> Void
     ) {
         let connectionMonitor = AirPodsConnectionMonitor()
         #if DEBUG && targetEnvironment(simulator)
@@ -40,7 +40,6 @@ struct MeasurementPersonalizationFlow: View {
             artifactUploader: artifactUploader,
             cuePlayer: audioReadinessService
         ))
-        self.personalizationStore = personalizationStore
         self.readinessService = audioReadinessService
         self.artifactUploader = artifactUploader
         self.onSaved = onSaved
@@ -75,6 +74,28 @@ struct MeasurementPersonalizationFlow: View {
                 requestAirPodsReadiness()
             }
         }
+        .disabled(isSavingProfile)
+        .overlay {
+            if isSavingProfile {
+                ZStack {
+                    Color.black.opacity(0.2).ignoresSafeArea()
+                    ProgressView("맞춤 기준을 저장하고 있어요")
+                        .padding(AppSpacing.four)
+                        .background(Color.bgPopover, in: RoundedRectangle(cornerRadius: AppRadius.element))
+                }
+            }
+        }
+        .alert(
+            "맞춤 기준을 저장하지 못했어요",
+            isPresented: Binding(
+                get: { saveErrorMessage != nil },
+                set: { if !$0 { saveErrorMessage = nil } }
+            )
+        ) {
+            Button("확인", role: .cancel) {}
+        } message: {
+            Text(saveErrorMessage ?? "잠시 후 다시 시도해 주세요.")
+        }
     }
 
     private func refreshConnection() {
@@ -102,7 +123,7 @@ struct MeasurementPersonalizationFlow: View {
     }
 
     private func saveAndDismiss() {
-        guard let profile = store.profile else { return }
+        guard let profile = store.profile, !isSavingProfile else { return }
         let settings = PersonalizedChewDetectionSettings(
             minPeakAmplitude: profile.minPeakAmplitude,
             calibrationPeakCount: profile.calibrationAmplitudes.count,
@@ -112,8 +133,16 @@ struct MeasurementPersonalizationFlow: View {
             calibrationAmplitudes: profile.calibrationAmplitudes,
             gateThresholds: profile.gateThresholds
         )
-        personalizationStore.save(settings)
-        onSaved(settings)
-        dismiss()
+        isSavingProfile = true
+        Task { @MainActor in
+            defer { isSavingProfile = false }
+            do {
+                try await onSaved(settings)
+                dismiss()
+            } catch {
+                saveErrorMessage = (error as? RemoteStoreError)?.userMessage
+                    ?? "잠시 후 다시 시도해 주세요."
+            }
+        }
     }
 }

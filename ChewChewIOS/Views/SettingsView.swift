@@ -17,7 +17,10 @@ struct SettingsView: View {
     @State private var isDeletingAccount = false
     @State private var showDeleteFailure = false
     @State private var deleteFailureMessage = ""
-    @State private var personalizationSettings = UserDefaultsChewProfileStore().load()
+    @State private var personalizationSettings: PersonalizedChewDetectionSettings?
+    @State private var isResettingPersonalization = false
+    @State private var showPersonalizationFailure = false
+    @State private var personalizationFailureMessage = ""
 
     private static let feedbackFormURL = URL(string: "https://forms.gle/6AsoDPHhywVpV9Qb6")!
 
@@ -118,10 +121,16 @@ struct SettingsView: View {
             title: "기본 감지 기준으로 돌아갈까요?",
             message: "저장된 맞춤 기준을 지우고 다음 식사부터 기본 기준으로 감지해요.",
             primary: .init("기본값 사용", role: .destructive) {
-                UserDefaultsChewProfileStore().clear()
-                personalizationSettings = nil
+                resetPersonalization()
             },
             secondary: .init("취소", role: .cancel) {}
+        )
+        .appDialog(
+            isPresented: $showPersonalizationFailure,
+            title: "맞춤 기준을 변경하지 못했어요",
+            message: personalizationFailureMessage,
+            primary: .init("확인") {},
+            secondary: nil
         )
         .airPodsPickerDialog(
             isPresented: $showAirPodsPicker,
@@ -134,12 +143,12 @@ struct SettingsView: View {
             SafariView(url: Self.feedbackFormURL)
         }
         .overlay {
-            if isDeletingAccount {
+            if isDeletingAccount || isResettingPersonalization {
                 ZStack {
                     Color.bgOverlayScrim.ignoresSafeArea()
                     VStack(spacing: AppSpacing.two) {
                         ProgressView()
-                        Text("계정을 삭제하고 있어요")
+                        Text(isDeletingAccount ? "계정을 삭제하고 있어요" : "기본 감지 기준으로 바꾸고 있어요")
                             .font(.appFont(.semiboldLabel))
                             .foregroundStyle(Color.textDefault)
                     }
@@ -149,7 +158,14 @@ struct SettingsView: View {
                 }
             }
         }
-        .interactiveDismissDisabled(isDeletingAccount)
+        .interactiveDismissDisabled(isDeletingAccount || isResettingPersonalization)
+        .task {
+            await state.refreshChewDetectionProfileIfStale()
+            personalizationSettings = state.chewProfileManager.currentSettings
+        }
+        .onChange(of: state.chewProfileManager.currentProfile) { _, profile in
+            personalizationSettings = profile?.settings
+        }
     }
 
     private func deleteAccount() {
@@ -164,6 +180,22 @@ struct SettingsView: View {
                 deleteFailureMessage = (error as? RemoteStoreError)?.userMessage
                     ?? "잠시 후 다시 시도해 주세요."
                 showDeleteFailure = true
+            }
+        }
+    }
+
+    private func resetPersonalization() {
+        guard !isResettingPersonalization else { return }
+        isResettingPersonalization = true
+        Task { @MainActor in
+            defer { isResettingPersonalization = false }
+            do {
+                try await state.resetChewDetectionSettings()
+                personalizationSettings = nil
+            } catch {
+                personalizationFailureMessage = (error as? RemoteStoreError)?.userMessage
+                    ?? "잠시 후 다시 시도해 주세요."
+                showPersonalizationFailure = true
             }
         }
     }

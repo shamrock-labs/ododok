@@ -172,7 +172,9 @@ struct ContentView: View {
             secondary: .init("다음에 할게요", role: .cancel) {}
         )
         .fullScreenCover(isPresented: $isCalibrationFlowPresented) {
-            MeasurementPersonalizationFlow(remoteStore: state.remoteStore) { _ in }
+            MeasurementPersonalizationFlow(remoteStore: state.remoteStore) { settings in
+                try await state.saveChewDetectionSettings(settings)
+            }
         }
         // 보상은 결과 sheet와 첫 캘리브레이션 흐름이 모두 끝난 뒤에 그린다. 먼저 도착한
         // pendingRewardGrant는 유지하므로 가려진 채 자동 dismiss되지 않고 다음 순서에 나타난다.
