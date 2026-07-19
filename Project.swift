@@ -241,8 +241,8 @@ let project = Project(
                 ],
                 testFlight: [
                     "APS_ENVIRONMENT": "production",
-                    "BACKEND_BASE_URL": "https://api.dev.ododok.cloud",
-                    "APP_RUNTIME_ENVIRONMENT": "dev",
+                    "BACKEND_BASE_URL": "https://api.ododok.cloud",
+                    "APP_RUNTIME_ENVIRONMENT": "prod",
                 ].merging(signingSettings(
                     profileSpecifier: "match AppStore com.shamrock.ododok",
                     codeSignIdentity: "iPhone Distribution"

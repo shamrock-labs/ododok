@@ -1,4 +1,5 @@
 require "minitest/autorun"
+require "tempfile"
 require_relative "../fastlane/versioning"
 
 class VersioningTest < Minitest::Test
@@ -19,12 +20,19 @@ class VersioningTest < Minitest::Test
   end
 
   def test_reads_marketing_version_from_xcconfig
-    assert_equal "1.0.1", OdodokVersioning.read_marketing_version("Config/Version.xcconfig")
+    Tempfile.create(["Version", ".xcconfig"]) do |file|
+      file.write("MARKETING_VERSION = 9.8.7\n")
+      file.flush
+
+      assert_equal "9.8.7", OdodokVersioning.read_marketing_version(file.path)
+    end
   end
 
   def test_reads_marketing_version_when_fastlane_changes_directory
+    expected = OdodokVersioning.read_marketing_version("Config/Version.xcconfig")
+
     Dir.chdir("fastlane") do
-      assert_equal "1.0.1", OdodokVersioning.read_marketing_version("Config/Version.xcconfig")
+      assert_equal expected, OdodokVersioning.read_marketing_version("Config/Version.xcconfig")
     end
   end
 end

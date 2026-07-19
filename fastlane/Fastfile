@@ -128,7 +128,7 @@ platform :ios do
     )
   end
 
-  desc "App Store 심사 제출 (vX.Y.Z 태그 시 자동, 최종 출시는 수동)"
+  desc "App Store Connect 업로드 (vX.Y.Z 태그 시 자동, 심사 제출과 출시는 수동)"
   lane :release do
     api_key = asc_api_key
 
@@ -148,15 +148,12 @@ platform :ios do
     upload_to_app_store(
       api_key: api_key,
       app_version: marketing_version,
-      submit_for_review: true,     # 심사 제출까지
-      automatic_release: false,    # 심사 통과 후 '출시' 버튼은 사람이 누른다
+      submit_for_review: false,    # TestFlight 검증 후 사람이 심사 제출
+      automatic_release: false,    # 심사 통과 후 '출시' 버튼도 사람이 누른다
       force: true,                 # HTML 미리보기 생략(비대화형)
       precheck_include_in_app_purchases: false,
       skip_metadata: true,         # 메타데이터/스크린샷은 App Store Connect에서 관리
-      skip_screenshots: true,
-      submission_information: {
-        add_id_info_uses_idfa: false
-      }
+      skip_screenshots: true
     )
   end
 end

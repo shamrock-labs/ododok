@@ -1,7 +1,7 @@
-name: iOS CD - App Store
+name: iOS CD - App Store Connect Upload
 
-# vX.Y.Z 형태의 태그를 push하면 Release 아카이브를 만들어 App Store Connect에 심사 제출한다.
-# 최종 '출시' 버튼은 사람이 App Store Connect에서 직접 누른다(automatic_release: false).
+# vX.Y.Z 형태의 태그를 push하면 Release 아카이브를 App Store Connect에 업로드한다.
+# 같은 prod 빌드를 TestFlight에서 검증한 뒤 심사 제출과 출시는 사람이 직접 한다.
 on:
   push:
     tags:
@@ -15,7 +15,7 @@ concurrency:
 
 jobs:
   release:
-    name: Build & submit to App Store
+    name: Build & upload to App Store Connect
     # Xcode 26(iOS 26 SDK) 기본 탑재. App Store는 2026-04부터 iOS 26 SDK 빌드만 허용한다.
     runs-on: macos-26
     timeout-minutes: 40
@@ -77,5 +77,5 @@ jobs:
       - name: Generate Xcode workspace
         run: tuist generate --no-open
 
-      - name: Submit to App Store
+      - name: Upload to App Store Connect
         run: bundle exec fastlane release
