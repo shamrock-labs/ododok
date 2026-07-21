@@ -2,6 +2,32 @@ import XCTest
 @testable import ChewChewIOS
 
 final class AnalyticsEventTests: XCTestCase {
+    func testMealSessionEventsIncludeStableSessionId() {
+        let sessionId = UUID()
+        let events = [
+            AnalyticsEvent.mealSessionStarted(sessionId: sessionId),
+            AnalyticsEvent.mealSessionCompleted(
+                sessionId: sessionId,
+                durationSec: 180,
+                sampleCount: 9_000,
+                chewingFraction: 0.5,
+                estimatedTotalChews: 180,
+                reportable: true
+            ),
+            AnalyticsEvent.mealSessionAborted(
+                sessionId: sessionId,
+                reason: "user_discard",
+                durationSec: 10
+            ),
+            AnalyticsEvent.mealSessionFailed(sessionId: sessionId, reason: "offline")
+        ]
+
+        XCTAssertEqual(
+            events.compactMap { $0.properties["meal_session_id"] as? String },
+            Array(repeating: sessionId.uuidString, count: events.count)
+        )
+    }
+
     func testAppOpenedEventSchema() {
         let event = AnalyticsEvent.appOpened(
             launchType: .coldStart,
@@ -56,6 +82,80 @@ final class AnalyticsEventTests: XCTestCase {
         XCTAssertEqual(dismissed.name, "chew_profile_setup_dismissed")
         XCTAssertEqual(dismissed.properties["step"] as? String, "resting_signal")
         XCTAssertEqual(reset.name, "chew_profile_reset")
+    }
+
+    func testAuthenticationOutcomeEventSchemas() {
+        let started = AnalyticsEvent.loginStarted(method: "kakao")
+        let cancelled = AnalyticsEvent.loginCancelled(method: "apple")
+        let failed = AnalyticsEvent.loginFailed(method: "google", reason: .offline)
+
+        XCTAssertEqual(started.name, "login_started")
+        XCTAssertEqual(started.properties["method"] as? String, "kakao")
+        XCTAssertEqual(cancelled.name, "login_cancelled")
+        XCTAssertEqual(cancelled.properties["method"] as? String, "apple")
+        XCTAssertEqual(failed.name, "login_failed")
+        XCTAssertEqual(failed.properties["reason"] as? String, "offline")
+    }
+
+    func testOnboardingEventSchemasDistinguishSkipAndNameMethod() {
+        let nameStep = AnalyticsEvent.onboardingStepCompleted(
+            step: .name,
+            nameMethod: .generated
+        )
+        let completed = AnalyticsEvent.onboardingCompleted(
+            completionMethod: .skipped,
+            nameMethod: .generated,
+            lastStep: .measurement
+        )
+
+        XCTAssertEqual(nameStep.name, "onboarding_step_completed")
+        XCTAssertEqual(nameStep.properties["name_method"] as? String, "generated")
+        XCTAssertEqual(completed.name, "onboarding_completed")
+        XCTAssertEqual(completed.properties["completion_method"] as? String, "skipped")
+        XCTAssertEqual(completed.properties["last_step"] as? String, "measurement")
+    }
+
+    func testMealStartAndPermissionEventSchemas() {
+        let requested = AnalyticsEvent.mealStartRequested(source: .notification)
+        let blocked = AnalyticsEvent.mealStartBlocked(
+            source: .notification,
+            reason: .airPodsDisconnected
+        )
+        let permission = AnalyticsEvent.permissionResult(
+            type: .motion,
+            status: .unavailable,
+            source: .mealStart
+        )
+
+        XCTAssertEqual(requested.name, "meal_start_requested")
+        XCTAssertEqual(requested.properties["source"] as? String, "notification")
+        XCTAssertEqual(blocked.name, "meal_start_blocked")
+        XCTAssertEqual(blocked.properties["reason"] as? String, "airpods_disconnected")
+        XCTAssertEqual(permission.name, "permission_result")
+        XCTAssertEqual(permission.properties["status"] as? String, "unavailable")
+        XCTAssertEqual(permission.properties["granted"] as? Bool, false)
+    }
+
+    func testUploadRecoveryEventSchemas() {
+        let sessionId = UUID()
+        let failed = AnalyticsEvent.mealSessionFailed(
+            sessionId: sessionId,
+            reason: "offline",
+            attemptNumber: 2
+        )
+        let retry = AnalyticsEvent.mealSessionUploadRetryRequested(
+            sessionId: sessionId,
+            nextAttemptNumber: 3
+        )
+        let abandoned = AnalyticsEvent.mealSessionUploadAbandoned(
+            sessionId: sessionId,
+            failedAttemptCount: 2
+        )
+
+        XCTAssertEqual(failed.properties["attempt_number"] as? Int, 2)
+        XCTAssertEqual(retry.properties["next_attempt_number"] as? Int, 3)
+        XCTAssertEqual(abandoned.properties["failed_attempt_count"] as? Int, 2)
+        XCTAssertEqual(retry.properties["meal_session_id"] as? String, sessionId.uuidString)
     }
 
     func testCompositeAnalyticsAddsEnvironmentToNewFunnelEvents() {

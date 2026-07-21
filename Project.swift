@@ -29,6 +29,8 @@ let appInfoPlist: [String: Plist.Value] = [
     "InsForgeAPIKey": "$(INSFORGE_API_KEY)",
     "SentryDSN": "$(SENTRY_DSN)",
     "AmplitudeAPIKey": "$(AMPLITUDE_API_KEY)",
+    "AmplitudeInstanceName": "$(AMPLITUDE_INSTANCE_NAME)",
+    "AppBuildChannel": "$(APP_BUILD_CHANNEL)",
     "BackendBaseURL": "$(BACKEND_BASE_URL)",
     "AppRuntimeEnvironment": "$(APP_RUNTIME_ENVIRONMENT)",
     "KakaoInviteMobileWebURL": "$(KAKAO_INVITE_MOBILE_WEB_URL)",
@@ -238,11 +240,17 @@ let project = Project(
                     "APS_ENVIRONMENT": "development",
                     "BACKEND_BASE_URL": "https://api.dev.ododok.cloud",
                     "APP_RUNTIME_ENVIRONMENT": "dev",
+                    "APP_BUILD_CHANNEL": "debug",
+                    "AMPLITUDE_API_KEY": "$(AMPLITUDE_DEV_API_KEY)",
+                    "AMPLITUDE_INSTANCE_NAME": "ododok-amplitude-dev-us-v1",
                 ],
                 testFlight: [
                     "APS_ENVIRONMENT": "production",
                     "BACKEND_BASE_URL": "https://api.ododok.cloud",
                     "APP_RUNTIME_ENVIRONMENT": "prod",
+                    "APP_BUILD_CHANNEL": "testflight",
+                    "AMPLITUDE_API_KEY": "$(AMPLITUDE_DEV_API_KEY)",
+                    "AMPLITUDE_INSTANCE_NAME": "ododok-amplitude-dev-us-v1",
                 ].merging(signingSettings(
                     profileSpecifier: "match AppStore com.shamrock.ododok",
                     codeSignIdentity: "iPhone Distribution"
@@ -251,6 +259,9 @@ let project = Project(
                     "APS_ENVIRONMENT": "production",
                     "BACKEND_BASE_URL": "https://api.ododok.cloud",
                     "APP_RUNTIME_ENVIRONMENT": "prod",
+                    "APP_BUILD_CHANNEL": "app_store",
+                    "AMPLITUDE_API_KEY": "$(AMPLITUDE_PROD_API_KEY)",
+                    "AMPLITUDE_INSTANCE_NAME": "ododok-amplitude-prod-us-v1",
                 ].merging(signingSettings(
                     profileSpecifier: "match AppStore com.shamrock.ododok",
                     codeSignIdentity: "iPhone Distribution"

@@ -5,9 +5,13 @@ import XCTest
 final class AuthStoreTests: XCTestCase {
     func testSignInOAuthSuccessAndServerSuccessLogsIn() async {
         let repository = FakeAuthRepository(result: LoginResult(userId: "u1", displayName: "보형", onboardingCompleted: true))
-        let provider = FakeSocialLoginProvider(result: .success(.init(provider: "kakao", idToken: "id-token", name: "보형")))
+        let provider = FakeSocialLoginProvider(
+            result: .success(.init(provider: "kakao", idToken: "id-token", name: "보형")),
+            method: "kakao"
+        )
+        let analytics = AuthAnalyticsSpy()
         var completed: (LoginResult, String)?
-        let store = AuthStore(repository: repository) { result, method in
+        let store = AuthStore(repository: repository, analytics: analytics) { result, method in
             completed = (result, method)
         }
 
@@ -18,30 +22,43 @@ final class AuthStoreTests: XCTestCase {
         XCTAssertNil(store.errorMessage)
         XCTAssertEqual(repository.loginRequests.count, 1)
         XCTAssertEqual(completed?.1, "kakao")
+        XCTAssertEqual(analytics.events.map(\.name), ["login_started"])
+        XCTAssertEqual(analytics.events.first?.properties["method"] as? String, "kakao")
     }
 
     func testSignInOAuthCancelledDoesNotShowErrorOrLogin() async {
         let repository = FakeAuthRepository()
-        let provider = FakeSocialLoginProvider(result: .failure(SocialLoginError.cancelled))
-        let store = AuthStore(repository: repository)
+        let provider = FakeSocialLoginProvider(
+            result: .failure(SocialLoginError.cancelled),
+            method: "apple"
+        )
+        let analytics = AuthAnalyticsSpy()
+        let store = AuthStore(repository: repository, analytics: analytics)
 
         await store.signIn(with: provider)
 
         XCTAssertFalse(store.isLoggedIn)
         XCTAssertNil(store.errorMessage)
         XCTAssertTrue(repository.loginRequests.isEmpty)
+        XCTAssertEqual(analytics.events.map(\.name), ["login_started", "login_cancelled"])
     }
 
     func testSignInOAuthFailureShowsError() async {
         let repository = FakeAuthRepository()
-        let provider = FakeSocialLoginProvider(result: .failure(SocialLoginError.failed("OAuth 실패")))
-        let store = AuthStore(repository: repository)
+        let provider = FakeSocialLoginProvider(
+            result: .failure(SocialLoginError.failed("OAuth 실패")),
+            method: "google"
+        )
+        let analytics = AuthAnalyticsSpy()
+        let store = AuthStore(repository: repository, analytics: analytics)
 
         await store.signIn(with: provider)
 
         XCTAssertFalse(store.isLoggedIn)
         XCTAssertEqual(store.errorMessage, "OAuth 실패")
         XCTAssertTrue(repository.loginRequests.isEmpty)
+        XCTAssertEqual(analytics.events.map(\.name), ["login_started", "login_failed"])
+        XCTAssertEqual(analytics.events.last?.properties["reason"] as? String, "provider")
     }
 
     func testSignInServerFailureKeepsLoggedOutAndDoesNotSaveToken() async {
@@ -102,6 +119,14 @@ final class AuthStoreTests: XCTestCase {
     }
 }
 
+private final class AuthAnalyticsSpy: AnalyticsService {
+    private(set) var events: [AnalyticsEvent] = []
+
+    func track(_ event: AnalyticsEvent) { events.append(event) }
+    func setUserId(_ userId: String?) {}
+    func setUserProperty(_ key: String, _ value: Any) {}
+}
+
 private enum TestAuthError: LocalizedError {
     case server
 
@@ -113,9 +138,11 @@ private enum TestAuthError: LocalizedError {
 @MainActor
 private final class FakeSocialLoginProvider: SocialLoginProvider {
     private let result: Result<SocialCredential, Error>
+    let method: String
 
-    init(result: Result<SocialCredential, Error>) {
+    init(result: Result<SocialCredential, Error>, method: String = "test") {
         self.result = result
+        self.method = method
     }
 
     func login() async throws -> SocialCredential {

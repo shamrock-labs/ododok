@@ -1,5 +1,6 @@
 import CoreMotion
 import Foundation
+import UserNotifications
 
 protocol MealMotionServicing: AnyObject {
     var liveMotionUnavailableSource: IMUWaveformSource? { get }
@@ -42,6 +43,7 @@ extension MealActivityControlling {
 }
 
 protocol MealInterruptionNotificationScheduling {
+    func authorizationStatus() async -> UNAuthorizationStatus
     func requestAuthorizationIfNeeded() async -> Bool
     func scheduleInterruptionPrompt() async
     func cancelInterruptionPrompt()
@@ -88,6 +90,10 @@ extension CallInterruptionMonitor: MealCallInterruptionMonitoring {}
 extension MealActivityController: MealActivityControlling {}
 
 private struct LiveInterruptionNotifier: MealInterruptionNotificationScheduling {
+    func authorizationStatus() async -> UNAuthorizationStatus {
+        await MealNotificationService.authorizationStatus()
+    }
+
     func requestAuthorizationIfNeeded() async -> Bool {
         await MealNotificationService.requestAuthorizationIfNeeded()
     }

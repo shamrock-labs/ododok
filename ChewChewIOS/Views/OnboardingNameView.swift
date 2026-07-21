@@ -6,7 +6,7 @@ struct OnboardingNameView: View {
     private static let maxNameLength = 8
 
     @Environment(AppState.self) private var state
-    let onComplete: () -> Void
+    let onComplete: (OnboardingNameMethod) -> Void
 
     @State private var name: String = ""
     @State private var isSaving = false
@@ -119,20 +119,28 @@ struct OnboardingNameView: View {
         guard canSubmit, !isSaving else { return }
         let captured = name
         isSaving = true
+        onComplete(.custom)
+        state.analytics.track(.onboardingStepCompleted(
+            step: .name,
+            nameMethod: .custom
+        ))
         Task { @MainActor in
             await state.saveDisplayName(captured)
             isSaving = false
-            onComplete()
         }
     }
 
     private func skip() {
         guard !isSaving else { return }
         isSaving = true
+        onComplete(.generated)
+        state.analytics.track(.onboardingStepCompleted(
+            step: .name,
+            nameMethod: .generated
+        ))
         Task { @MainActor in
             await state.saveGeneratedDisplayName()
             isSaving = false
-            onComplete()
         }
     }
 }

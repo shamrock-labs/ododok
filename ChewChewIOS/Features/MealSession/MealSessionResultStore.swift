@@ -27,7 +27,13 @@ final class MealSessionResultStore {
     private let onSessionRewardReceived: @MainActor (CreateSessionResultDTO) -> Void
     private let onRemoteError: @MainActor (Error) -> Void
     private let refreshHome: @MainActor () async -> Void
-    @ObservationIgnored private var pendingUpload: (output: IMUSessionRecorder.Output, stats: SessionStats?)?
+    private struct PendingUpload {
+        let output: IMUSessionRecorder.Output
+        let stats: SessionStats?
+        let failedAttemptCount: Int
+    }
+
+    @ObservationIgnored private var pendingUpload: PendingUpload?
 
     init(
         repository: MealSessionUploadRepository,
@@ -60,6 +66,14 @@ final class MealSessionResultStore {
     }
 
     func uploadSession(_ output: IMUSessionRecorder.Output, stats: SessionStats?) async {
+        await performUpload(output, stats: stats, attemptNumber: 1)
+    }
+
+    private func performUpload(
+        _ output: IMUSessionRecorder.Output,
+        stats: SessionStats?,
+        attemptNumber: Int
+    ) async {
         sessionUploadStatus = .uploading
         do {
             let upload = try await repository.uploadSession(output: output, stats: stats, appVersion: appVersion)
@@ -73,6 +87,7 @@ final class MealSessionResultStore {
             lastCompletedSession = dto
             let isReportable = MealSessionReportability.isReportable(dto)
             analytics.track(.mealSessionCompleted(
+                sessionId: output.sessionId,
                 durationSec: Int(dto.durationSec),
                 sampleCount: dto.sampleCount,
                 chewingFraction: dto.chewingFraction,
@@ -85,12 +100,22 @@ final class MealSessionResultStore {
                 todaySessions.append(dto)
             }
         } catch {
+            // 인증 만료도 측정을 마쳤지만 저장하지 못한 결과다. 세션의 기존 user_id가 지워지기 전에
+            // 실패 이벤트를 먼저 보내야 사용자와 동일 meal_session_id에 귀속된다.
+            analytics.track(.mealSessionFailed(
+                sessionId: output.sessionId,
+                reason: Self.uploadFailureReason(error),
+                attemptNumber: attemptNumber
+            ))
             onRemoteError(error)
             if case RemoteStoreError.authExpired = error { return }
-            analytics.track(.mealSessionFailed(reason: Self.uploadFailureReason(error)))
             sessionUploadStatus = .failure
             sessionUploadErrorMessage = (error as? RemoteStoreError)?.userMessage
-            pendingUpload = (output: output, stats: stats)
+            pendingUpload = PendingUpload(
+                output: output,
+                stats: stats,
+                failedAttemptCount: attemptNumber
+            )
         }
     }
 
@@ -126,14 +151,31 @@ final class MealSessionResultStore {
     }
 
     func retryLastSessionUpload() {
-        guard let pending = pendingUpload else { return }
+        guard sessionUploadStatus == .failure, let pending = pendingUpload else { return }
+        let nextAttemptNumber = pending.failedAttemptCount + 1
+        // AppDialog는 버튼 액션 직후 isPresented=false를 쓴다. 여기서 동기적으로 failure를
+        // 벗어나야 그 dismiss가 사용자 포기(upload_abandoned)로 오인되지 않는다.
+        sessionUploadStatus = .uploading
+        sessionUploadErrorMessage = nil
+        analytics.track(.mealSessionUploadRetryRequested(
+            sessionId: pending.output.sessionId,
+            nextAttemptNumber: nextAttemptNumber
+        ))
         Task { [weak self] in
-            await self?.uploadSession(pending.output, stats: pending.stats)
+            await self?.performUpload(
+                pending.output,
+                stats: pending.stats,
+                attemptNumber: nextAttemptNumber
+            )
         }
     }
 
     func dismissSessionUploadStatus() {
-        if sessionUploadStatus == .failure {
+        if sessionUploadStatus == .failure, let pending = pendingUpload {
+            analytics.track(.mealSessionUploadAbandoned(
+                sessionId: pending.output.sessionId,
+                failedAttemptCount: pending.failedAttemptCount
+            ))
             pendingUpload = nil
         }
         sessionUploadStatus = .idle

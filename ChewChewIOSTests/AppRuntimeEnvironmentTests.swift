@@ -13,4 +13,17 @@ final class AppRuntimeEnvironmentTests: XCTestCase {
         XCTAssertNil(AppRuntimeEnvironment.resolve("$(APP_RUNTIME_ENVIRONMENT)"))
         XCTAssertNil(AppRuntimeEnvironment.resolve("staging"))
     }
+
+    func testBuildChannelResolveAcceptsConfiguredChannels() {
+        XCTAssertEqual(AppBuildChannel.resolve("debug"), "debug")
+        XCTAssertEqual(AppBuildChannel.resolve("testflight"), "testflight")
+        XCTAssertEqual(AppBuildChannel.resolve("app_store"), "app_store")
+    }
+
+    func testBuildChannelResolveRejectsMissingOrUnknownValue() {
+        XCTAssertNil(AppBuildChannel.resolve(nil))
+        XCTAssertNil(AppBuildChannel.resolve(""))
+        XCTAssertNil(AppBuildChannel.resolve("$(APP_BUILD_CHANNEL)"))
+        XCTAssertNil(AppBuildChannel.resolve("release"))
+    }
 }

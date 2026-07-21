@@ -71,7 +71,6 @@ struct ReportHubView: View {
     @State private var isLoadingDailyReport = false
     @State private var showCalendar = false
     @State private var calendarMonth: Date = mealCalendarCalendar.startOfDay(for: Date())
-    @State private var hasTrackedReportTabView = false
     @State private var dailyReportLoader = DailyReportSelectionLoader()
 
     private let dayWidth: CGFloat = 52
@@ -89,7 +88,7 @@ struct ReportHubView: View {
         }
         .task {
             await reloadRecentSessions()
-            trackReportTabViewIfNeeded()
+            trackReportTabView()
         }
         .onChange(of: pivotDate) { _, _ in
             Task { await loadWindow() }
@@ -893,9 +892,7 @@ struct ReportHubView: View {
         }
     }
 
-    private func trackReportTabViewIfNeeded() {
-        guard !hasTrackedReportTabView else { return }
-        hasTrackedReportTabView = true
+    private func trackReportTabView() {
         state.analytics.track(.reportTabViewed(
             selectedDate: analyticsDateString(selectedDate),
             daysFromToday: daysFromToday(selectedDate),

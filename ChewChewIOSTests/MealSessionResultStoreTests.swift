@@ -67,6 +67,7 @@ final class MealSessionResultStoreTests: XCTestCase {
 
     func testUploadFailureKeepsPendingPayloadForRetry() async {
         let repository = FakeMealSessionUploadRepository()
+        let analytics = SpyMealSessionAnalytics()
         let output = makeOutput()
         let session = makeSession(
             id: output.sessionId,
@@ -78,7 +79,11 @@ final class MealSessionResultStoreTests: XCTestCase {
             .success(.init(session: session, result: result))
         ]
         var remoteErrors: [Error] = []
-        let store = makeStore(repository: repository, onRemoteError: { remoteErrors.append($0) })
+        let store = makeStore(
+            repository: repository,
+            analytics: analytics,
+            onRemoteError: { remoteErrors.append($0) }
+        )
 
         await store.uploadSession(output, stats: makeStats())
 
@@ -87,11 +92,57 @@ final class MealSessionResultStoreTests: XCTestCase {
         XCTAssertEqual(remoteErrors.count, 1)
 
         store.retryLastSessionUpload()
+
+        // AppDialog가 액션 직후 닫혀도 재시도를 포기로 기록하면 안 된다.
+        XCTAssertEqual(store.sessionUploadStatus, .uploading)
+        XCTAssertNil(store.sessionUploadErrorMessage)
+        if store.sessionUploadStatus == .failure {
+            store.dismissSessionUploadStatus()
+        }
+        XCTAssertTrue(analytics.abandonedSessionIds.isEmpty)
+
         try? await Task.sleep(for: .milliseconds(20))
 
         XCTAssertEqual(repository.uploadCalls.count, 2)
         XCTAssertEqual(store.sessionUploadStatus, .success)
         XCTAssertEqual(store.todaySessions, [session])
+        XCTAssertEqual(analytics.failedAttemptNumbers, [1])
+        XCTAssertEqual(analytics.retryAttemptNumbers, [2])
+        XCTAssertTrue(analytics.abandonedSessionIds.isEmpty)
+    }
+
+    func testDismissingFailedUploadTracksAbandonment() async {
+        let repository = FakeMealSessionUploadRepository()
+        let analytics = SpyMealSessionAnalytics()
+        let output = makeOutput()
+        repository.uploadResults = [.failure(RemoteStoreError.offline)]
+        let store = makeStore(repository: repository, analytics: analytics)
+
+        await store.uploadSession(output, stats: makeStats())
+        store.dismissSessionUploadStatus()
+
+        XCTAssertEqual(analytics.abandonedSessionIds, [output.sessionId.uuidString])
+        XCTAssertEqual(analytics.abandonedAttemptCounts, [1])
+        XCTAssertEqual(store.sessionUploadStatus, .idle)
+    }
+
+    func testAuthExpiredUploadTracksFailureWithSessionIdBeforeReturning() async {
+        let repository = FakeMealSessionUploadRepository()
+        let analytics = SpyMealSessionAnalytics()
+        let output = makeOutput()
+        repository.uploadResults = [.failure(RemoteStoreError.authExpired)]
+        var receivedErrors: [Error] = []
+        let store = makeStore(
+            repository: repository,
+            analytics: analytics,
+            onRemoteError: { receivedErrors.append($0) }
+        )
+
+        await store.uploadSession(output, stats: makeStats())
+
+        XCTAssertEqual(receivedErrors.count, 1)
+        XCTAssertEqual(analytics.failedReasons, ["auth_expired"])
+        XCTAssertEqual(analytics.failedSessionIds, [output.sessionId.uuidString])
     }
 
     func testMalformedMealReportResponseDoesNotPublishSuccess() async {
@@ -328,11 +379,43 @@ private final class FakeMealSessionUploadRepository: MealSessionUploadRepository
 
 private final class SpyMealSessionAnalytics: AnalyticsService {
     private(set) var completedReportableValues: [Bool] = []
+    private(set) var failedReasons: [String] = []
+    private(set) var failedSessionIds: [String] = []
+    private(set) var failedAttemptNumbers: [Int] = []
+    private(set) var retryAttemptNumbers: [Int] = []
+    private(set) var abandonedSessionIds: [String] = []
+    private(set) var abandonedAttemptCounts: [Int] = []
 
     func track(_ event: AnalyticsEvent) {
-        guard event.name == "meal_session_completed",
-              let reportable = event.properties["reportable"] as? Bool else { return }
-        completedReportableValues.append(reportable)
+        switch event.name {
+        case "meal_session_completed":
+            if let reportable = event.properties["reportable"] as? Bool {
+                completedReportableValues.append(reportable)
+            }
+        case "meal_session_failed":
+            if let reason = event.properties["reason"] as? String {
+                failedReasons.append(reason)
+            }
+            if let sessionId = event.properties["meal_session_id"] as? String {
+                failedSessionIds.append(sessionId)
+            }
+            if let attemptNumber = event.properties["attempt_number"] as? Int {
+                failedAttemptNumbers.append(attemptNumber)
+            }
+        case "meal_session_upload_retry_requested":
+            if let attemptNumber = event.properties["next_attempt_number"] as? Int {
+                retryAttemptNumbers.append(attemptNumber)
+            }
+        case "meal_session_upload_abandoned":
+            if let sessionId = event.properties["meal_session_id"] as? String {
+                abandonedSessionIds.append(sessionId)
+            }
+            if let attemptCount = event.properties["failed_attempt_count"] as? Int {
+                abandonedAttemptCounts.append(attemptCount)
+            }
+        default:
+            break
+        }
     }
 
     func setUserId(_ userId: String?) {}

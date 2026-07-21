@@ -49,12 +49,12 @@ struct HomeView: View {
             // 끼니 리마인더 알림의 "식사 시작" 액션 — 시작 가드를 그대로 태운다.
             guard requested else { return }
             _ = mealSession.consumePendingMealStartRequest()
-            if !mealSession.isEating { handleMealToggle() }
+            if !mealSession.isEating { handleMealToggle(source: .notification) }
         }
         .onAppear {
             // 콜드스타트로 열려 onChange를 놓친 경우 보완.
             if mealSession.consumePendingMealStartRequest() {
-                if !mealSession.isEating { handleMealToggle() }
+                if !mealSession.isEating { handleMealToggle(source: .notification) }
             }
         }
         .sensoryFeedback(.impact(weight: .medium), trigger: hapticTrigger)
@@ -79,7 +79,7 @@ struct HomeView: View {
 
     // MARK: - 식사 시작 가드
 
-    private func handleMealToggle() {
+    private func handleMealToggle(source: MealStartSource = .home) {
         if mealSession.isEating {
             // 최소 분석 시간 전이면 사용자에게 "더 측정할까요?" 확인 후 처리.
             let duration = Date().timeIntervalSince(mealSession.eatingStartedAt ?? Date())
@@ -93,12 +93,12 @@ struct HomeView: View {
 
         #if targetEnvironment(simulator)
         hapticTrigger.toggle()
-        mealSession.toggleEating()
+        mealSession.startEatingImmediately(source: source)
         #else
-        mealSession.beginMealStartAfterAirPodsReadiness {
+        mealSession.beginMealStartAfterAirPodsReadiness(source: source) {
             hapticTrigger.toggle()
         } onFinished: {
-            mealSession.toggleEating()
+            mealSession.toggleEating(startSource: source)
         }
         #endif
     }

@@ -17,12 +17,17 @@ final class ReminderStoreTests: XCTestCase {
 
     func testRequestPermissionAllowedUpdatesStatus() async {
         let permission = FakeReminderPermissionProvider(status: .notDetermined, requestResult: true, statusAfterRequest: .authorized)
-        let store = makeStore(permission: permission)
+        let analytics = ReminderAnalyticsSpy()
+        let store = makeStore(permission: permission, analytics: analytics)
 
         let granted = await store.requestPermissionIfNeeded()
 
         XCTAssertTrue(granted)
         XCTAssertEqual(store.permissionStatus, .authorized)
+        XCTAssertEqual(analytics.events.map(\.name), ["permission_result"])
+        XCTAssertEqual(analytics.events.first?.properties["type"] as? String, "notification")
+        XCTAssertEqual(analytics.events.first?.properties["status"] as? String, "authorized")
+        XCTAssertEqual(analytics.events.first?.properties["source"] as? String, "reminder_settings")
     }
 
     func testRequestPermissionDeniedKeepsSlotOff() async {
@@ -116,6 +121,7 @@ final class ReminderStoreTests: XCTestCase {
         coordinator: FakeReminderApplying = FakeReminderApplying(),
         permission: FakeReminderPermissionProvider? = nil,
         localStore: FakeReminderSettingsStore? = nil,
+        analytics: AnalyticsService = NoopAnalytics(),
         permissionStatus: UNAuthorizationStatus = .notDetermined
     ) -> ReminderStore {
         let permissionProvider = permission ?? FakeReminderPermissionProvider(status: permissionStatus)
@@ -124,6 +130,7 @@ final class ReminderStoreTests: XCTestCase {
             coordinator: coordinator,
             permissionProvider: permissionProvider,
             settingsStore: settingsStore,
+            analytics: analytics,
             calendar: testCalendar,
             initialSettings: storedSettings,
             initialPermissionStatus: permissionStatus
@@ -148,6 +155,14 @@ final class ReminderStoreTests: XCTestCase {
         calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .current
         return calendar
     }
+}
+
+private final class ReminderAnalyticsSpy: AnalyticsService {
+    private(set) var events: [AnalyticsEvent] = []
+
+    func track(_ event: AnalyticsEvent) { events.append(event) }
+    func setUserId(_ userId: String?) {}
+    func setUserProperty(_ key: String, _ value: Any) {}
 }
 
 private final class FakeReminderApplying: ReminderApplying {

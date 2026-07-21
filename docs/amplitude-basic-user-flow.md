@@ -2,6 +2,8 @@
 
 이 문서는 앱 설치부터 로그인, 앱 이용, 로그아웃, 탈퇴, 재가입까지의 기본 사용자 흐름을 Amplitude에서 같은 기준으로 보기 위한 트래킹 기준이다. 아하 모먼트와 리텐션 행동은 아직 확정하지 않고, 나중에 기준이 정해졌을 때 최소 변경으로 퍼널과 리텐션 차트를 만들 수 있게 현재 이벤트와 식별자 기준을 정리한다.
 
+Amplitude는 US 리전의 `Ododok Dev`, `Ododok Prod` 프로젝트로 분리한다. Debug와 TestFlight 빌드는 Dev 프로젝트로, App Store Release 빌드는 Prod 프로젝트로 전송한다. 각 프로젝트는 별도 API Key와 SDK 인스턴스명을 사용해 전송 대기 큐와 기기 식별 저장소까지 격리한다. 모든 직접 이벤트에는 백엔드 환경인 `environment=dev|prod`와 배포 채널인 `build_channel=debug|testflight|app_store`가 함께 붙는다.
+
 ## 식별자 기준
 
 | 구간 | Amplitude user_id | Amplitude device_id | user property | 분석 기준 |
@@ -19,13 +21,14 @@
 | 흐름 | 주요 이벤트 | 필수 속성 | 주 식별자 | 확인할 것 |
 | -- | -- | -- | -- | -- |
 | 설치 및 앱 진입 | `app_opened` | `launch_type`, `authentication_state`, `onboarding_completed`, `chew_profile_configured`, `environment` | 로그인 전 `device_id`, 로그인 후 `user_id` | 환경별 진입 모수, 로그인 전 이탈 |
-| 로그인 성공 | `login` | `method`, `onboarding_completed`, `environment` | `user_id` | 소셜 로그인 방법별 전환 |
-| 온보딩 완료 | `onboarding_completed` | `environment` | `user_id` | 로그인 후 초기 세팅 완료 |
-| 권한 허용 | `permission_result` | `type`, `granted`, `environment` | `user_id` | 측정 시작 전 권한 이탈 |
-| 식사 측정 시작 | `meal_session_started` | `environment` | `user_id` | 핵심 기능 시도 |
-| 식사 측정 종료/저장 성공 | `meal_session_completed` | `duration_sec`, `sample_count`, `reportable`, `chewing_fraction`, `estimated_total_chews`, `environment` | `user_id` | 실제 이용 완료 |
-| 식사 측정 중단 | `meal_session_aborted` | `reason`, `duration_sec`, `environment` | `user_id` | 저장 전 이탈 이유 |
-| 식사 저장 실패 | `meal_session_failed` | `reason`, `environment` | `user_id` | 기술적 실패로 인한 손실 |
+| 로그인 시도·결과 | `login_started`, `login_cancelled`, `login_failed`, `login` | `method`, 실패 시 `reason`, 성공 시 `onboarding_completed`, `environment` | 성공 전 `device_id`, 성공 후 `user_id` | 로그인 이탈을 취소·프로바이더·서버 실패로 구분 |
+| 온보딩 진행·완료 | `onboarding_started`, `onboarding_step_completed`, `onboarding_step_failed`, `onboarding_completed` | `step`, `name_method`, `completion_method`, `last_step`, 실패 시 `reason`, `environment` | `user_id` | 닉네임 방식, 튜토리얼 건너뛰기, 저장 실패 |
+| 권한 결과 | `permission_result` | `type`, `status`, `granted`, `source`, `environment` | `user_id` | 모션·알림 권한과 센서 미지원/오류 구분 |
+| 식사 시작 시도 | `meal_start_requested`, `meal_start_blocked`, `meal_start_cancelled` | `source`, 차단 시 `reason`, 취소 시 `stage`, `environment` | `user_id` | 홈·알림 유입과 AirPods·권한 이탈 |
+| 식사 측정 시작 | `meal_session_started` | `meal_session_id`, `source`, `environment`, `build_channel` | `user_id` | 시작 시도 중 실제 측정 전환 |
+| 식사 측정 종료/저장 성공 | `meal_session_completed` | `meal_session_id`, `duration_sec`, `sample_count`, `reportable`, `chewing_fraction`, `estimated_total_chews`, `environment`, `build_channel` | `user_id` | 실제 이용 완료 |
+| 식사 측정 중단 | `meal_session_aborted` | `meal_session_id`, `reason`, `duration_sec`, `environment`, `build_channel` | `user_id` | 저장 전 이탈 이유 |
+| 식사 저장 실패·복구 | `meal_session_failed`, `meal_session_upload_retry_requested`, `meal_session_upload_abandoned` | `meal_session_id`, `reason`, `attempt_number`, `next_attempt_number`, `failed_attempt_count`, `environment`, `build_channel` | `user_id` | 기술적 실패, 재시도, 사용자 포기 |
 | 리포트 이용 | `report_tab_viewed`, `report_date_selected`, `report_calendar_opened`, `daily_report_opened`, `meal_report_opened` | 날짜/소스/점수/세션 수 계열 속성, `environment` | `user_id` | 측정 후 결과 확인 |
 | 보상 및 경제 | `reward_earned`, `streak_event`, `shop_item_purchased` | 포인트/종류/아이템/가격 계열 속성, `environment` | `user_id` | 보상 경험과 소비 |
 | 친구 초대 | `friend_invite_received` | `logged_in`, `environment` | 로그인 전은 `device_id`, 로그인 후는 `user_id` | 초대 유입과 로그인 연결 |
@@ -36,7 +39,7 @@
 
 ## 기존 이벤트와 프로퍼티
 
-현재 직접 정의된 이벤트는 `ChewChewIOS/Analytics/AnalyticsEvent.swift`가 원본이다. 모든 직접 이벤트에는 `CompositeAnalytics`에서 `environment = dev|prod`가 공통 속성으로 붙는다.
+현재 직접 정의된 이벤트는 `ChewChewIOS/Analytics/AnalyticsEvent.swift`가 원본이다. 모든 직접 이벤트에는 `CompositeAnalytics`에서 `environment = dev|prod`와 `build_channel = debug|testflight|app_store`가 공통 속성으로 붙는다.
 
 현재 user property는 로그인 또는 세션 복원 시 아래 값을 설정한다.
 
@@ -56,9 +59,10 @@
 | 단계 | 이벤트 | 기준 |
 | -- | -- | -- |
 | 1 | `app_opened` | 로그인 전 `device_id`, 로그인 후 `user_id` |
-| 2 | `login` | `device_id`에서 `user_id`로 전환된 사용자 |
+| 2 | `login_started` | 로그인 방법을 선택한 `device_id` |
+| 3 | `login` | `device_id`에서 `user_id`로 전환된 사용자 |
 
-필터는 `environment = prod`를 기본으로 둔다. 세그먼트는 `launch_type`, `authentication_state`, `method`로 나눈다. SDK 자동 `[Amplitude] Application Opened`는 계속 수집하지만 앱의 `environment` 속성이 없으므로 환경별 퍼널에는 사용하지 않는다.
+운영 차트는 `Ododok Prod` 프로젝트에서 만들고 필요하면 `environment = prod`를 방어적으로 적용한다. 세그먼트는 `launch_type`, `authentication_state`, `method`로 나눈다. SDK 자동 `[Amplitude] Application Opened`는 앱의 `environment` 속성이 없지만 프로젝트가 분리되어 개발 빌드 이벤트와 섞이지 않는다.
 
 ### 2. 로그인에서 첫 핵심 기능 시도
 
@@ -68,10 +72,10 @@
 | -- | -- | -- |
 | 1 | `login` | `user_id` |
 | 2 | `onboarding_completed` | `user_id` |
-| 3 | `permission_result` where `type = motion`, `granted = true` | `user_id` |
-| 4 | `meal_session_started` | `user_id` |
+| 3 | `meal_start_requested` | `user_id`, `source` |
+| 4 | `meal_session_started` | `user_id`, `source` |
 
-아하 모먼트가 확정되기 전까지는 4단계를 "핵심 기능 시도"로만 부른다. 이후 아하 모먼트가 식사 저장 성공으로 정해지면 5단계에 `meal_session_completed`를 추가하면 된다.
+`permission_result`는 권한이 처음 결정되는 순간에만 발생하므로 필수 퍼널 단계로 두지 않는다. `meal_start_blocked`와 함께 `type`, `status`, `reason` 진단 차트로 본다. 아하 모먼트가 확정되기 전까지는 4단계를 "핵심 기능 시도"로만 부른다. 이후 아하 모먼트가 식사 저장 성공으로 정해지면 5단계에 `meal_session_completed`를 추가하면 된다.
 
 ### 3. 측정 시작에서 저장 성공
 
@@ -82,7 +86,7 @@
 | 1 | `meal_session_started` | `user_id` |
 | 2 | `meal_session_completed` | `user_id` |
 
-보조 차트로 `meal_session_aborted`를 `reason`별로 보고, `meal_session_failed`를 `reason`별로 본다. `meal_session_completed`는 `reportable`, `duration_sec`, `sample_count`로 breakdown한다.
+보조 차트로 `meal_start_blocked`를 `source`, `reason`별로 보고, `meal_session_aborted`를 `reason`별로 본다. `meal_session_failed`는 세션 수를 중복 집계하지 않도록 `meal_session_id` 기준 고유값과 `attempt_number`를 함께 본다. 실패 이후 `meal_session_upload_retry_requested`, `meal_session_upload_abandoned`, `meal_session_completed`를 같은 `meal_session_id`로 연결한다. `meal_session_completed`는 `reportable`, `duration_sec`, `sample_count`로 breakdown한다.
 
 ### 4. 측정 후 리포트 확인
 

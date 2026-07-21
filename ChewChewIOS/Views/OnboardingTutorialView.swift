@@ -5,7 +5,9 @@ import SwiftUI
 /// 그대로 애니메이션으로 미리보여 "실제 기능 화면"처럼 느끼게 한다.
 /// 마지막 카드의 "시작하기" 또는 우상단 "건너뛰기"에서 `onFinish`를 호출해 온보딩을 끝낸다.
 struct OnboardingTutorialView: View {
-    let onFinish: () -> Void
+    let onFinish: (OnboardingCompletionMethod, OnboardingStepName) -> Void
+
+    @Environment(AppState.self) private var state
 
     @State private var page = 0
 
@@ -41,7 +43,9 @@ struct OnboardingTutorialView: View {
     private var skipBar: some View {
         HStack {
             Spacer()
-            Button(action: onFinish) {
+            Button {
+                onFinish(.skipped, analyticsStep(for: page))
+            } label: {
                 Text("건너뛰기")
                     .font(.appFont(.boldLabel))
                     .foregroundStyle(Color.textMuted)
@@ -107,12 +111,24 @@ struct OnboardingTutorialView: View {
             verticalPadding: AppSpacing.inputVLarge
         ) {
             if isLastPage {
-                onFinish()
+                let step = analyticsStep(for: page)
+                state.analytics.track(.onboardingStepCompleted(step: step))
+                onFinish(.finished, step)
             } else {
+                state.analytics.track(.onboardingStepCompleted(step: analyticsStep(for: page)))
                 withAnimation { page += 1 }
             }
         }
         .accessibilityIdentifier(isLastPage ? "OnboardingStart" : "OnboardingNext")
+    }
+
+    private func analyticsStep(for page: Int) -> OnboardingStepName {
+        switch page {
+        case 0: .airPods
+        case 1: .measurement
+        case 2: .rewards
+        default: .streak
+        }
     }
 }
 
@@ -314,7 +330,8 @@ private struct StreakDemo: View {
 }
 
 #Preview {
-    OnboardingTutorialView(onFinish: {})
+    OnboardingTutorialView(onFinish: { _, _ in })
+        .environment(AppState())
 }
 
 private enum Metrics {

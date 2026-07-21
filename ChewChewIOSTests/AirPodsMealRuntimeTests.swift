@@ -1,5 +1,6 @@
 import CoreMotion
 import Foundation
+import UserNotifications
 import XCTest
 @testable import ChewChewIOS
 
@@ -315,6 +316,7 @@ private final class FakeAirPodsMealActivityController: MealActivityControlling {
 }
 
 private final class FakeAirPodsInterruptionNotifier: MealInterruptionNotificationScheduling {
+    func authorizationStatus() async -> UNAuthorizationStatus { .authorized }
     func requestAuthorizationIfNeeded() async -> Bool { true }
     func scheduleInterruptionPrompt() async {}
     func cancelInterruptionPrompt() {}

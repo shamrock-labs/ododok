@@ -47,6 +47,80 @@ enum ChewProfileSetupFailureReason: String {
     case profileSaveFailed = "profile_save_failed"
 }
 
+enum LoginFailureReason: String {
+    case missingIdToken = "missing_id_token"
+    case provider
+    case offline
+    case server
+    case malformedResponse = "malformed_response"
+    case unknown
+}
+
+enum OnboardingStepName: String {
+    case name
+    case airPods = "airpods"
+    case measurement
+    case rewards
+    case streak
+}
+
+enum OnboardingNameMethod: String {
+    case custom
+    case generated
+    case existing
+}
+
+enum OnboardingCompletionMethod: String {
+    case finished
+    case skipped
+}
+
+enum OnboardingFailureReason: String {
+    case offline
+    case server
+    case authExpired = "auth_expired"
+    case malformedResponse = "malformed_response"
+    case unknown
+}
+
+enum MealStartSource: String {
+    case home
+    case notification
+}
+
+enum MealStartBlockReason: String {
+    case airPodsDisconnected = "airpods_disconnected"
+    case routePreparationFailed = "route_preparation_failed"
+    case motionUnavailable = "motion_unavailable"
+    case permissionDenied = "permission_denied"
+    case permissionRestricted = "permission_restricted"
+    case authorizationUnknown = "authorization_unknown"
+}
+
+enum MealStartCancellationStage: String {
+    case connectionPrompt = "connection_prompt"
+    case countdown
+}
+
+enum AnalyticsPermissionType: String {
+    case motion
+    case notification
+}
+
+enum AnalyticsPermissionStatus: String {
+    case authorized
+    case denied
+    case restricted
+    case unavailable
+    case error
+}
+
+enum AnalyticsPermissionSource: String {
+    case mealStart = "meal_start"
+    case reminderSettings = "reminder_settings"
+    case mealSession = "meal_session"
+}
+
 // MARK: - 표준 이벤트 팩토리 (v1 트래킹 플랜)
 
 extension AnalyticsEvent {
@@ -124,18 +198,92 @@ extension AnalyticsEvent {
         .init("chew_profile_reset", ["source": source.rawValue])
     }
 
-    /// 온보딩(닉네임 입력 + 튜토리얼)을 끝까지 마침. 활성화 깔때기의 핵심 전환점.
-    static func onboardingCompleted() -> AnalyticsEvent {
-        .init("onboarding_completed")
+    static func loginStarted(method: String) -> AnalyticsEvent {
+        .init("login_started", ["method": method])
+    }
+
+    static func loginCancelled(method: String) -> AnalyticsEvent {
+        .init("login_cancelled", ["method": method])
+    }
+
+    static func loginFailed(method: String, reason: LoginFailureReason) -> AnalyticsEvent {
+        .init("login_failed", ["method": method, "reason": reason.rawValue])
+    }
+
+    static func onboardingStarted() -> AnalyticsEvent {
+        .init("onboarding_started")
+    }
+
+    static func onboardingStepCompleted(
+        step: OnboardingStepName,
+        nameMethod: OnboardingNameMethod? = nil
+    ) -> AnalyticsEvent {
+        var properties: [String: Any] = ["step": step.rawValue]
+        if let nameMethod { properties["name_method"] = nameMethod.rawValue }
+        return .init("onboarding_step_completed", properties)
+    }
+
+    static func onboardingStepFailed(
+        step: OnboardingStepName,
+        reason: OnboardingFailureReason
+    ) -> AnalyticsEvent {
+        .init("onboarding_step_failed", [
+            "step": step.rawValue,
+            "reason": reason.rawValue
+        ])
+    }
+
+    /// 온보딩(닉네임 입력 + 튜토리얼)을 완료하거나 건너뜀. 활성화 깔때기의 핵심 전환점.
+    static func onboardingCompleted(
+        completionMethod: OnboardingCompletionMethod,
+        nameMethod: OnboardingNameMethod,
+        lastStep: OnboardingStepName
+    ) -> AnalyticsEvent {
+        .init("onboarding_completed", [
+            "completion_method": completionMethod.rawValue,
+            "name_method": nameMethod.rawValue,
+            "last_step": lastStep.rawValue
+        ])
+    }
+
+    static func mealStartRequested(source: MealStartSource) -> AnalyticsEvent {
+        .init("meal_start_requested", ["source": source.rawValue])
+    }
+
+    static func mealStartBlocked(
+        source: MealStartSource,
+        reason: MealStartBlockReason
+    ) -> AnalyticsEvent {
+        .init("meal_start_blocked", [
+            "source": source.rawValue,
+            "reason": reason.rawValue
+        ])
+    }
+
+    static func mealStartCancelled(
+        source: MealStartSource,
+        stage: MealStartCancellationStage
+    ) -> AnalyticsEvent {
+        .init("meal_start_cancelled", [
+            "source": source.rawValue,
+            "stage": stage.rawValue
+        ])
     }
 
     /// 식사 측정 세션 시작.
-    static func mealSessionStarted() -> AnalyticsEvent {
-        .init("meal_session_started")
+    static func mealSessionStarted(
+        sessionId: UUID,
+        source: MealStartSource = .home
+    ) -> AnalyticsEvent {
+        .init("meal_session_started", [
+            "meal_session_id": sessionId.uuidString,
+            "source": source.rawValue
+        ])
     }
 
     /// 식사 측정 세션 종료 + 서버 저장 성공. 리텐션·참여도 분석의 주 이벤트.
     static func mealSessionCompleted(
+        sessionId: UUID,
         durationSec: Int,
         sampleCount: Int,
         chewingFraction: Double?,
@@ -143,6 +291,7 @@ extension AnalyticsEvent {
         reportable: Bool
     ) -> AnalyticsEvent {
         var p: [String: Any] = [
+            "meal_session_id": sessionId.uuidString,
             "duration_sec": durationSec,
             "sample_count": sampleCount,
             "reportable": reportable
@@ -185,19 +334,60 @@ extension AnalyticsEvent {
 
     /// 측정 세션이 서버 저장 없이 종료됨. reason: user_discard(사용자 그만두기) | no_samples(IMU 0개).
     /// 저장 성공한 세션은 meal_session_completed, 저장 실패는 meal_session_failed로 별도 구분.
-    static func mealSessionAborted(reason: String, durationSec: Int) -> AnalyticsEvent {
-        .init("meal_session_aborted", ["reason": reason, "duration_sec": durationSec])
+    static func mealSessionAborted(sessionId: UUID, reason: String, durationSec: Int) -> AnalyticsEvent {
+        .init("meal_session_aborted", [
+            "meal_session_id": sessionId.uuidString,
+            "reason": reason,
+            "duration_sec": durationSec
+        ])
     }
 
     /// 측정은 끝났으나 서버 저장 실패. reason은 오류 분류(offline/server/http/malformed/...).
     /// 저장 실패 세션이 통계에서 증발하지 않도록(생존편향 방지) 기록한다.
-    static func mealSessionFailed(reason: String) -> AnalyticsEvent {
-        .init("meal_session_failed", ["reason": reason])
+    static func mealSessionFailed(
+        sessionId: UUID,
+        reason: String,
+        attemptNumber: Int = 1
+    ) -> AnalyticsEvent {
+        .init("meal_session_failed", [
+            "meal_session_id": sessionId.uuidString,
+            "reason": reason,
+            "attempt_number": attemptNumber
+        ])
     }
 
-    /// 권한 요청 결과. type=motion(AirPods 모션). granted로 거부율·활성화 이탈을 본다.
-    static func permissionResult(type: String, granted: Bool) -> AnalyticsEvent {
-        .init("permission_result", ["type": type, "granted": granted])
+    static func mealSessionUploadRetryRequested(
+        sessionId: UUID,
+        nextAttemptNumber: Int
+    ) -> AnalyticsEvent {
+        .init("meal_session_upload_retry_requested", [
+            "meal_session_id": sessionId.uuidString,
+            "next_attempt_number": nextAttemptNumber
+        ])
+    }
+
+    static func mealSessionUploadAbandoned(
+        sessionId: UUID,
+        failedAttemptCount: Int
+    ) -> AnalyticsEvent {
+        .init("meal_session_upload_abandoned", [
+            "meal_session_id": sessionId.uuidString,
+            "failed_attempt_count": failedAttemptCount
+        ])
+    }
+
+    /// 권한 요청 결과. 권한 거부와 센서 미지원·시스템 오류를 status로 분리한다.
+    static func permissionResult(
+        type: AnalyticsPermissionType,
+        status: AnalyticsPermissionStatus,
+        source: AnalyticsPermissionSource
+    ) -> AnalyticsEvent {
+        .init("permission_result", [
+            "type": type.rawValue,
+            "status": status.rawValue,
+            "granted": status == .authorized,
+            "source": source.rawValue
+        ])
     }
 
     /// 상점 꾸미기 아이템 구매(포인트 소비). 적립(reward_earned)과 짝을 이뤄 포인트 경제를 본다.

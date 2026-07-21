@@ -6,6 +6,7 @@ import UIKit
 @MainActor
 final class AppleLoginProvider: NSObject, SocialLoginProvider {
     private var continuation: CheckedContinuation<SocialCredential, Error>?
+    let method = "apple"
 
     func login() async throws -> SocialCredential {
         try await withCheckedThrowingContinuation { continuation in
@@ -28,7 +29,7 @@ extension AppleLoginProvider: ASAuthorizationControllerDelegate {
             finish(.failure(SocialLoginError.missingIdToken))
             return
         }
-        finish(.success(SocialCredential(provider: "apple", idToken: idToken, name: nil)))
+        finish(.success(SocialCredential(provider: method, idToken: idToken, name: nil)))
     }
 
     func authorizationController(controller: ASAuthorizationController, didCompleteWithError error: Error) {

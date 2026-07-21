@@ -27,12 +27,14 @@ final class ReminderStore {
     private let coordinator: ReminderApplying
     private let permissionProvider: ReminderPermissionProviding
     private let settingsStore: ReminderSettingsStoring
+    private let analytics: AnalyticsService
     private let calendar: Calendar
 
     init(
         coordinator: ReminderApplying,
         permissionProvider: ReminderPermissionProviding,
         settingsStore: ReminderSettingsStoring,
+        analytics: AnalyticsService = NoopAnalytics(),
         calendar: Calendar = .current,
         initialSettings: MealReminderSettings = .default,
         initialPermissionStatus: UNAuthorizationStatus = .notDetermined
@@ -40,6 +42,7 @@ final class ReminderStore {
         self.coordinator = coordinator
         self.permissionProvider = permissionProvider
         self.settingsStore = settingsStore
+        self.analytics = analytics
         self.calendar = calendar
         self.draft = MealReminderDraft(settings: initialSettings, lastSaved: initialSettings)
         self.lastSaved = initialSettings
@@ -79,8 +82,16 @@ final class ReminderStore {
 
     @discardableResult
     func requestPermissionIfNeeded() async -> Bool {
+        let previousStatus = permissionStatus
         let granted = await permissionProvider.requestAuthorizationIfNeeded()
         permissionStatus = await permissionProvider.authorizationStatus()
+        if previousStatus == .notDetermined {
+            analytics.track(.permissionResult(
+                type: .notification,
+                status: Self.analyticsPermissionStatus(permissionStatus, granted: granted),
+                source: .reminderSettings
+            ))
+        }
         return granted
     }
 
@@ -149,6 +160,22 @@ final class ReminderStore {
             update(&draft.settings.extra1)
         case .extra2:
             update(&draft.settings.extra2)
+        }
+    }
+
+    private static func analyticsPermissionStatus(
+        _ status: UNAuthorizationStatus,
+        granted: Bool
+    ) -> AnalyticsPermissionStatus {
+        switch status {
+        case .authorized, .provisional, .ephemeral:
+            return .authorized
+        case .denied:
+            return .denied
+        case .notDetermined:
+            return granted ? .authorized : .error
+        @unknown default:
+            return .error
         }
     }
 }

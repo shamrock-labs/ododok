@@ -87,22 +87,28 @@ struct ChewChewIOSApp: App {
         guard !underTest else { return NoopAnalytics() }
 
         var providers: [AnalyticsService] = []
-        // Amplitude(EU) — 실사용 가능한 키일 때만. 빈값·미확장 `$(...)`·placeholder는 거부해
-        // garbage 키로 SDK가 초기화되며 이벤트가 조용히 유실되는 오설정을 막는다.
+        // Amplitude(US) — Debug/TestFlight는 Dev 프로젝트, Release는 Prod 프로젝트를 사용한다.
+        // 키나 인스턴스명이 비었거나 미치환된 경우 SDK를 초기화하지 않는다.
         if let key = Bundle.main.object(forInfoDictionaryKey: "AmplitudeAPIKey") as? String,
-           ChewChewIOSApp.isUsableSecret(key) {
-            providers.append(AmplitudeProvider(apiKey: key))
+           let instanceName = Bundle.main.object(forInfoDictionaryKey: "AmplitudeInstanceName") as? String,
+           ChewChewIOSApp.isUsableSecret(key),
+           ChewChewIOSApp.isUsableSecret(instanceName) {
+            providers.append(AmplitudeProvider(apiKey: key, instanceName: instanceName))
         }
         // Firebase Analytics — GoogleService-Info.plist이 번들에 있을 때만(plist는 gitignore).
         if let firebase = FirebaseProvider.makeIfAvailable() {
             providers.append(firebase)
         }
-        // 모든 이벤트에 environment를 첨부해 dev/prod 데이터 오염을 막는다(Sentry environment와 일관).
-        // Debug=dev, Release=prod. Amplitude·Firebase 대시보드에서 이 속성으로 필터한다.
+        // environment는 백엔드 환경, build_channel은 배포 채널이다. TestFlight는 prod 백엔드를
+        // 사용하면서 Dev 분석 프로젝트로 전송하므로 두 축을 분리해야 QA와 App Store 트래픽이 섞이지 않는다.
         let environment = AppRuntimeEnvironment.name
+        let buildChannel = AppBuildChannel.name
         return providers.isEmpty
             ? NoopAnalytics()
-            : CompositeAnalytics(providers, baseProperties: ["environment": environment])
+            : CompositeAnalytics(providers, baseProperties: [
+                "environment": environment,
+                "build_channel": buildChannel
+            ])
     }
 
     /// config 주입 시크릿이 실사용 가능한 값인지 검증한다.

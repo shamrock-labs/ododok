@@ -1,4 +1,5 @@
 import CoreMotion
+import UserNotifications
 import XCTest
 @testable import ChewChewIOS
 
@@ -79,6 +80,86 @@ final class MealSessionPhaseTests: XCTestCase {
         XCTAssertFalse(store.showShortSessionConfirm)
     }
 
+    func testStartedAndDiscardedEventsShareMealSessionId() {
+        let analytics = MealSessionPhaseAnalyticsSpy()
+        let store = makeStore(analytics: analytics)
+
+        store.startEating()
+        store.discardCurrentSession()
+
+        XCTAssertEqual(analytics.events.map(\.name), [
+            "meal_session_started",
+            "meal_session_aborted"
+        ])
+        let sessionIds = analytics.events.compactMap {
+            $0.properties["meal_session_id"] as? String
+        }
+        XCTAssertEqual(sessionIds.count, 2)
+        XCTAssertEqual(Set(sessionIds).count, 1)
+    }
+
+    func testImmediateMealStartTracksRequestAndStartedSource() {
+        let analytics = MealSessionPhaseAnalyticsSpy()
+        let store = makeStore(analytics: analytics)
+
+        store.startEatingImmediately(source: .notification)
+
+        XCTAssertEqual(analytics.events.map(\.name).prefix(2), [
+            "meal_start_requested",
+            "meal_session_started"
+        ])
+        XCTAssertEqual(analytics.events[0].properties["source"] as? String, "notification")
+        XCTAssertEqual(analytics.events[1].properties["source"] as? String, "notification")
+
+        store.discardCurrentSession()
+    }
+
+    func testUnavailableMotionTracksBlockedMealStartAndCancellation() async {
+        let runtime = FakeMealSessionRuntimeServices()
+        runtime.motion.isDeviceMotionAvailable = false
+        let analytics = MealSessionPhaseAnalyticsSpy()
+        let store = makeStore(runtime: runtime, analytics: analytics)
+
+        store.beginMealStartAfterAirPodsReadiness(
+            source: .home,
+            onCountdownStarted: {},
+            onFinished: {}
+        )
+        await waitUntil { store.showAirPodsConnectionPrompt }
+        store.dismissAirPodsConnectionPrompt()
+
+        XCTAssertEqual(analytics.events.map(\.name), [
+            "meal_start_requested",
+            "meal_start_blocked",
+            "meal_start_cancelled"
+        ])
+        XCTAssertEqual(analytics.events[1].properties["reason"] as? String, "motion_unavailable")
+    }
+
+    func testMotionPermissionErrorDistinguishesDeniedStatus() async {
+        let runtime = FakeMealSessionRuntimeServices()
+        runtime.motion.authorizationStatus = .notDetermined
+        let analytics = MealSessionPhaseAnalyticsSpy()
+        let store = makeStore(runtime: runtime, analytics: analytics)
+
+        store.beginMealStartAfterAirPodsReadiness(
+            source: .home,
+            onCountdownStarted: {},
+            onFinished: {}
+        )
+        await waitUntil { runtime.motion.startCallCount == 1 }
+        runtime.motion.authorizationStatus = .denied
+        runtime.motion.emitError("denied")
+        await waitUntil { store.showAirPodsConnectionPrompt }
+
+        let permission = analytics.events.first { $0.name == "permission_result" }
+        let blocked = analytics.events.first { $0.name == "meal_start_blocked" }
+        XCTAssertEqual(permission?.properties["status"] as? String, "denied")
+        XCTAssertEqual(blocked?.properties["reason"] as? String, "permission_denied")
+
+        store.dismissAirPodsConnectionPrompt()
+    }
+
     func testStartEatingUsesInjectedRuntimeServices() async {
         let runtime = FakeMealSessionRuntimeServices()
         let store = makeStore(runtime: runtime)
@@ -125,7 +206,8 @@ final class MealSessionPhaseTests: XCTestCase {
         let runtime = FakeMealSessionRuntimeServices()
         runtime.airPodsMonitor.isConnected = false
         runtime.readiness.result = false
-        let store = makeStore(runtime: runtime)
+        let analytics = MealSessionPhaseAnalyticsSpy()
+        let store = makeStore(runtime: runtime, analytics: analytics)
 
         store.beginMealStartAfterAirPodsReadiness(
             onCountdownStarted: {},
@@ -137,6 +219,9 @@ final class MealSessionPhaseTests: XCTestCase {
             runtime.readiness.prepareCallCount == 1 && !store.isPreparingAirPodsRoute
         }
         XCTAssertTrue(store.showAirPodsConnectionPrompt)
+        let blocked = analytics.events.first { $0.name == "meal_start_blocked" }
+        XCTAssertEqual(blocked?.properties["source"] as? String, "home")
+        XCTAssertEqual(blocked?.properties["reason"] as? String, "route_preparation_failed")
 
         store.dismissAirPodsConnectionPrompt()
     }
@@ -188,10 +273,13 @@ final class MealSessionPhaseTests: XCTestCase {
         store.discardCurrentSession()
     }
 
-    private func makeStore(runtime: FakeMealSessionRuntimeServices? = nil) -> MealSessionRuntimeStore {
+    private func makeStore(
+        runtime: FakeMealSessionRuntimeServices? = nil,
+        analytics: AnalyticsService = NoopAnalytics()
+    ) -> MealSessionRuntimeStore {
         let runtime = runtime ?? FakeMealSessionRuntimeServices()
         return MealSessionRuntimeStore(
-            analytics: NoopAnalytics(),
+            analytics: analytics,
             onChewPulse: {},
             onPersistSnapshot: {},
             onSessionReadyForUpload: { _, _ in },
@@ -210,6 +298,14 @@ final class MealSessionPhaseTests: XCTestCase {
         }
         XCTAssertTrue(condition())
     }
+}
+
+private final class MealSessionPhaseAnalyticsSpy: AnalyticsService {
+    private(set) var events: [AnalyticsEvent] = []
+
+    func track(_ event: AnalyticsEvent) { events.append(event) }
+    func setUserId(_ userId: String?) {}
+    func setUserProperty(_ key: String, _ value: Any) {}
 }
 
 @MainActor
@@ -263,16 +359,22 @@ private final class FakeMotionService: MealMotionServicing {
     var authorizationStatus: CMAuthorizationStatus = .authorized
     var startCallCount = 0
     var stopCallCount = 0
+    private var onError: ((String) -> Void)?
 
     func start(
         onSample: @escaping (HeadphoneMotionSample) -> Void,
         onError: @escaping (String) -> Void
     ) {
         startCallCount += 1
+        self.onError = onError
     }
 
     func stop() {
         stopCallCount += 1
+    }
+
+    func emitError(_ message: String) {
+        onError?(message)
     }
 }
 
@@ -351,6 +453,8 @@ private final class FakeMealActivityController: MealActivityControlling {
 private final class FakeInterruptionNotifier: MealInterruptionNotificationScheduling {
     var requestAuthorizationCallCount = 0
     var cancelCallCount = 0
+
+    func authorizationStatus() async -> UNAuthorizationStatus { .authorized }
 
     func requestAuthorizationIfNeeded() async -> Bool {
         requestAuthorizationCallCount += 1

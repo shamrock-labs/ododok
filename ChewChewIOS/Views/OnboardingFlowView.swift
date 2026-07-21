@@ -6,16 +6,32 @@ import SwiftUI
 struct OnboardingFlowView: View {
     @Environment(AppState.self) private var state
 
-    let onTutorialFinished: () -> Void
+    let onTutorialFinished: (
+        OnboardingCompletionMethod,
+        OnboardingNameMethod,
+        OnboardingStepName
+    ) -> Void
+
+    @State private var nameMethod: OnboardingNameMethod = .existing
+    @State private var didTrackStart = false
 
     var body: some View {
         Group {
             if state.displayName == nil {
-                OnboardingNameView(onComplete: {})
+                OnboardingNameView { method in
+                    nameMethod = method
+                }
             } else {
-                OnboardingTutorialView(onFinish: onTutorialFinished)
+                OnboardingTutorialView { completionMethod, lastStep in
+                    onTutorialFinished(completionMethod, nameMethod, lastStep)
+                }
             }
         }
         .animation(.easeInOut(duration: AppMotion.durationPageChange), value: state.displayName)
+        .onAppear {
+            guard !didTrackStart else { return }
+            didTrackStart = true
+            state.analytics.track(.onboardingStarted())
+        }
     }
 }

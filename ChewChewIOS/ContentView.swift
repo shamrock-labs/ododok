@@ -325,9 +325,17 @@ struct ContentView: View {
             || isCalibrationFlowPresented
     }
 
-    private func finishOnboardingTutorial() {
+    private func finishOnboardingTutorial(
+        completionMethod: OnboardingCompletionMethod,
+        nameMethod: OnboardingNameMethod,
+        lastStep: OnboardingStepName
+    ) {
         isCalibrationOfferQueued = true
-        state.completeOnboarding()
+        state.completeOnboarding(
+            completionMethod: completionMethod,
+            nameMethod: nameMethod,
+            lastStep: lastStep
+        )
     }
 
     private func presentCalibrationOfferIfQueued() {

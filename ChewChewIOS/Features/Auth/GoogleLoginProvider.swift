@@ -4,6 +4,8 @@ import UIKit
 /// Google 로그인. client id는 Info.plist `GIDClientID`(Secrets.xcconfig)에서 SDK가 자동 사용한다.
 @MainActor
 final class GoogleLoginProvider: SocialLoginProvider {
+    let method = "google"
+
     func login() async throws -> SocialCredential {
         guard let presenter = Self.topViewController() else {
             throw SocialLoginError.failed("화면을 찾지 못했어요.")
@@ -27,7 +29,7 @@ final class GoogleLoginProvider: SocialLoginProvider {
         guard let idToken = result.user.idToken?.tokenString else {
             throw SocialLoginError.missingIdToken
         }
-        return SocialCredential(provider: "google", idToken: idToken, name: result.user.profile?.name)
+        return SocialCredential(provider: method, idToken: idToken, name: result.user.profile?.name)
     }
 
     private static func topViewController() -> UIViewController? {
