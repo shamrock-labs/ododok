@@ -40,9 +40,15 @@ jobs:
       - name: Restore Secrets.xcconfig
         env:
           SECRETS_XCCONFIG_BASE64: ${{ secrets.SECRETS_XCCONFIG_BASE64 }}
+          APPSFLYER_DEV_KEY: ${{ secrets.APPSFLYER_DEV_KEY }}
         run: |
+          if [ -z "$APPSFLYER_DEV_KEY" ]; then
+            echo "APPSFLYER_DEV_KEY secret 미설정"
+            exit 1
+          fi
           mkdir -p Config
           echo "$SECRETS_XCCONFIG_BASE64" | base64 --decode > Config/Secrets.xcconfig
+          printf '\nAPPSFLYER_DEV_KEY = %s\nAPPSFLYER_APP_ID = 6784962920\n' "$APPSFLYER_DEV_KEY" >> Config/Secrets.xcconfig
 
       - name: Restore GoogleService-Info.plist
         env:
