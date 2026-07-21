@@ -6,6 +6,8 @@ import UserNotifications
 /// 알림 탭 시 userInfo의 deepLink를 처리해 AppState.requestStartHighlight()를 호출.
 final class NotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
 
+    // UIApplicationDelegate 조립 지점에서 SDK 인스턴스를 앱 수명 동안 유지한다.
+    // 지역 변수로 만들면 앱 시작 이후의 UDL delegate 콜백을 안정적으로 받을 수 없다.
     private let appsFlyerService = AppsFlyerService()
 
     /// ChewChewIOSApp.body의 .task에서 appState가 준비된 뒤 주입.
@@ -18,6 +20,8 @@ final class NotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotific
 
     /// appState 주입 전(콜드 스타트 직후) 도착한 알림 탭. 유실하지 않고 주입 시 처리한다.
     private var pendingNotificationAction: (action: String, deepLink: String?)?
+    /// SwiftUI `.task`가 AppState를 주입하기 전에 도착한 OneLink 목적지.
+    /// 마지막 목적지 하나를 보존하고 AppState 준비 직후 메인 액터에서 처리한다.
     private var pendingAppsFlyerDestination: AppsFlyerDeepLinkDestination?
 
     func application(
@@ -27,6 +31,8 @@ final class NotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotific
         UNUserNotificationCenter.current().delegate = self
         // 중단/재개 알림의 계속하기·그만하기 액션 버튼을 쓰려면 카테고리 등록이 선행돼야 한다.
         MealNotificationService.registerCategories()
+        // AppsFlyer가 콜백을 전달하는 실행 문맥과 무관하게 앱 상태 변경은 MainActor에서 수행한다.
+        // AppState가 아직 없으면 목적지는 pending 버퍼로 이동해 콜드스타트 중에도 유실되지 않는다.
         appsFlyerService.start(launchOptions: launchOptions) { [weak self] destination in
             Task { @MainActor in
                 self?.handleAppsFlyerDestination(destination)
@@ -35,10 +41,14 @@ final class NotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotific
         return true
     }
 
+    /// custom URL scheme으로 열린 링크를 AppsFlyer에 전달해 클릭 파라미터를 복원한다.
+    /// 이후 UDL 결과는 `didResolveDeepLink`를 거쳐 허용된 앱 목적지로만 변환된다.
     func handleAppsFlyerOpenURL(_ url: URL) {
         appsFlyerService.handleOpenURL(url, options: [:])
     }
 
+    /// iOS Universal Link로 앱이 열린 경우의 UIApplicationDelegate 진입점이다.
+    /// 원본 NSUserActivity를 SDK에 넘겨 OneLink를 해석하고 어트리뷰션 흐름을 이어간다.
     func application(
         _ application: UIApplication,
         continue userActivity: NSUserActivity,

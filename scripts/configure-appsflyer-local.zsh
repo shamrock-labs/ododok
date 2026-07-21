@@ -10,6 +10,8 @@ if [[ ! -f "${config_path}" ]]; then
     cp "${example_path}" "${config_path}"
 fi
 
+# 키를 명령행 인자로 받지 않아 shell history와 프로세스 목록에 평문이 남지 않게 한다.
+# 입력 중에는 문자를 표시하지 않고, 검증이 끝난 값만 gitignored 설정 파일에 저장한다.
 read -r -s "dev_key?AppsFlyer Dev Key: "
 print
 if [[ -z "${dev_key}" || "${dev_key}" == *$'\n'* ]]; then
@@ -17,6 +19,8 @@ if [[ -z "${dev_key}" || "${dev_key}" == *$'\n'* ]]; then
     exit 1
 fi
 
+# Python 프로세스에만 임시 환경 변수로 전달하고 스크립트 종료 전에 shell 변수도 해제한다.
+# 파일 전체를 재생성하지 않고 AppsFlyer 항목만 교체해 다른 로컬 서비스 키를 보존한다.
 APPSFLYER_INPUT_KEY="${dev_key}" python3 - "${config_path}" <<'PY'
 from pathlib import Path
 import os
