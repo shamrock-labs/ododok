@@ -40,9 +40,17 @@ jobs:
       - name: Restore Secrets.xcconfig
         env:
           SECRETS_XCCONFIG_BASE64: ${{ secrets.SECRETS_XCCONFIG_BASE64 }}
+          APPSFLYER_DEV_KEY: ${{ secrets.APPSFLYER_DEV_KEY }}
         run: |
+          if [ -z "$APPSFLYER_DEV_KEY" ]; then
+            echo "APPSFLYER_DEV_KEY secret 미설정"
+            exit 1
+          fi
           mkdir -p Config
           echo "$SECRETS_XCCONFIG_BASE64" | base64 --decode > Config/Secrets.xcconfig
+          # 기존 운영 키 묶음은 그대로 복원하고 AppsFlyer 키만 마지막에 주입한다.
+          # 로컬 Secrets.xcconfig 전체로 운영 설정을 덮어쓰지 않기 위한 환경 분리 경계다.
+          printf '\nAPPSFLYER_DEV_KEY = %s\nAPPSFLYER_APP_ID = 6784962920\n' "$APPSFLYER_DEV_KEY" >> Config/Secrets.xcconfig
 
       - name: Restore GoogleService-Info.plist
         env:
