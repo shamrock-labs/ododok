@@ -168,6 +168,7 @@ struct ChewChewIOSApp: App {
                     // 소셜 로그인 콜백 우선 처리(Google / Kakao), 아니면 기존 chewchew 딥링크.
                     if GIDSignIn.sharedInstance.handle(url) { return }
                     if AuthApi.isKakaoTalkLoginUrl(url) { _ = AuthController.handleOpenUrl(url: url); return }
+                    notifDelegate.handleAppsFlyerOpenURL(url)
                     handleOpenURL(url)
                 }
                 .task {

@@ -6,13 +6,19 @@ import UserNotifications
 /// 알림 탭 시 userInfo의 deepLink를 처리해 AppState.requestStartHighlight()를 호출.
 final class NotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
 
+    private let appsFlyerService = AppsFlyerService()
+
     /// ChewChewIOSApp.body의 .task에서 appState가 준비된 뒤 주입.
     var appState: AppState? {
-        didSet { flushPendingNotificationAction() }
+        didSet {
+            flushPendingNotificationAction()
+            flushPendingAppsFlyerDestination()
+        }
     }
 
     /// appState 주입 전(콜드 스타트 직후) 도착한 알림 탭. 유실하지 않고 주입 시 처리한다.
     private var pendingNotificationAction: (action: String, deepLink: String?)?
+    private var pendingAppsFlyerDestination: AppsFlyerDeepLinkDestination?
 
     func application(
         _ application: UIApplication,
@@ -21,7 +27,24 @@ final class NotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotific
         UNUserNotificationCenter.current().delegate = self
         // 중단/재개 알림의 계속하기·그만하기 액션 버튼을 쓰려면 카테고리 등록이 선행돼야 한다.
         MealNotificationService.registerCategories()
+        appsFlyerService.start(launchOptions: launchOptions) { [weak self] destination in
+            Task { @MainActor in
+                self?.handleAppsFlyerDestination(destination)
+            }
+        }
         return true
+    }
+
+    func handleAppsFlyerOpenURL(_ url: URL) {
+        appsFlyerService.handleOpenURL(url, options: [:])
+    }
+
+    func application(
+        _ application: UIApplication,
+        continue userActivity: NSUserActivity,
+        restorationHandler: @escaping ([UIUserActivityRestoring]?) -> Void
+    ) -> Bool {
+        appsFlyerService.continueUserActivity(userActivity)
     }
 
     /// 스와이프 종료 등 정상 종료 경로에서 식사 Live Activity·중단 알림을 최선-노력으로 정리한다.
@@ -89,6 +112,28 @@ final class NotificationDelegate: NSObject, UIApplicationDelegate, UNUserNotific
         pendingNotificationAction = nil
         Task { @MainActor in
             appState?.mealSession.handleNotificationAction(pending.action, deepLink: pending.deepLink)
+        }
+    }
+
+    @MainActor
+    private func handleAppsFlyerDestination(_ destination: AppsFlyerDeepLinkDestination) {
+        guard let appState else {
+            pendingAppsFlyerDestination = destination
+            return
+        }
+        switch destination {
+        case .home:
+            break
+        case .start:
+            appState.mealSession.requestStartHighlight()
+        }
+    }
+
+    private func flushPendingAppsFlyerDestination() {
+        guard appState != nil, let pendingAppsFlyerDestination else { return }
+        self.pendingAppsFlyerDestination = nil
+        Task { @MainActor in
+            handleAppsFlyerDestination(pendingAppsFlyerDestination)
         }
     }
 }

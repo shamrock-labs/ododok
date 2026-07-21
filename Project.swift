@@ -29,6 +29,8 @@ let appInfoPlist: [String: Plist.Value] = [
     "InsForgeAPIKey": "$(INSFORGE_API_KEY)",
     "SentryDSN": "$(SENTRY_DSN)",
     "AmplitudeAPIKey": "$(AMPLITUDE_API_KEY)",
+    "AppsFlyerDevKey": "$(APPSFLYER_DEV_KEY)",
+    "AppsFlyerAppleAppID": "$(APPSFLYER_APP_ID)",
     "BackendBaseURL": "$(BACKEND_BASE_URL)",
     "AppRuntimeEnvironment": "$(APP_RUNTIME_ENVIRONMENT)",
     "KakaoInviteMobileWebURL": "$(KAKAO_INVITE_MOBILE_WEB_URL)",
@@ -175,6 +177,7 @@ let project = Project(
         .remote(url: "https://github.com/getsentry/sentry-cocoa", requirement: .upToNextMajor(from: "8.0.0")),
         .remote(url: "https://github.com/amplitude/Amplitude-Swift", requirement: .upToNextMajor(from: "1.0.0")),
         .remote(url: "https://github.com/firebase/firebase-ios-sdk", requirement: .upToNextMajor(from: "12.0.0")),
+        .remote(url: "https://github.com/AppsFlyerSDK/AppsFlyerFramework-Static", requirement: .upToNextMajor(from: "7.0.0")),
     ],
     settings: .settings(
         base: [
@@ -220,6 +223,7 @@ let project = Project(
                 .package(product: "Sentry"),
                 .package(product: "AmplitudeSwift"),
                 .package(product: "FirebaseAnalytics"),
+                .package(product: "AppsFlyerLib-Static"),
             ],
             settings: targetSettings(
                 base: [
