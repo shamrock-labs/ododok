@@ -79,7 +79,7 @@ final class StreakDetailPresentationTests: XCTestCase {
             ]
         )
 
-        let presentation = StreakDetailPresentation.make(detail: detail, hasFailed: true, now: now)
+        let presentation = StreakDetailPresentation.make(detail: detail, now: now)
 
         XCTAssertEqual(presentation.current, 12)
         XCTAssertEqual(presentation.freezeInventory, 2)
@@ -94,7 +94,6 @@ final class StreakDetailPresentationTests: XCTestCase {
         XCTAssertEqual(presentation.day(id: "2026-07-14")?.ringKind, .frozen)
         XCTAssertEqual(presentation.day(id: "2026-07-16")?.ringKind, .neutral)
         XCTAssertEqual(presentation.day(id: "2026-07-15")?.accessibilityIdentifier, "StreakDay-2026-07-15")
-        XCTAssertFalse(presentation.showsRetry)
     }
 
     func testMakeUsesOnlyRowsInRequestedMonth() {
@@ -149,7 +148,6 @@ final class StreakDetailPresentationTests: XCTestCase {
             cachedCurrent: 5,
             cachedFreezeInventory: 1,
             isLoading: false,
-            hasFailed: true,
             now: now
         )
 
@@ -161,7 +159,35 @@ final class StreakDetailPresentationTests: XCTestCase {
             presentation.day(id: "2026-07-15")?.accessibilityLabel,
             "15일, 스트릭 기록 정보 없음, 오늘"
         )
-        XCTAssertTrue(presentation.showsRetry)
+        XCTAssertTrue(presentation.showsCalendar)
+        XCTAssertTrue(presentation.canMovePrevious)
+        XCTAssertFalse(presentation.canMoveNext)
+    }
+
+    func testZeroStreakHidesMissingStartDateCopy() {
+        let presentation = StreakDetailPresentation.make(
+            detail: nil,
+            cachedCurrent: 0,
+            isLoading: false,
+            now: now
+        )
+
+        XCTAssertEqual(presentation.current, 0)
+        XCTAssertEqual(presentation.startedOnText, "")
+    }
+
+    func testUnavailableDetailUsesLocallySelectedMonthAndKeepsNavigation() {
+        let presentation = StreakDetailPresentation.make(
+            detail: nil,
+            selectedMonth: "2026-06",
+            isLoading: false,
+            now: now
+        )
+
+        XCTAssertEqual(presentation.monthTitle, "2026년 6월")
+        XCTAssertTrue(presentation.canMovePrevious)
+        XCTAssertTrue(presentation.canMoveNext)
+        XCTAssertTrue(presentation.days.compactMap { $0 }.allSatisfy { $0.state == .unknownUnavailable })
     }
 }
 

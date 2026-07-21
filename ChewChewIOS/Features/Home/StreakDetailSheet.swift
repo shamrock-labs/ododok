@@ -73,14 +73,14 @@ struct StreakDetailPresentation: Equatable {
     let canMovePrevious: Bool
     let canMoveNext: Bool
     let historyStartText: String?
-    let showsRetry: Bool
+    let showsCalendar: Bool
 
     static func make(
         detail: StreakDetailDTO?,
         cachedCurrent: Int = 0,
         cachedFreezeInventory: Int = 0,
+        selectedMonth: String? = nil,
         isLoading: Bool = false,
-        hasFailed: Bool = false,
         now: Date = Date()
     ) -> Self {
         var calendar = Calendar(identifier: .gregorian)
@@ -111,6 +111,7 @@ struct StreakDetailPresentation: Equatable {
         let fallbackToday = calendar.startOfDay(for: now)
         let asOf = detail.flatMap { dayFormatter.date(from: $0.asOf) } ?? fallbackToday
         let requestedMonth = detail.flatMap { dayFormatter.date(from: "\($0.resolvedMonth)-01") }
+            ?? selectedMonth.flatMap { dayFormatter.date(from: "\($0)-01") }
             ?? calendar.dateInterval(of: .month, for: fallbackToday)?.start
             ?? fallbackToday
         let monthStart = calendar.dateInterval(of: .month, for: requestedMonth)?.start ?? requestedMonth
@@ -147,38 +148,42 @@ struct StreakDetailPresentation: Equatable {
         }
         while days.count < 42 { days.append(nil) }
 
+        let displayedCurrent = detail?.current ?? cachedCurrent
         let startedOnText: String
         if let startedOn = detail?.startedOn, let date = dayFormatter.date(from: startedOn) {
             startedOnText = "\(startFormatter.string(from: date))부터 이어가는 중"
         } else if detail == nil, isLoading {
             startedOnText = "스트릭 정보를 확인하는 중"
+        } else if displayedCurrent == 0 {
+            startedOnText = ""
         } else {
             startedOnText = "시작일 정보 없음"
         }
 
         let oldestMonth = detail?.oldestRecordedOn.map { String($0.prefix(7)) }
         let currentServerMonth = detail.map { String($0.asOf.prefix(7)) }
-        let selectedMonth = detail?.resolvedMonth
+        let resolvedSelectedMonth = detail?.resolvedMonth ?? selectedMonth
         let historyStartText = detail?.oldestRecordedOn.flatMap { value -> String? in
             guard let date = dayFormatter.date(from: value) else { return nil }
             return "스트릭 기록은 \(startFormatter.string(from: date))부터 확인할 수 있어요"
         }
 
         let canMovePrevious: Bool
-        if let selectedMonth, let oldestMonth {
-            canMovePrevious = selectedMonth > oldestMonth
+        if let oldestMonth {
+            canMovePrevious = resolvedSelectedMonth.map { $0 > oldestMonth } ?? false
         } else {
-            canMovePrevious = false
+            canMovePrevious = true
         }
         let canMoveNext: Bool
-        if let selectedMonth, let currentServerMonth {
-            canMoveNext = selectedMonth < currentServerMonth
+        let fallbackCurrentMonth = dayFormatter.string(from: fallbackToday).prefix(7)
+        if let resolvedSelectedMonth {
+            canMoveNext = resolvedSelectedMonth < (currentServerMonth ?? String(fallbackCurrentMonth))
         } else {
             canMoveNext = false
         }
 
         return Self(
-            current: detail?.current ?? cachedCurrent,
+            current: displayedCurrent,
             startedOnText: startedOnText,
             freezeInventory: detail?.freezeInventory ?? cachedFreezeInventory,
             monthTitle: monthFormatter.string(from: monthStart),
@@ -186,7 +191,7 @@ struct StreakDetailPresentation: Equatable {
             canMovePrevious: canMovePrevious,
             canMoveNext: canMoveNext,
             historyStartText: historyStartText,
-            showsRetry: detail == nil && hasFailed
+            showsCalendar: true
         )
     }
 }
@@ -203,8 +208,8 @@ struct StreakDetailSheet: View {
             detail: home.streakDetail,
             cachedCurrent: home.currentStreak,
             cachedFreezeInventory: home.freezeInventory,
-            isLoading: isDetailLoading,
-            hasFailed: home.streakDetailLoadState == .failed
+            selectedMonth: home.streakSelectedMonth,
+            isLoading: isDetailLoading
         )
     }
 
@@ -226,17 +231,16 @@ struct StreakDetailSheet: View {
                 VStack(alignment: .leading, spacing: 0) {
                     summarySection
                     sectionDivider
-                        .padding(.vertical, AppSpacing.three)
+                        .padding(.top, AppSpacing.one)
+                        .padding(.bottom, AppSpacing.three)
                     calendarSection
-                    if !presentation.showsRetry {
-                        legend
+                    legend
+                        .padding(.top, AppSpacing.two)
+                    if let historyStartText = presentation.historyStartText {
+                        Text(historyStartText)
+                            .font(.appFont(.semiboldCaption))
+                            .foregroundStyle(Color.textTertiary)
                             .padding(.top, AppSpacing.two)
-                        if let historyStartText = presentation.historyStartText {
-                            Text(historyStartText)
-                                .font(.appFont(.semiboldCaption))
-                                .foregroundStyle(Color.textTertiary)
-                                .padding(.top, AppSpacing.two)
-                        }
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -306,7 +310,7 @@ struct StreakDetailSheet: View {
                     .padding(.top, AppSpacing.one)
                     .frame(
                         minWidth: AppSize.dialogActionHeight,
-                        minHeight: AppSize.dialogActionHeight,
+                        minHeight: AppSize.controlMedium,
                         alignment: .top
                     )
                     .contentShape(Rectangle())
@@ -315,8 +319,11 @@ struct StreakDetailSheet: View {
                 .accessibilityLabel("프리즈 지급 기준 보기")
                 .accessibilityIdentifier("FreezeAwardGuideButton")
             }
+            .alignmentGuide(VerticalAlignment.center) { dimensions in
+                dimensions[.top] + (AppSize.controlXLarge / 2)
+            }
         }
-        .padding(.vertical, AppSpacing.two)
+        .padding(.top, AppSpacing.two)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("StreakSummaryCard")
     }
@@ -332,10 +339,7 @@ struct StreakDetailSheet: View {
             monthHeader
                 .padding(.horizontal, AppSpacing.four)
                 .padding(.vertical, AppSpacing.inner)
-            if presentation.showsRetry {
-                retryState
-                    .padding(.horizontal, AppSpacing.three)
-            } else {
+            if presentation.showsCalendar {
                 weekdayLabels
                     .padding(.horizontal, AppSpacing.three)
                 LazyVGrid(
@@ -410,25 +414,6 @@ struct StreakDetailSheet: View {
                     .frame(maxWidth: .infinity)
             }
         }
-    }
-
-    private var retryState: some View {
-        HStack(spacing: AppSpacing.three) {
-            Text("기록을 불러오지 못했어요")
-                .font(.appFont(.semiboldCallout))
-                .foregroundStyle(Color.textMuted)
-            Spacer(minLength: AppSpacing.two)
-            Button("다시 시도") { Task { await home.fetchStreakDetail() } }
-                .buttonStyle(.plain)
-                .font(.appFont(.boldCallout))
-                .foregroundStyle(Color.textAction)
-                .padding(.horizontal, AppSpacing.three)
-                .frame(minHeight: AppSize.controlXLarge)
-                .background(Color.bgSunken, in: Capsule())
-                .accessibilityIdentifier("StreakDetailRetryButton")
-        }
-        .frame(minHeight: Metrics.retryHeight)
-        .accessibilityIdentifier("StreakDetailRetryState")
     }
 
     private var legend: some View {
@@ -518,5 +503,4 @@ private enum Metrics {
     static let calendarButton = AppSize.controlLarge
     static let calendarCellHeight = AppSize.controlXLarge
     static let dateRing = AppSize.controlXLarge
-    static let retryHeight: CGFloat = 88
 }

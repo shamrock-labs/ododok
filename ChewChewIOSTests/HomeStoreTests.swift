@@ -152,6 +152,35 @@ final class HomeStoreTests: XCTestCase {
         XCTAssertEqual(rewarded?.kind, "attendance")
     }
 
+    func testSuccessfulAttendanceImmediatelyMarksTodayInStreakDetail() async {
+        let now = Date(timeIntervalSince1970: 1_784_171_400)
+        let home = makeHome(points: 10, streak: 1, freeze: 0)
+        let repository = FakeHomeRepository(
+            result: .success(makeHome()),
+            attendanceResult: .success(
+                AttendanceResultDTO(
+                    grantedPoints: 10,
+                    capped: false,
+                    idempotentReplay: false,
+                    streak: makeAttendanceStreak(current: 1, event: "FIRST_DAY"),
+                    userStats: home
+                )
+            ),
+            streakDetailResult: .failure(TestError.fetch)
+        )
+        let store = HomeStore(repository: repository)
+
+        await store.grantDailyAttendanceIfNeeded(now: now)
+        await store.fetchStreakDetail()
+
+        XCTAssertEqual(store.streakDetail?.current, 1)
+        XCTAssertEqual(store.streakDetail?.startedOn, "2026-07-16")
+        XCTAssertEqual(
+            store.streakDetail?.days.first { $0.date == "2026-07-16" }?.state,
+            .attended
+        )
+    }
+
     func testGrantDailyAttendanceRecoveryAvailableWaitsThenUsePostsPreviewCount() async {
         let status = makeAttendanceStatus(.recoveryAvailable, missedDays: 2, inventory: 3)
         let repository = FakeHomeRepository(
@@ -726,6 +755,23 @@ final class HomeStoreTests: XCTestCase {
         XCTAssertEqual(store.streakDetailLoadState, .loaded)
     }
 
+    func testMoveStreakMonthStillRequestsAdjacentMonthAfterInitialFailure() async {
+        let repository = SequencedStreakHomeRepository(results: [
+            .failure(TestError.fetch),
+            .failure(TestError.fetch),
+        ])
+        let store = HomeStore(repository: repository)
+
+        await store.fetchStreakDetail()
+        let initialMonth = store.streakSelectedMonth
+        await store.moveStreakMonth(delta: -1)
+
+        XCTAssertEqual(repository.requestedMonths.first, nil)
+        XCTAssertEqual(repository.requestedMonths.count, 2)
+        XCTAssertNotNil(initialMonth)
+        XCTAssertNotEqual(store.streakSelectedMonth, initialMonth)
+    }
+
     func testResetClearsStreakDetailState() async {
         let repository = FakeHomeRepository(
             result: .success(makeHome()),
@@ -917,6 +963,31 @@ final class StreakDemoFixtureTests: XCTestCase {
         XCTAssertEqual(detail.resolvedMonth, "2026-03")
         XCTAssertTrue(detail.days.isEmpty)
         XCTAssertEqual(detail.oldestRecordedOn, "2026-04-08")
+    }
+
+    func testDailyReportsMatchFixtureSessionsAcrossCaptureWeek() {
+        let expected: [(date: String, meals: Int, chews: Int)] = [
+            ("2026-07-10", 1, 620),
+            ("2026-07-11", 1, 760),
+            ("2026-07-12", 1, 690),
+            ("2026-07-13", 1, 840),
+            ("2026-07-14", 3, 735),
+            ("2026-07-15", 1, 790),
+            ("2026-07-16", 1, 812),
+        ]
+
+        for item in expected {
+            let report = StreakDemoFixture.dailyReport(date: item.date)
+            XCTAssertEqual(report.mealCount, item.meals, item.date)
+            XCTAssertEqual(report.meals.count, item.meals, item.date)
+            XCTAssertEqual(report.totalChews, item.chews, item.date)
+        }
+
+        XCTAssertEqual(
+            StreakDemoFixture.dailyReport(date: "2026-07-14").meals.map(\.slot),
+            ["BREAKFAST", "LUNCH", "DINNER"]
+        )
+        XCTAssertEqual(StreakDemoFixture.dailyReport(date: "2026-07-09").mealCount, 0)
     }
 
     func testActiveDebugProfileRoutesHomeAndStreakAwayFromRemoteStore() async throws {
