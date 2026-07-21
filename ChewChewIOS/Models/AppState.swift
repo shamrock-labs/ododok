@@ -848,12 +848,19 @@ final class AppState {
 
     @MainActor
     @discardableResult
-    func saveDisplayName(_ rawName: String) async -> Bool {
+    func saveDisplayName(
+        _ rawName: String,
+        nameMethod: OnboardingNameMethod = .custom
+    ) async -> Bool {
         guard let displayName = Self.normalizedDisplayName(rawName) else { return false }
-        self.displayName = displayName
         let deviceId = DeviceIdentity.shared
         do {
             try await remoteStore.upsertProfile(ProfileDTO(deviceId: deviceId, displayName: displayName))
+            self.displayName = displayName
+            analytics.track(.onboardingStepCompleted(
+                step: .name,
+                nameMethod: nameMethod
+            ))
             return true
         } catch {
             analytics.track(.onboardingStepFailed(
@@ -879,7 +886,10 @@ final class AppState {
     @MainActor
     @discardableResult
     func saveGeneratedDisplayName() async -> Bool {
-        await saveDisplayName(Self.generatedNickname(number: Int.random(in: 1000...9999)))
+        await saveDisplayName(
+            Self.generatedNickname(number: Int.random(in: 1000...9999)),
+            nameMethod: .generated
+        )
     }
 
     @MainActor

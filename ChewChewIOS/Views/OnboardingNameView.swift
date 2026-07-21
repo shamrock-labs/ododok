@@ -119,13 +119,11 @@ struct OnboardingNameView: View {
         guard canSubmit, !isSaving else { return }
         let captured = name
         isSaving = true
-        onComplete(.custom)
-        state.analytics.track(.onboardingStepCompleted(
-            step: .name,
-            nameMethod: .custom
-        ))
         Task { @MainActor in
-            await state.saveDisplayName(captured)
+            let didSave = await state.saveDisplayName(captured, nameMethod: .custom)
+            if didSave {
+                onComplete(.custom)
+            }
             isSaving = false
         }
     }
@@ -133,13 +131,11 @@ struct OnboardingNameView: View {
     private func skip() {
         guard !isSaving else { return }
         isSaving = true
-        onComplete(.generated)
-        state.analytics.track(.onboardingStepCompleted(
-            step: .name,
-            nameMethod: .generated
-        ))
         Task { @MainActor in
-            await state.saveGeneratedDisplayName()
+            let didSave = await state.saveGeneratedDisplayName()
+            if didSave {
+                onComplete(.generated)
+            }
             isSaving = false
         }
     }

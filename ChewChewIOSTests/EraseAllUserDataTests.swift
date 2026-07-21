@@ -3,18 +3,23 @@ import XCTest
 
 /// `deleteUserData`가 실제로 한 번 호출되는지 추적하는 테스트용 Spy.
 final class SpyRemoteStore: RemoteStore {
+    private(set) var upsertedProfiles: [ProfileDTO] = []
     private(set) var deleteUserDataCallCount = 0
     private(set) var deleteUserDataAccessToken: String?
     private(set) var deleteUserDataRefreshToken: String?
     private(set) var uploadedCalibrationBundles: [CalibrationArtifactBundle] = []
     private(set) var acceptedInviteCodes: [String] = []
     var deleteUserDataError: Error?
+    var upsertProfileError: Error?
     var uploadCalibrationArtifactsError: Error?
     var fetchHomeError: Error?
     var acceptFriendInviteError: Error?
     var home: HomeStateDTO?
 
-    func upsertProfile(_ profile: ProfileDTO) async throws {}
+    func upsertProfile(_ profile: ProfileDTO) async throws {
+        if let upsertProfileError { throw upsertProfileError }
+        upsertedProfiles.append(profile)
+    }
     func fetchProfile() async throws -> ProfileDTO? { nil }
     func fetchUserStats() async throws -> UserStatsDTO? { nil }
     func deleteUserData() async throws {
