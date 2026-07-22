@@ -1,10 +1,16 @@
 import Foundation
 
+enum AirPodsConnectionRequirement {
+    case routePreparationFailed
+    case disconnectedDuringCountdown
+}
+
 /// AirPods 연결 감지, 카운트다운, 연결 해제 시 팝업 복귀를 묶는 Feature coordinator.
 @MainActor
 final class AirPodsAutoStartCoordinator {
     var onPromptVisibilityChange: ((Bool) -> Void)?
     var onPreparationChange: ((Bool) -> Void)?
+    var onConnectionRequired: ((AirPodsConnectionRequirement) -> Void)?
     var onCountdownValueChange: ((Int?) -> Void)? {
         didSet {
             countdown.onValueChange = { [weak self] value in
@@ -81,6 +87,7 @@ final class AirPodsAutoStartCoordinator {
 
     private func waitForConnection(onReady: @escaping () -> Void) {
         readinessService.stop()
+        onConnectionRequired?(.routePreparationFailed)
         onPromptVisibilityChange?(true)
         monitor.start { [weak self] connected in
             guard let self, connected else { return }
@@ -97,6 +104,7 @@ final class AirPodsAutoStartCoordinator {
             countdown.cancel()
             readinessService.stop()
             setPreparing(false)
+            onConnectionRequired?(.disconnectedDuringCountdown)
             onPromptVisibilityChange?(true)
         }
     }

@@ -89,12 +89,21 @@ final class MealSessionRuntimeStore {
         coordinator.onCountdownValueChange = { [weak self] value in
             self?.startCountdownValue = value
         }
+        coordinator.onConnectionRequired = { [weak self] requirement in
+            guard let self, let source = self.pendingMealStartSource else { return }
+            let reason: MealStartBlockReason = switch requirement {
+            case .routePreparationFailed: .routePreparationFailed
+            case .disconnectedDuringCountdown: .airPodsDisconnected
+            }
+            self.analytics.track(.mealStartBlocked(source: source, reason: reason))
+        }
         return coordinator
     }()
     @ObservationIgnored private var chewDetectionEngine: ChewDetectionEngine?
     @ObservationIgnored private var sampleProcessingTailTask: Task<Void, Never>?
     @ObservationIgnored private var chewPulseDeliveryGate = ChewPulseDeliveryGate(minimumInterval: 0.2)
     @ObservationIgnored private var imuSessionRecorder: IMUSessionRecorder?
+    @ObservationIgnored private var pendingMealStartSource: MealStartSource?
 
     init(
         analytics: AnalyticsService,
@@ -130,14 +139,15 @@ final class MealSessionRuntimeStore {
         backgroundKeepAlive.volume = alertVolume
     }
 
-    func startEating() {
+    func startEating(source: MealStartSource = .home) {
         guard !isEating else { return }
-        analytics.track(.mealSessionStarted())
+        pendingMealStartSource = nil
         let now = runtimeServices.now()
         phase = .measuring(MealSessionMeasurementContext(startedAt: now))
 
         let detectionContext = chewDetectionContext()
-        prepareEatingSession(startedAt: now, detectionContext: detectionContext)
+        let sessionId = prepareEatingSession(startedAt: now, detectionContext: detectionContext)
+        analytics.track(.mealSessionStarted(sessionId: sessionId, source: source))
         let engine = ChewDetectionEngine(configuration: detectionContext.configuration)
         chewDetectionEngine = engine
         sampleProcessingTailTask = nil
@@ -145,8 +155,16 @@ final class MealSessionRuntimeStore {
 
         configureCallInterruptionHandling()
         configureMealAirPodsConnectionHandling()
-        Task { [notificationScheduler = runtimeServices.notificationScheduler] in
-            await notificationScheduler.requestAuthorizationIfNeeded()
+        Task { [weak self, notificationScheduler = runtimeServices.notificationScheduler] in
+            let previousStatus = await notificationScheduler.authorizationStatus()
+            let granted = await notificationScheduler.requestAuthorizationIfNeeded()
+            guard previousStatus == .notDetermined else { return }
+            let currentStatus = await notificationScheduler.authorizationStatus()
+            self?.analytics.track(.permissionResult(
+                type: .notification,
+                status: Self.notificationPermissionStatus(currentStatus, granted: granted),
+                source: .mealSession
+            ))
         }
         startAudioFeedback(engine: engine)
         mealActivity.start(startedAt: now)
@@ -175,7 +193,11 @@ final class MealSessionRuntimeStore {
             let output = recorder.finalize(endedAt: endedAt)
             guard output.sampleCount > 0 else {
                 phase = .idle
-                analytics.track(.mealSessionAborted(reason: "no_samples", durationSec: sessionDurationSec))
+                analytics.track(.mealSessionAborted(
+                    sessionId: output.sessionId,
+                    reason: "no_samples",
+                    durationSec: sessionDurationSec
+                ))
                 return
             }
             phase = .idle
@@ -202,16 +224,26 @@ final class MealSessionRuntimeStore {
         if let recorder = imuSessionRecorder {
             imuSessionRecorder = nil
             _ = recorder.finalize(endedAt: endedAt)
+            analytics.track(.mealSessionAborted(
+                sessionId: recorder.sessionId,
+                reason: "user_discard",
+                durationSec: sessionDurationSec
+            ))
         }
-        analytics.track(.mealSessionAborted(reason: "user_discard", durationSec: sessionDurationSec))
     }
 
-    func toggleEating() {
+    func toggleEating(startSource: MealStartSource = .home) {
         if isEating {
             stopEating()
         } else {
-            startEating()
+            startEating(source: startSource)
         }
+    }
+
+    func startEatingImmediately(source: MealStartSource) {
+        guard !isEating else { return }
+        analytics.track(.mealStartRequested(source: source))
+        startEating(source: source)
     }
 
     func resumeMeasurement() {
@@ -284,10 +316,13 @@ final class MealSessionRuntimeStore {
     }
 
     func beginMealStartAfterAirPodsReadiness(
+        source: MealStartSource = .home,
         onCountdownStarted: @escaping () -> Void,
         onFinished: @escaping () -> Void
     ) {
         guard !isEating else { return }
+        pendingMealStartSource = source
+        analytics.track(.mealStartRequested(source: source))
         airPodsAutoStartCoordinator.prepareRoute { [weak self] in
             self?.continueMealStartAfterAirPodsDecision(
                 onCountdownStarted: onCountdownStarted,
@@ -297,6 +332,10 @@ final class MealSessionRuntimeStore {
     }
 
     func dismissAirPodsConnectionPrompt() {
+        if let source = pendingMealStartSource {
+            analytics.track(.mealStartCancelled(source: source, stage: .connectionPrompt))
+            pendingMealStartSource = nil
+        }
         airPodsAutoStartCoordinator.dismissPromptAndStop()
     }
 
@@ -304,12 +343,21 @@ final class MealSessionRuntimeStore {
         headphoneMotionService.start { [weak self] _ in
             self?.headphoneMotionService.stop()
             DispatchQueue.main.async {
-                self?.analytics.track(.permissionResult(type: "motion", granted: true))
+                self?.analytics.track(.permissionResult(
+                    type: .motion,
+                    status: .authorized,
+                    source: .mealStart
+                ))
                 onGranted()
             }
         } onError: { [weak self] _ in
             DispatchQueue.main.async {
-                self?.analytics.track(.permissionResult(type: "motion", granted: false))
+                guard let self else { return }
+                self.analytics.track(.permissionResult(
+                    type: .motion,
+                    status: self.motionPermissionFailureStatus,
+                    source: .mealStart
+                ))
                 onDenied()
             }
         }
@@ -332,6 +380,7 @@ final class MealSessionRuntimeStore {
 
     func clearTransientRuntimeState() {
         pendingMealStartRequest = false
+        pendingMealStartSource = nil
         startButtonHighlighted = false
         dismissShortSessionConfirmation()
         showAirPodsConnectionPrompt = false
@@ -366,19 +415,37 @@ private extension MealSessionRuntimeStore {
         return Float(max(0.0, min(1.0, volume)))
     }
 
+    static func notificationPermissionStatus(
+        _ status: UNAuthorizationStatus,
+        granted: Bool
+    ) -> AnalyticsPermissionStatus {
+        switch status {
+        case .authorized, .provisional, .ephemeral:
+            return .authorized
+        case .denied:
+            return .denied
+        case .notDetermined:
+            return granted ? .authorized : .error
+        @unknown default:
+            return .error
+        }
+    }
+
     var shouldConfirmShortSessionStop: Bool {
         MealSessionRuntimeRules.shouldConfirmShortSessionStop(startedAt: eatingStartedAt, now: runtimeServices.now())
     }
 
-    func prepareEatingSession(startedAt: Date, detectionContext: MealChewDetectionContext) {
+    func prepareEatingSession(startedAt: Date, detectionContext: MealChewDetectionContext) -> UUID {
         imuSampleCount = 0
         lastIMUSampleAt = nil
-        imuSessionRecorder = IMUSessionRecorder(
+        let recorder = IMUSessionRecorder(
             startedAt: startedAt,
             chewDetectionProfileId: detectionContext.profileId
         )
+        imuSessionRecorder = recorder
         interruptionWasCall = false
         interruptionBeganAt = nil
+        return recorder.sessionId
     }
 
     func configureCallInterruptionHandling() {
@@ -416,7 +483,16 @@ private extension MealSessionRuntimeStore {
             hasHeadphoneAudioRoute: airPodsAutoStartCoordinator.isHeadphoneConnected
         )
         switch decision {
-        case .block, .waitForAirPodsConnection:
+        case .block:
+            if let source = pendingMealStartSource {
+                analytics.track(.mealStartBlocked(source: source, reason: mealStartBlockReason))
+            }
+            airPodsAutoStartCoordinator.dismissPromptAndStop()
+            showAirPodsConnectionPrompt = true
+        case .waitForAirPodsConnection:
+            if let source = pendingMealStartSource {
+                analytics.track(.mealStartBlocked(source: source, reason: .airPodsDisconnected))
+            }
             airPodsAutoStartCoordinator.dismissPromptAndStop()
             showAirPodsConnectionPrompt = true
         case .requestPermission:
@@ -426,6 +502,12 @@ private extension MealSessionRuntimeStore {
                     onFinished: onFinished
                 )
             } onDenied: {
+                if let source = self.pendingMealStartSource {
+                    self.analytics.track(.mealStartBlocked(
+                        source: source,
+                        reason: self.mealStartBlockReason
+                    ))
+                }
                 self.airPodsAutoStartCoordinator.dismissPromptAndStop()
                 self.showAirPodsConnectionPrompt = true
             }
@@ -434,6 +516,34 @@ private extension MealSessionRuntimeStore {
                 onStarted: onCountdownStarted,
                 onFinished: onFinished
             )
+        }
+    }
+
+    var motionPermissionFailureStatus: AnalyticsPermissionStatus {
+        guard headphoneMotionService.isDeviceMotionAvailable else { return .unavailable }
+        switch headphoneMotionService.authorizationStatus {
+        case .denied:
+            return .denied
+        case .restricted:
+            return .restricted
+        case .authorized, .notDetermined:
+            return .error
+        @unknown default:
+            return .error
+        }
+    }
+
+    var mealStartBlockReason: MealStartBlockReason {
+        guard headphoneMotionService.isDeviceMotionAvailable else { return .motionUnavailable }
+        switch headphoneMotionService.authorizationStatus {
+        case .denied:
+            return .permissionDenied
+        case .restricted:
+            return .permissionRestricted
+        case .authorized, .notDetermined:
+            return .authorizationUnknown
+        @unknown default:
+            return .authorizationUnknown
         }
     }
 

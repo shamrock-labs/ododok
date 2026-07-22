@@ -24,5 +24,6 @@ enum SocialLoginError: LocalizedError {
 /// Apple/Google/Kakao 공통 진입점. 각 구현이 provider UI를 띄우고 id_token을 받아온다.
 @MainActor
 protocol SocialLoginProvider {
+    var method: String { get }
     func login() async throws -> SocialCredential
 }

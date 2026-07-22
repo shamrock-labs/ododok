@@ -163,6 +163,7 @@ final class AppState {
         repository: authRepository,
         isLoggedIn: isLoggedIn,
         hasCompletedOnboarding: hasCompletedOnboarding,
+        analytics: analytics,
         onLoginCompleted: { [weak self] result, method in
             self?.completeLogin(userId: result.userId, onboardingCompleted: result.onboardingCompleted, method: method)
         },
@@ -206,7 +207,8 @@ final class AppState {
     @MainActor @ObservationIgnored lazy var reminders: ReminderStore = ReminderStore(
         coordinator: mealPushCoordinator,
         permissionProvider: SystemReminderPermissionProvider(),
-        settingsStore: UserDefaultsReminderSettingsStore()
+        settingsStore: UserDefaultsReminderSettingsStore(),
+        analytics: analytics
     )
 
     /// 제품·리텐션 분석 포트. 테스트/미설정 시 Noop.
@@ -845,14 +847,28 @@ final class AppState {
     }
 
     @MainActor
-    func saveDisplayName(_ rawName: String) async {
-        guard let displayName = Self.normalizedDisplayName(rawName) else { return }
-        self.displayName = displayName
+    @discardableResult
+    func saveDisplayName(
+        _ rawName: String,
+        nameMethod: OnboardingNameMethod = .custom
+    ) async -> Bool {
+        guard let displayName = Self.normalizedDisplayName(rawName) else { return false }
         let deviceId = DeviceIdentity.shared
         do {
             try await remoteStore.upsertProfile(ProfileDTO(deviceId: deviceId, displayName: displayName))
+            self.displayName = displayName
+            analytics.track(.onboardingStepCompleted(
+                step: .name,
+                nameMethod: nameMethod
+            ))
+            return true
         } catch {
+            analytics.track(.onboardingStepFailed(
+                step: .name,
+                reason: Self.onboardingFailureReason(error)
+            ))
             handleRemoteError(error)
+            return false
         }
     }
 
@@ -868,17 +884,43 @@ final class AppState {
     }
 
     @MainActor
-    func saveGeneratedDisplayName() async {
-        await saveDisplayName(Self.generatedNickname(number: Int.random(in: 1000...9999)))
+    @discardableResult
+    func saveGeneratedDisplayName() async -> Bool {
+        await saveDisplayName(
+            Self.generatedNickname(number: Int.random(in: 1000...9999)),
+            nameMethod: .generated
+        )
     }
 
     @MainActor
-    func completeOnboarding() {
+    func completeOnboarding(
+        completionMethod: OnboardingCompletionMethod = .finished,
+        nameMethod: OnboardingNameMethod = .existing,
+        lastStep: OnboardingStepName = .streak
+    ) {
         guard !hasCompletedOnboarding else { return }
         hasCompletedOnboarding = true
         auth.updateOnboardingCompleted(true)
-        analytics.track(.onboardingCompleted())
+        analytics.track(.onboardingCompleted(
+            completionMethod: completionMethod,
+            nameMethod: nameMethod,
+            lastStep: lastStep
+        ))
         Task { await home.grantDailyAttendanceIfNeeded() }
+    }
+
+    private static func onboardingFailureReason(_ error: Error) -> OnboardingFailureReason {
+        guard let remoteError = error as? RemoteStoreError else { return .unknown }
+        switch remoteError {
+        case .offline:
+            return .offline
+        case .authExpired:
+            return .authExpired
+        case .malformed, .invalidUploadResponse:
+            return .malformedResponse
+        case .server, .http:
+            return .server
+        }
     }
 
     @MainActor
